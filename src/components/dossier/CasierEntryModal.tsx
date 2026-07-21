@@ -25,8 +25,10 @@ function addSecondsToTime(hhmm: string, seconds: number): string | null {
   return `${String(h).padStart(2, "0")}:${String(mn).padStart(2, "0")}`;
 }
 
-export function CasierEntryModal({ entryId, canDelete, onClose }: { entryId: Id<"casierEntries">; canDelete: boolean; onClose: () => void }) {
+export function CasierEntryModal({ entryId, canDelete: canDeleteAny, onClose }: { entryId: Id<"casierEntries">; canDelete: boolean; onClose: () => void }) {
   const entry = useQuery(api.casier.getEntry, { entryId });
+  // L'agent qui a établi l'entrée peut l'annuler sans casier.annul.
+  const canDelete = canDeleteAny || !!entry?.mine;
   const remove = useMutation(api.casier.remove);
   const updateArrest = useMutation(api.casier.updateArrest);
   const closeDossier = useMutation(api.casier.closeDossier);

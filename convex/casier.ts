@@ -1,7 +1,7 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import type { QueryCtx } from "./_generated/server";
-import { requireAgent, requirePermission, agentLabel, can } from "./rbac";
+import { requireAgent, requirePermission, requireOwnOrPermission, agentLabel, can } from "./rbac";
 import { writeAudit } from "./lib/audit";
 import { touchStats } from "./stats";
 import { notify, NOTIFY_COLOR, deepLink } from "./lib/notify";
@@ -96,6 +96,9 @@ export const getEntry = query({
       annulReason: e.annulReason,
       citizenId: e.citizenId,
       citizenName: citizen ? `${citizen.prenom} ${citizen.nom}` : "-",
+      // Vrai si l'agent courant a établi cette entrée : il peut l'annuler
+      // sans détenir la permission dédiée.
+      mine: e.createdBy === agent._id,
       officers,
       defcon: e.defconSnapshot,
       totalFine: e.totalFine,
@@ -220,10 +223,11 @@ export const remove = mutation({
   args: { entryId: v.id("casierEntries") },
   handler: async (ctx, { entryId }) => {
     const agent = await requireAgent(ctx);
-    await requirePermission(ctx, agent, "casier.annul");
     const e = await ctx.db.get(entryId);
     if (!e) throw new Error("Entrée introuvable.");
     if (e.deletedAt) return;
+    // L'agent qui a établi l'acte peut l'annuler ; au-delà, la permission.
+    await requireOwnOrPermission(ctx, agent, e.createdBy, "casier.annul");
     const citizen = await ctx.db.get(e.citizenId);
     await ctx.db.patch(entryId, { deletedAt: Date.now(), deletedBy: agent._id });
     await writeAudit(ctx, agent, {

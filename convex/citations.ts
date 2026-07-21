@@ -1,7 +1,7 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import type { QueryCtx } from "./_generated/server";
-import { requireAgent, requirePermission, agentLabel } from "./rbac";
+import { requireAgent, requirePermission, requireOwnOrPermission, agentLabel } from "./rbac";
 import { writeAudit } from "./lib/audit";
 import { touchStats } from "./stats";
 import { notify, NOTIFY_COLOR, deepLink } from "./lib/notify";
@@ -67,6 +67,7 @@ export const getEntry = query({
       annulReason: c.annulReason,
       citizenId: c.citizenId,
       citizenName: citizen ? `${citizen.prenom} ${citizen.nom}` : "-",
+      mine: c.createdBy === agent._id,
       officer: await agentLabel(ctx, c.officerId),
       defcon: c.defconSnapshot,
       totalFine: c.totalFine,
@@ -90,10 +91,11 @@ export const remove = mutation({
   args: { citationId: v.id("citations") },
   handler: async (ctx, { citationId }) => {
     const agent = await requireAgent(ctx);
-    await requirePermission(ctx, agent, "contraventions.annul");
     const c = await ctx.db.get(citationId);
     if (!c) throw new Error("Contravention introuvable.");
     if (c.deletedAt) return;
+    // L'agent qui a établi l'acte peut l'annuler ; au-delà, la permission.
+    await requireOwnOrPermission(ctx, agent, c.createdBy, "contraventions.annul");
     const citizen = await ctx.db.get(c.citizenId);
     await ctx.db.patch(citationId, { deletedAt: Date.now(), deletedBy: agent._id });
     await writeAudit(ctx, agent, {

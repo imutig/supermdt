@@ -9,7 +9,7 @@ import { ContraventionDoc } from "@/components/docs/ContraventionDoc";
 // Détail complet d'une contravention (§6). Miroir du modal casier, sans prison ni arrestation.
 export function ContraventionModal({
   citationId,
-  canDelete,
+  canDelete: canDeleteAny,
   onClose,
 }: {
   citationId: Id<"citations">;
@@ -17,6 +17,8 @@ export function ContraventionModal({
   onClose: () => void;
 }) {
   const entry = useQuery(api.citations.getEntry, { citationId });
+  // L'agent verbalisateur peut annuler sa contravention sans la permission.
+  const canDelete = canDeleteAny || !!entry?.mine;
   const remove = useMutation(api.citations.remove);
   const toast = useToast();
   const [busy, setBusy] = useState(false);
