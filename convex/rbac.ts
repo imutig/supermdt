@@ -1,6 +1,6 @@
 import { getAuthUserId } from "@convex-dev/auth/server";
 import type { QueryCtx } from "./_generated/server";
-import type { Doc } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 
 // ============ Catalogue des permissions (source de vérité - slugs FIXES) ============
 // Seedé dans la table `permissions`. Voir §5.5 / §11.4 de PROJET-SAST-MDT.md.
@@ -256,4 +256,18 @@ export async function assertOutranks(
       `Hiérarchie : ${targetGrade.name} n'est pas strictement inférieur à votre grade (${actorGrade.name}).`,
     );
   }
+}
+
+// L'auteur d'un enregistrement peut le retirer sans détenir la permission
+// dédiée ; celle-ci n'est exigée que pour agir sur celui d'un autre. Évite
+// d'avoir à distribuer un droit de suppression global juste pour permettre à
+// chacun de corriger sa propre saisie.
+export async function requireOwnOrPermission(
+  ctx: QueryCtx,
+  agent: Doc<"agents">,
+  ownerId: Id<"agents"> | undefined | null,
+  slug: string,
+) {
+  if (ownerId && ownerId === agent._id) return;
+  await requirePermission(ctx, agent, slug);
 }

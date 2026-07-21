@@ -52,10 +52,13 @@ type Props = {
 const FIELD =
   "h-10 w-full rounded-sm border border-border bg-surface-2 px-3 text-[13px] text-text outline-none focus:border-accent";
 
-export function VehicleModal({ vehicleId, ownerId, ownerName, initialPlaque, canEdit, onClose }: Props) {
+export function VehicleModal({ vehicleId, ownerId, ownerName, initialPlaque, canEdit: canEditAny, onClose }: Props) {
   const isCreate = !vehicleId;
   const toast = useToast();
   const vehicle = useQuery(api.vehicles.get, vehicleId ? { id: vehicleId } : "skip");
+  // L'agent qui a enregistré le véhicule peut le modifier et le retirer sans
+  // détenir vehicules.edit.
+  const canEdit = canEditAny || !!vehicle?.mine;
   const create = useMutation(api.vehicles.create);
   const update = useMutation(api.vehicles.update);
   const remove = useMutation(api.vehicles.remove);

@@ -2,7 +2,7 @@ import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import type { QueryCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
-import { requireAgent, requirePermission, agentLabel } from "./rbac";
+import { requireAgent, requirePermission, requireOwnOrPermission, agentLabel } from "./rbac";
 import { writeAudit } from "./lib/audit";
 import { notify, NOTIFY_COLOR, deepLink } from "./lib/notify";
 
@@ -130,7 +130,9 @@ export const remove = mutation({
   args: { id: v.id("complaints") },
   handler: async (ctx, { id }) => {
     const agent = await requireAgent(ctx);
-    await requirePermission(ctx, agent, "plaintes.delete");
+    const c = await ctx.db.get(id);
+    if (!c) return;
+    await requireOwnOrPermission(ctx, agent, c.createdBy, "plaintes.delete");
     await ctx.db.patch(id, { deletedAt: Date.now(), deletedBy: agent._id });
     await writeAudit(ctx, agent, { action: "complaint.delete", resourceType: "complaint", resourceId: id });
   },

@@ -96,14 +96,14 @@ export function Dossier() {
 
   const citizenId = id as Id<"citizens"> | undefined;
   const data = useQuery(api.citizens.getById, citizenId ? { id: citizenId } : "skip");
-  const vehicles = useQuery(api.vehicles.byOwner, citizenId ? { citizenId } : "skip");
-  const casier = useQuery(api.casier.byCitizen, citizenId ? { citizenId } : "skip");
-  const mandats = useQuery(api.mandats.byCitizen, citizenId ? { citizenId } : "skip");
-  const contraventions = useQuery(api.citations.byCitizen, citizenId ? { citizenId } : "skip");
-  const rapports = useQuery(api.reports.byCitizen, citizenId ? { citizenId } : "skip");
-  const plaintes = useQuery(api.complaints.byCitizen, citizenId ? { citizenId } : "skip");
-  const depositions = useQuery(api.depositions.byCitizen, citizenId ? { citizenId } : "skip");
-  const finances = useQuery(api.finances.byCitizen, citizenId ? { citizenId } : "skip");
+  const vehicles = useQuery(api.vehicles.byOwner, citizenId && can("vehicules.view") ? { citizenId } : "skip");
+  const casier = useQuery(api.casier.byCitizen, citizenId && can("casier.view") ? { citizenId } : "skip");
+  const mandats = useQuery(api.mandats.byCitizen, citizenId && can("mandats.view") ? { citizenId } : "skip");
+  const contraventions = useQuery(api.citations.byCitizen, citizenId && can("contraventions.view") ? { citizenId } : "skip");
+  const rapports = useQuery(api.reports.byCitizen, citizenId && can("rapports.view") ? { citizenId } : "skip");
+  const plaintes = useQuery(api.complaints.byCitizen, citizenId && can("plaintes.view") ? { citizenId } : "skip");
+  const depositions = useQuery(api.depositions.byCitizen, citizenId && can("depositions.view") ? { citizenId } : "skip");
+  const finances = useQuery(api.finances.byCitizen, citizenId && can("casier.view") ? { citizenId } : "skip");
   const setFinePaid = useMutation(api.finances.setPaid);
   const logView = useMutation(api.citizens.logView);
   const removeMandat = useMutation(api.mandats.remove);

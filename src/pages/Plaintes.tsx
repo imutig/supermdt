@@ -65,8 +65,9 @@ export function ComplaintModal({
 }) {
   const isCreate = !complaintId;
   const existing = useQuery(api.complaints.get, complaintId ? { id: complaintId } : "skip");
+  const { can } = useCan();
   const opts = useQuery(api.configEditors.options);
-  const roster = useQuery(api.agents.roster) ?? [];
+  const roster = useQuery(api.agents.roster, can("effectif.view") ? {} : "skip") ?? [];
   const create = useMutation(api.complaints.create);
   const update = useMutation(api.complaints.update);
   const remove = useMutation(api.complaints.remove);

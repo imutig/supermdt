@@ -6,6 +6,7 @@ import { TopBar } from "./TopBar";
 import { FicheBanner } from "./FicheBanner";
 import { NavRail } from "./NavRail";
 import { PrefsBridge } from "./PrefsBridge";
+import { PageBoundary } from "./PageBoundary";
 import { SearchOverlay } from "@/components/search/SearchOverlay";
 import { CalcModal } from "@/components/calc/CalcModal";
 import { MandatModal } from "@/components/mandat/MandatModal";
@@ -30,9 +31,11 @@ export function AppShell() {
             {/* flex-col : permet aux pages "pleine hauteur" (Dispatch) de s'étirer via flex-1,
                 sans changer les pages dimensionnées par leur contenu. */}
             <div key={routeKey} className="mdt-page flex min-h-full flex-col">
-              <Suspense fallback={<LoadingScreen label="Chargement…" />}>
-                <Outlet />
-              </Suspense>
+              <PageBoundary resetKey={routeKey}>
+                <Suspense fallback={<LoadingScreen label="Chargement…" />}>
+                  <Outlet />
+                </Suspense>
+              </PageBoundary>
             </div>
           </main>
         </div>

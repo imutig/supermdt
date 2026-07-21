@@ -1,6 +1,6 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
-import { requireAgent, requirePermission, agentLabel } from "./rbac";
+import { requireAgent, requirePermission, requireOwnOrPermission, agentLabel } from "./rbac";
 import { writeAudit } from "./lib/audit";
 
 export const byCitizen = query({
@@ -91,7 +91,9 @@ export const remove = mutation({
   args: { id: v.id("depositions") },
   handler: async (ctx, { id }) => {
     const agent = await requireAgent(ctx);
-    await requirePermission(ctx, agent, "depositions.delete");
+    const d = await ctx.db.get(id);
+    if (!d) return;
+    await requireOwnOrPermission(ctx, agent, d.createdBy, "depositions.delete");
     await ctx.db.delete(id);
     await writeAudit(ctx, agent, { action: "deposition.delete", resourceType: "deposition", resourceId: id });
   },

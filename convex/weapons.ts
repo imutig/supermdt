@@ -2,8 +2,8 @@ import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { paginationOptsValidator } from "convex/server";
 import type { QueryCtx } from "./_generated/server";
-import type { Doc } from "./_generated/dataModel";
-import { requireAgent, requirePermission } from "./rbac";
+import type { Doc, Id } from "./_generated/dataModel";
+import { requireAgent, requirePermission, requireOwnOrPermission } from "./rbac";
 import { writeAudit } from "./lib/audit";
 import { touchStats } from "./stats";
 
@@ -15,7 +15,7 @@ const STATUS = v.union(
 );
 const norm = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
-async function shape(ctx: QueryCtx, w: Doc<"weapons">) {
+async function shape(ctx: QueryCtx, w: Doc<"weapons">, viewerId?: Id<"agents">) {
   const owner = w.ownerId ? await ctx.db.get(w.ownerId) : null;
   return {
     _id: w._id,
@@ -29,6 +29,9 @@ async function shape(ctx: QueryCtx, w: Doc<"weapons">) {
     ownerId: w.ownerId ?? null,
     ownerName: owner ? `${owner.prenom} ${owner.nom}` : null,
     at: w.at,
+    // Vrai si l'agent courant a encodé cette arme : il peut la retirer sans
+    // détenir la permission de suppression.
+    mine: !!viewerId && w.createdBy === viewerId,
   };
 }
 
@@ -45,7 +48,7 @@ export const list = query({
             .take(50)
         : await ctx.db.query("weapons").order("desc").take(100);
     const out = [];
-    for (const w of rows) out.push(await shape(ctx, w));
+    for (const w of rows) out.push(await shape(ctx, w, agent._id));
     return out;
   },
 });
@@ -73,7 +76,7 @@ export const byOwner = query({
       .withIndex("by_owner", (q) => q.eq("ownerId", citizenId))
       .collect();
     const out = [];
-    for (const w of rows) out.push(await shape(ctx, w));
+    for (const w of rows) out.push(await shape(ctx, w, agent._id));
     return out;
   },
 });
@@ -140,8 +143,9 @@ export const remove = mutation({
   args: { id: v.id("weapons") },
   handler: async (ctx, { id }) => {
     const agent = await requireAgent(ctx);
-    await requirePermission(ctx, agent, "armes.delete");
     const w = await ctx.db.get(id);
+    if (!w) return;
+    await requireOwnOrPermission(ctx, agent, w.createdBy, "armes.delete");
     await ctx.db.delete(id);
     await writeAudit(ctx, agent, { action: "weapon.delete", resourceType: "weapon", resourceId: id, resourceLabel: w ? `${w.modele} ${w.serial}` : "" });
     await touchStats(ctx);

@@ -1,7 +1,7 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { paginationOptsValidator } from "convex/server";
-import { requireAgent, requirePermission } from "./rbac";
+import { requireAgent, requirePermission, requireOwnOrPermission } from "./rbac";
 import { writeAudit } from "./lib/audit";
 import { touchStats } from "./stats";
 
@@ -139,6 +139,7 @@ export const get = query({
       ownerId: veh.ownerId ?? null,
       ownerName: owner ? `${owner.prenom} ${owner.nom}` : null,
       photoUrl: veh.photoUrls?.[0] ?? null,
+      mine: veh.createdBy === agent._id,
       flags,
     };
   },
@@ -343,9 +344,9 @@ export const remove = mutation({
   args: { id: v.id("vehicles") },
   handler: async (ctx, { id }) => {
     const agent = await requireAgent(ctx);
-    await requirePermission(ctx, agent, "vehicules.edit");
     const veh = await ctx.db.get(id);
     if (!veh) throw new Error("Véhicule introuvable.");
+    await requireOwnOrPermission(ctx, agent, veh.createdBy, "vehicules.edit");
     const flags = await ctx.db
       .query("vehicleFlags")
       .withIndex("by_vehicle", (q) => q.eq("vehicleId", id))

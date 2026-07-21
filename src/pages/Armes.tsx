@@ -23,7 +23,9 @@ export function Armes() {
   const canCreate = can("armes.create");
   const canEdit = can("armes.edit");
   const canDelete = can("armes.delete");
-  const canOpen = canEdit || canDelete; // ouvrir la fiche pour éditer/supprimer
+  // Toujours ouvrable : la fiche décide ensuite des actions possibles, et
+  // chacun doit pouvoir retirer ce qu'il a encodé.
+  const canOpen = true;
   const [q, setQ] = useState("");
   const searching = q.trim().length > 0;
   const searchRes = useQuery(api.weapons.list, searching ? { q } : "skip");
@@ -69,11 +71,13 @@ export function Armes() {
   );
 }
 
-export function WeaponModal({ weaponId, canCreate, canEdit, canDelete, onClose }: { weaponId?: Id<"weapons">; canCreate: boolean; canEdit: boolean; canDelete: boolean; onClose: () => void }) {
+export function WeaponModal({ weaponId, canCreate, canEdit, canDelete: canDeleteAny, onClose }: { weaponId?: Id<"weapons">; canCreate: boolean; canEdit: boolean; canDelete: boolean; onClose: () => void }) {
   const isCreate = !weaponId;
   const canWrite = isCreate ? canCreate : canEdit; // droit d'écriture selon création/édition
   const existing = useQuery(api.weapons.list, weaponId ? {} : "skip");
   const w = weaponId && existing ? existing.find((x) => x._id === weaponId) : null;
+  // L'agent qui a encodé l'arme peut la retirer sans détenir armes.delete.
+  const canDelete = canDeleteAny || !!w?.mine;
   const opts = useQuery(api.configEditors.options);
   const create = useMutation(api.weapons.create);
   const update = useMutation(api.weapons.update);
@@ -84,8 +88,9 @@ export function WeaponModal({ weaponId, canCreate, canEdit, canDelete, onClose }
   const [init, setInit] = useState(false);
   const [f, setF] = useState({ typeId: "", modele: "", serial: "", motif: "", origine: "", status: "ENREGISTREE" });
   const [owner, setOwner] = useState<{ id: string; name: string } | null>(null);
+  const { can } = useCan();
   const [ownerQuery, setOwnerQuery] = useState("");
-  const ownerResults = useQuery(api.citizens.search, ownerQuery.trim() ? { q: ownerQuery } : "skip");
+  const ownerResults = useQuery(api.citizens.search, ownerQuery.trim() && can("citoyens.view") ? { q: ownerQuery } : "skip");
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState(false);
 

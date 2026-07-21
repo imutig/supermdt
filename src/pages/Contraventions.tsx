@@ -17,11 +17,11 @@ const FILTERS = [
 
 // Historique judiciaire combiné : entrées de casier + contraventions (§4).
 export function Contraventions() {
-  const listQ = useQuery(api.activity.casierAndCitations);
+  const { can } = useCan();
+  const listQ = useQuery(api.activity.casierAndCitations, can("casier.view") ? {} : "skip");
   const list = listQ ?? [];
   const [filter, setFilter] = useState<"all" | "casier" | "citation">("all");
   const [page, setPage] = useState(1);
-  const { can } = useCan();
   // Ouvre directement le détail de l'élément cliqué plutôt que le dossier entier.
   const [open, setOpen] = useState<{ kind: "casier" | "citation"; id: string } | null>(null);
   const rows = list.filter((r) => filter === "all" || r.kind === filter);
