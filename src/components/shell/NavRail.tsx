@@ -29,7 +29,6 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { useQuery } from "convex/react";
 import { api } from "@/lib/api";
 import { useApp } from "@/providers/app-state";
-import { useMe } from "@/hooks/useMe";
 import { useCan } from "@/hooks/useCan";
 import { usePrefs } from "@/hooks/usePrefs";
 
@@ -97,10 +96,11 @@ const GROUPS: NavGroup[] = [
 
 export function NavRail() {
   const { clock } = useApp();
-  const me = useMe();
   const { can, ready } = useCan();
   const { sidebarCollapsible: collapsible, sidebarHoverExpand } = usePrefs();
-  const canAdmin = !!me && (me.agent.isOwner || me.grade?.corps === "ETAT_MAJOR");
+  // La section Administration s'ouvre à qui détient l'un de ses droits, et non
+  // à un corps de grade décidé en dur.
+  const canAdmin = can("rbac.manage") || can("audit.view") || can("effectif.validate") || can("invites.manage");
   const location = useLocation();
   const navigate = useNavigate();
   // Sans permission, la requête lèverait et ferait tomber toute l'application.

@@ -21,6 +21,7 @@ export const byCitizen = query({
         text: n.text,
         tone: n.tone ?? "neutral",
         author: a ? `${a.prenomRP} ${a.nomRP}` : "-",
+        mine: n.byAgentId === agent._id,
         at: n.at,
       });
     }
@@ -42,5 +43,25 @@ export const add = mutation({
     });
     await writeAudit(ctx, agent, { action: "citizen.note_add", resourceType: "citizen", resourceId: args.citizenId });
     return id;
+  },
+});
+
+// Suppression d'une note. L'auteur peut retirer la sienne ; au-delà, il faut
+// le droit d'éditer les dossiers citoyens.
+export const remove = mutation({
+  args: { id: v.id("citizenNotes") },
+  handler: async (ctx, { id }) => {
+    const agent = await requireAgent(ctx);
+    const note = await ctx.db.get(id);
+    if (!note) return;
+    if (note.byAgentId !== agent._id) {
+      await requirePermission(ctx, agent, "citoyens.edit");
+    }
+    await ctx.db.delete(id);
+    await writeAudit(ctx, agent, {
+      action: "citizen.note_remove",
+      resourceType: "citizen",
+      resourceId: note.citizenId,
+    });
   },
 });

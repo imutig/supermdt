@@ -198,6 +198,10 @@ body {
 .prose-mdt h2 { font-size: 1.15rem; font-weight: 700; margin: 0.7em 0 0.35em; }
 .prose-mdt h3 { font-size: 1.02rem; font-weight: 600; margin: 0.6em 0 0.3em; }
 .prose-mdt p { margin: 0.4em 0; }
+/* Pas de marge sur les extrémités : elle s'ajoutait au rembourrage du
+   conteneur et gonflait inutilement les blocs d'une seule ligne (notes). */
+.prose-mdt > :first-child { margin-top: 0; }
+.prose-mdt > :last-child { margin-bottom: 0; }
 .prose-mdt ul { list-style: disc; padding-left: 1.4em; margin: 0.4em 0; }
 .prose-mdt ol { list-style: decimal; padding-left: 1.4em; margin: 0.4em 0; }
 .prose-mdt li { margin: 0.15em 0; }

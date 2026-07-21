@@ -3,6 +3,7 @@ import { Trash2, X } from "lucide-react";
 import { useMutation, useQuery } from "convex/react";
 import { api, type Id } from "@/lib/api";
 import { useMe } from "@/hooks/useMe";
+import { useCan } from "@/hooks/useCan";
 import { useToast } from "@/providers/toast";
 import { EmptyState } from "@/components/common/EmptyState";
 import { SkeletonRows } from "@/components/common/Skeleton";
@@ -14,6 +15,7 @@ export function Saisies() {
   const rows = useQuery(api.saisies.list);
   const remove = useMutation(api.saisies.remove);
   const me = useMe();
+  const { can } = useCan();
   const toast = useToast();
   const [modal, setModal] = useState(false);
   const [page, setPage] = useState(1);
@@ -37,7 +39,9 @@ export function Saisies() {
         {rows === undefined && <div className="p-4"><SkeletonRows rows={6} /></div>}
         {rows && rows.length === 0 && <EmptyState title="Aucune saisie" message="Enregistrez une première saisie." />}
         {slice.map((s) => {
-          const canDelete = me?.agent.isOwner || s.agentId === me?.agent._id;
+          // Le serveur accepte aussi `saisies.delete` : l'interface masquait le
+          // bouton à qui détenait pourtant ce droit.
+          const canDelete = me?.agent.isOwner || s.agentId === me?.agent._id || can("saisies.delete");
           return (
             <div key={s._id} className="grid grid-cols-[1.2fr_.6fr_1.4fr_1.3fr_.9fr_auto] items-center gap-3 border-b border-border px-4 py-[11px]">
               <span className="text-[13px] font-semibold">{s.objectLabel}</span>

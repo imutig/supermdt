@@ -10,7 +10,6 @@ import { useApp } from "@/providers/app-state";
 import { CreateCitizenModal } from "@/components/dossier/CreateCitizenModal";
 import { WeaponModal } from "@/pages/Armes";
 import { VehicleModal } from "@/components/dossier/VehicleModal";
-import { useMe } from "@/hooks/useMe";
 import { useCan } from "@/hooks/useCan";
 import { useService } from "@/hooks/useService";
 
@@ -26,10 +25,9 @@ type Item = { key: string; icon: LucideIcon; title: string; sub?: string; tag?: 
 
 export function SearchOverlay() {
   const { searchOpen, closeSearch } = useApp();
-  const me = useMe();
   const { can } = useCan();
   const { onDuty, toggle: toggleDuty } = useService();
-  const canCreateCitizen = !!me && (me.agent.isOwner || me.grade?.corps === "ETAT_MAJOR" || me.grade?.corps === "SUPERVISION" || me.grade?.corps === "OPERATIONNEL");
+  const canCreateCitizen = can("citoyens.create");
   const navigate = useNavigate();
   const [q, setQ] = useState("");
   const [sel, setSel] = useState(0);

@@ -3,7 +3,6 @@ import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery } from "convex/react";
 import { api, type Id } from "@/lib/api";
 import { useApp } from "@/providers/app-state";
-import { useMe } from "@/hooks/useMe";
 import { NotesPanel } from "@/components/dossier/NotesPanel";
 import { NoteModal } from "@/components/dossier/NoteModal";
 import { CasierEntryModal } from "@/components/dossier/CasierEntryModal";
@@ -60,11 +59,18 @@ function ageFrom(dob?: string) {
 export function Dossier() {
   const { id } = useParams();
   const { openCalc, openMandat } = useApp();
-  const me = useMe();
   const toast = useToast();
   const { can } = useCan();
-  const canEdit =
-    !!me && (me.agent.isOwner || me.grade?.corps === "ETAT_MAJOR" || me.grade?.corps === "SUPERVISION");
+  // Chaque action vise sa propre permission. Un contrôle unique fondé sur le
+  // corps du grade ignorait la configuration : un Officier ne pouvait rien
+  // faire même avec les droits accordés, et un gradé pouvait tout faire même
+  // après les lui avoir retirés.
+  const canEditCitizen = can("citoyens.edit");
+  const canCreateVehicle = can("vehicules.create");
+  const canAnnulCasier = can("casier.annul");
+  const canAnnulContravention = can("contraventions.annul");
+  const canAnnulMandat = can("mandats.annul");
+  const canEditVehicle = can("vehicules.edit");
   const canManageLicenses = can("citoyens.licenses");
   const canCasier = can("casier.create");
   const canContravention = can("contraventions.create");
@@ -271,7 +277,7 @@ export function Dossier() {
             >
               Extrait de casier
             </button>
-            {canEdit && (
+            {canEditCitizen && (
               <button
                 onClick={() => setEditIdentity(true)}
                 className="rounded-sm border border-border bg-transparent px-[14px] py-2 text-[13px] font-semibold text-muted hover:border-border-strong"
@@ -337,7 +343,7 @@ export function Dossier() {
                   <span className="text-[10px] font-bold uppercase tracking-[0.08em] text-faint">
                     Véhicules rattachés
                   </span>
-                  {canEdit && (
+                  {canCreateVehicle && (
                     <button
                       onClick={() => setVehicleModal({ mode: "create" })}
                       className="rounded-sm border border-border bg-surface-2 px-[11px] py-[6px] text-[12px] font-semibold text-text hover:border-border-strong"
@@ -546,7 +552,7 @@ export function Dossier() {
                           Arrêter
                         </button>
                       )}
-                      {canEdit && (
+                      {canAnnulMandat && (
                         <DeleteButton onDelete={() => removeMandat({ mandatId: m._id })} title="Supprimer le mandat" />
                       )}
                     </div>
@@ -799,14 +805,14 @@ export function Dossier() {
       {casierModalId && (
         <CasierEntryModal
           entryId={casierModalId}
-          canDelete={canEdit}
+          canDelete={canAnnulCasier}
           onClose={() => setCasierModalId(null)}
         />
       )}
       {contravModalId && (
         <ContraventionModal
           citationId={contravModalId}
-          canDelete={canEdit}
+          canDelete={canAnnulContravention}
           onClose={() => setContravModalId(null)}
         />
       )}
@@ -815,7 +821,7 @@ export function Dossier() {
           vehicleId={vehicleModal.mode === "view" ? vehicleModal.id : undefined}
           ownerId={vehicleModal.mode === "create" ? c._id : undefined}
           ownerName={`${c.prenom} ${c.nom}`}
-          canEdit={canEdit}
+          canEdit={vehicleModal.mode === "create" ? canCreateVehicle : canEditVehicle}
           onClose={() => setVehicleModal(null)}
         />
       )}

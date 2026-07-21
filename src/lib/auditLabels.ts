@@ -24,6 +24,7 @@ const LABELS: Record<string, string> = {
   "citizen.update": "a modifié l'identité d'un citoyen",
   "citizen.archive": "a archivé un dossier citoyen",
   "citizen.note_add": "a ajouté une note au dossier",
+  "citizen.note_remove": "a supprimé une note du dossier",
   "citizen.flag_set": "a posé un signalement sur un citoyen",
   "citizen.flag_remove": "a retiré un signalement d'un citoyen",
   "citizen.license_set": "a délivré ou modifié une licence",
