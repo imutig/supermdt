@@ -1,0 +1,15 @@
+<svg viewBox="0 0 400 400" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="LSPD Station 13">
+  <circle cx="200" cy="200" r="198" fill="#49A24A"></circle>
+  <circle cx="200" cy="200" r="185" fill="#F3EFE3"></circle>
+  <circle cx="200" cy="200" r="181" fill="none" stroke="#49A24A" stroke-width="1.5" opacity="0.45"></circle>
+  <defs>
+    <path id="topArc" d="M 60,200 A 140,140 0 0 1 340,200"></path>
+    <path id="botArc" d="M 52,200 A 148,148 0 0 0 348,200"></path>
+  </defs>
+  <text fill="#2E6B2F" font-family="Inter, &#39;Helvetica Neue&#39;, Arial, sans-serif" font-size="31" font-weight="800" letter-spacing="1.5"><textPath href="#topArc" startOffset="50%" text-anchor="middle">LSPD · STATION 13</textPath></text>
+  <text fill="#2E6B2F" font-family="Inter, &#39;Helvetica Neue&#39;, Arial, sans-serif" font-size="28" font-weight="800" letter-spacing="2"><textPath href="#botArc" startOffset="50%" text-anchor="middle">LUCKY THIRTEEN</textPath></text>
+  <g transform="translate(200,180)"><path d="M50,90 C20,62 0,42 0,26 C0,11 12,0 26,0 C38,0 47,9 50,20 C53,9 62,0 74,0 C88,0 100,11 100,26 C100,42 80,62 50,90 Z" transform="rotate(45) scale(1.05) translate(-50,-90)" fill="#49A24A"></path><path d="M50,90 C20,62 0,42 0,26 C0,11 12,0 26,0 C38,0 47,9 50,20 C53,9 62,0 74,0 C88,0 100,11 100,26 C100,42 80,62 50,90 Z" transform="rotate(135) scale(1.05) translate(-50,-90)" fill="#49A24A"></path><path d="M50,90 C20,62 0,42 0,26 C0,11 12,0 26,0 C38,0 47,9 50,20 C53,9 62,0 74,0 C88,0 100,11 100,26 C100,42 80,62 50,90 Z" transform="rotate(225) scale(1.05) translate(-50,-90)" fill="#49A24A"></path><path d="M50,90 C20,62 0,42 0,26 C0,11 12,0 26,0 C38,0 47,9 50,20 C53,9 62,0 74,0 C88,0 100,11 100,26 C100,42 80,62 50,90 Z" transform="rotate(315) scale(1.05) translate(-50,-90)" fill="#49A24A"></path>
+    <path d="M0,48 C-6,92 8,118 28,128" fill="none" stroke="#49A24A" stroke-width="15" stroke-linecap="round"></path>
+    <circle r="52" fill="#49A24A"></circle>
+    <text x="1" y="2" text-anchor="middle" dominant-baseline="central" font-family="&#39;Times New Roman&#39;, Georgia, serif" style="font-variant-numeric:lining-nums tabular-nums;font-feature-settings:&#39;lnum&#39; 1,&#39;tnum&#39; 1" font-size="78" font-weight="500" fill="#F3EFE3">13</text></g>
+</svg>

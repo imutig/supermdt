@@ -1,0 +1,13 @@
+node_modules
+dist
+.git
+.env
+.env.local
+.env.*.local
+convex/_generated
+.claude
+.agents
+handoff
+acces_handoff_station13
+logo_handoff_station13
+*.log

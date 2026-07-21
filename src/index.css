@@ -1,0 +1,311 @@
+@import "tailwindcss";
+
+/* Toggle dark mode via a `.dark` class on <html> (not prefers-color-scheme). */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ============ Design tokens (Proposition « Precinct ») ============ */
+:root {
+  --bg: #eceef2;
+  --surface: #ffffff;
+  --surface-2: #f4f6f8;
+  --elev: #ffffff;
+  --text: #14171c;
+  --muted: #5c626e;
+  --faint: #98a0ab;
+  --border: #e5e8ec;
+  --border-strong: #cfd4db;
+  --scrim: rgba(22, 25, 32, 0.24);
+  --shadow: rgba(20, 23, 28, 0.1);
+
+  /* Vert trèfle "Lucky Thirteen" - couleur d'accent officielle Station 13 */
+  --accent: #49a24a;
+  --accent-contrast: #ffffff;
+  --accent-soft: rgba(73, 162, 74, 0.1);
+
+  --success: #16a34a;
+  --warning: #ea8f1f;
+  --danger: #dc2626;
+  --critical: #b30f3a;
+
+  --radius: 11px;
+  --radius-sm: 8px;
+
+  --font-ui: "Inter", system-ui, -apple-system, sans-serif;
+  --font-data: "JetBrains Mono", ui-monospace, "SFMono-Regular", monospace;
+}
+
+.dark {
+  --bg: #0b0d11;
+  --surface: #14171d;
+  --surface-2: #191d25;
+  --elev: #1a1e26;
+  --text: #eceef3;
+  --muted: #98a0ad;
+  --faint: #68717f;
+  --border: #242a34;
+  --border-strong: #333b48;
+  --scrim: rgba(4, 6, 10, 0.5);
+  --shadow: rgba(0, 0, 0, 0.45);
+  --accent-soft: rgba(73, 162, 74, 0.2);
+}
+
+/* Map tokens to Tailwind utilities (bg-surface, text-muted, border-border, …). */
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-elev: var(--elev);
+  --color-text: var(--text);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-accent: var(--accent);
+  --color-accent-contrast: var(--accent-contrast);
+  --color-accent-soft: var(--accent-soft);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-critical: var(--critical);
+
+  --font-ui: var(--font-ui);
+  --font-data: var(--font-data);
+
+  --radius-card: var(--radius);
+  --radius-sm: var(--radius-sm);
+}
+
+/* ============ Base ============ */
+* {
+  box-sizing: border-box;
+}
+html,
+body,
+#root {
+  height: 100%;
+}
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+}
+::selection {
+  background: var(--accent);
+  color: var(--accent-contrast);
+}
+
+/* Scrollbars */
+::-webkit-scrollbar {
+  width: 11px;
+  height: 11px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 8px;
+  border: 3px solid var(--surface);
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Éditeur de rapports (ProseMirror / TipTap) */
+.ProseMirror {
+  outline: none;
+}
+.mdt-prose {
+  outline: none;
+  min-height: 340px;
+  padding: 14px 16px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text);
+}
+.mdt-prose p {
+  margin: 0 0 0.6em;
+}
+.mdt-prose h1,
+.mdt-prose h2,
+.mdt-prose h3 {
+  font-weight: 700;
+  margin: 0.9em 0 0.4em;
+}
+.mdt-prose h1 {
+  font-size: 1.5em;
+}
+.mdt-prose h2 {
+  font-size: 1.25em;
+}
+.mdt-prose ul,
+.mdt-prose ol {
+  padding-left: 1.4em;
+  margin: 0 0 0.6em;
+}
+.mdt-prose blockquote {
+  border-left: 3px solid var(--border-strong);
+  padding-left: 12px;
+  color: var(--muted);
+  margin: 0 0 0.6em;
+}
+.mdt-prose code {
+  font-family: var(--font-data);
+  background: var(--surface-2);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+
+/* Animations (from the prototype) */
+@keyframes mdtPulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+@keyframes mdtFade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes mdtSlide {
+  from {
+    transform: translateX(102%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+@keyframes mdtPop {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Rich text (protocoles, ressources, rapports) */
+.prose-mdt h2 { font-size: 1.15rem; font-weight: 700; margin: 0.7em 0 0.35em; }
+.prose-mdt h3 { font-size: 1.02rem; font-weight: 600; margin: 0.6em 0 0.3em; }
+.prose-mdt p { margin: 0.4em 0; }
+.prose-mdt ul { list-style: disc; padding-left: 1.4em; margin: 0.4em 0; }
+.prose-mdt ol { list-style: decimal; padding-left: 1.4em; margin: 0.4em 0; }
+.prose-mdt li { margin: 0.15em 0; }
+.prose-mdt blockquote { border-left: 3px solid var(--border-strong); padding-left: 0.8em; color: var(--muted); margin: 0.5em 0; }
+.prose-mdt strong { font-weight: 700; }
+.prose-mdt a { color: var(--accent); text-decoration: underline; }
+.prose-mdt h1 { font-size: 1.32rem; font-weight: 800; margin: 0.8em 0 0.4em; }
+.prose-mdt em { font-style: italic; }
+.prose-mdt u { text-decoration: underline; }
+.prose-mdt s { text-decoration: line-through; }
+.prose-mdt code { font-family: var(--font-data, ui-monospace, monospace); font-size: .92em; background: var(--surface); border: 1px solid var(--border); border-radius: 4px; padding: 0.05em 0.32em; }
+.prose-mdt pre { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 0.7em 0.9em; overflow-x: auto; margin: 0.5em 0; }
+.prose-mdt pre code { background: none; border: 0; padding: 0; }
+.prose-mdt hr { border: 0; border-top: 1px solid var(--border-strong); margin: 0.9em 0; }
+.prose-mdt mark { border-radius: 3px; padding: 0.05em 0.15em; color: #0b0d10; }
+/* Indication de saisie de Tiptap : un pseudo-élément, pas un vrai contenu. */
+.prose-mdt p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+  color: var(--faint);
+}
+
+/* ============ Station 13 - animations d'accès & transition d'entrée ============ */
+@keyframes s13Fade { from { opacity: 0 } to { opacity: 1 } }
+@keyframes s13Rise { from { opacity: 0; transform: translateY(12px) } to { opacity: 1; transform: none } }
+@keyframes s13Spin { to { transform: rotate(360deg) } }
+@keyframes s13Pulse { 0%, 100% { opacity: .5 } 50% { opacity: 1 } }
+@keyframes s13Dot { 0%, 80%, 100% { opacity: .25 } 40% { opacity: 1 } }
+@keyframes s13Leaf { 0% { opacity: 0; transform: scale(.08) } 55% { opacity: 1; transform: scale(1.12) } 100% { opacity: 1; transform: scale(1) } }
+@keyframes s13Ring { from { stroke-dashoffset: 1030 } to { stroke-dashoffset: 0 } }
+@keyframes s13RingSpin { to { transform: rotate(360deg) } }
+@keyframes s13Num { 0% { opacity: 0; transform: scale(.4) } 100% { opacity: 1; transform: scale(1) } }
+@keyframes s13Stamp { 0% { opacity: 0; letter-spacing: .5em; transform: scale(1.1) } 100% { opacity: 1; letter-spacing: .22em; transform: scale(1) } }
+.s13-leaf { transform-box: view-box; transform-origin: 200px 190px; opacity: 0; animation: s13Leaf .8s cubic-bezier(.16,1,.3,1) forwards; }
+
+/* ============================================================================
+   Système « trèfle » — micro-interactions, apparitions, transitions, skeletons
+   ============================================================================ */
+
+:root { --danger-soft: rgba(220, 38, 38, 0.08); }
+.dark { --danger-soft: rgba(220, 38, 38, 0.16); }
+
+/* --- keyframes --- */
+@keyframes mdtRise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes mdtPopIn { from { opacity: 0; transform: translateY(6px) scale(.98); } to { opacity: 1; transform: none; } }
+@keyframes mdtShimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+@keyframes mdtSpinClover { to { transform: rotate(360deg); } }
+@keyframes mdtBlink { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+
+/* --- apparition de page (routée) + apparition en fondu montant --- */
+.mdt-page { animation: mdtRise .34s cubic-bezier(.16, 1, .3, 1) both; }
+.mdt-reveal { animation: mdtRise .42s cubic-bezier(.16, 1, .3, 1) both; }
+.mdt-pop { animation: mdtPopIn .28s cubic-bezier(.16, 1, .3, 1) both; }
+
+/* Apparition en cascade des enfants directs d'un conteneur */
+.mdt-stagger > * { animation: mdtRise .44s cubic-bezier(.16, 1, .3, 1) both; }
+.mdt-stagger > *:nth-child(1) { animation-delay: .02s; }
+.mdt-stagger > *:nth-child(2) { animation-delay: .06s; }
+.mdt-stagger > *:nth-child(3) { animation-delay: .10s; }
+.mdt-stagger > *:nth-child(4) { animation-delay: .14s; }
+.mdt-stagger > *:nth-child(5) { animation-delay: .18s; }
+.mdt-stagger > *:nth-child(6) { animation-delay: .22s; }
+.mdt-stagger > *:nth-child(7) { animation-delay: .26s; }
+.mdt-stagger > *:nth-child(8) { animation-delay: .30s; }
+.mdt-stagger > *:nth-child(9) { animation-delay: .34s; }
+.mdt-stagger > *:nth-child(n+10) { animation-delay: .38s; }
+
+/* --- micro-interactions --- */
+/* transitions douces par défaut sur les contrôles */
+button, a, [role="button"], input, select, textarea {
+  transition: background-color .16s ease, border-color .16s ease, color .16s ease,
+    box-shadow .16s ease, filter .16s ease, transform .12s ease, opacity .16s ease;
+}
+/* enfoncement au clic */
+.mdt-press:active:not(:disabled) { transform: scale(.97); }
+button:not(:disabled):active { transform: translateY(.5px); }
+/* survol qui soulève (cartes / lignes cliquables) */
+.mdt-lift { transition: transform .18s cubic-bezier(.16,1,.3,1), box-shadow .18s ease, border-color .16s ease; }
+.mdt-lift:hover { transform: translateY(-2px); box-shadow: 0 8px 24px var(--shadow); }
+/* trèfle en rotation */
+.mdt-spin { animation: mdtSpinClover 1.4s linear infinite; }
+
+/* --- squelettes de chargement --- */
+.mdt-skeleton {
+  background: linear-gradient(90deg, var(--surface-2) 25%, var(--border) 45%, var(--surface-2) 65%);
+  background-size: 200% 100%;
+  animation: mdtShimmer 1.4s ease-in-out infinite;
+  border-radius: 6px;
+}
+
+/* --- accessibilité : respect de « réduire les animations » --- */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .001ms !important;
+  }
+}
+
+/* Impression de l'extrait de casier (item 5) */
+/* Marge nulle -> le navigateur n'ajoute plus son en-tete (titre + url) ni son pied (n de page + date). */
+@page { size: A4; margin: 0; }
+@media print {
+  html, body { margin: 0 !important; }
+  body { visibility: hidden; }
+  .s13-print-area, .s13-print-area * { visibility: visible; }
+  .s13-print-area { position: absolute; left: 0; top: 0; width: 100%; box-shadow: none !important; }
+  .s13-no-print { display: none !important; }
+}

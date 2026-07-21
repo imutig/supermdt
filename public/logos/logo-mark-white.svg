@@ -1,0 +1,8 @@
+<svg viewBox="0 0 400 400" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Trèfle Station 13">
+  
+  <defs><mask id="k"><rect width="400" height="400" fill="#000"></rect>
+    <g transform="translate(200,195)" fill="#fff"><path d="M50,90 C20,62 0,42 0,26 C0,11 12,0 26,0 C38,0 47,9 50,20 C53,9 62,0 74,0 C88,0 100,11 100,26 C100,42 80,62 50,90 Z" transform="rotate(45) scale(1.32) translate(-50,-90)" fill="#fff"></path><path d="M50,90 C20,62 0,42 0,26 C0,11 12,0 26,0 C38,0 47,9 50,20 C53,9 62,0 74,0 C88,0 100,11 100,26 C100,42 80,62 50,90 Z" transform="rotate(135) scale(1.32) translate(-50,-90)" fill="#fff"></path><path d="M50,90 C20,62 0,42 0,26 C0,11 12,0 26,0 C38,0 47,9 50,20 C53,9 62,0 74,0 C88,0 100,11 100,26 C100,42 80,62 50,90 Z" transform="rotate(225) scale(1.32) translate(-50,-90)" fill="#fff"></path><path d="M50,90 C20,62 0,42 0,26 C0,11 12,0 26,0 C38,0 47,9 50,20 C53,9 62,0 74,0 C88,0 100,11 100,26 C100,42 80,62 50,90 Z" transform="rotate(315) scale(1.32) translate(-50,-90)" fill="#fff"></path><circle r="64"></circle></g>
+    <path d="M0,60 C-6,106 8,134 30,146" transform="translate(200,195)" fill="none" stroke="#fff" stroke-width="16" stroke-linecap="round"></path>
+    <text x="201" y="197" text-anchor="middle" dominant-baseline="central" font-family="&#39;Times New Roman&#39;, Georgia, serif" style="font-variant-numeric:lining-nums tabular-nums;font-feature-settings:&#39;lnum&#39; 1,&#39;tnum&#39; 1" font-size="98" font-weight="500" fill="#000">13</text>
+  </mask></defs>
+  <rect width="400" height="400" fill="#FFFFFF" mask="url(#k)"></rect></svg>

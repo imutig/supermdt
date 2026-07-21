@@ -1,0 +1,178 @@
+// Traduction des actions d'audit en phrases françaises lisibles (point 10).
+// Chaque libellé se lit « <Acteur> <libellé> » : ex. « #11 Rita Moreau a émis un mandat ».
+
+const LABELS: Record<string, string> = {
+  // Effectif
+  "agent.bootstrap_owner": "a initialisé le compte propriétaire",
+  "agent.register": "s'est inscrit(e)",
+  "agent.validate": "a validé un agent",
+  "agent.reject": "a rejeté une inscription",
+  "agent.grade_change": "a changé le grade d'un agent",
+  "agent.matricule_change": "a changé le numéro de badge d'un agent",
+  "agent.divisions_change": "a modifié les divisions d'un agent",
+  "agent.qualifications_change": "a modifié les formations et spécialités d'un agent",
+  "agent.date_entree": "a modifié la date d'arrivée d'un agent",
+  "agent.deactivate": "a désactivé un agent",
+  "agent.reactivate": "a réactivé un agent",
+  "fiche.save": "a enregistré sa fiche de renseignement",
+  "agent.password_reset": "a réinitialisé le mot de passe d'un agent",
+  "agent.password_change": "a changé son mot de passe",
+  "agent.lock": "a verrouillé un compte",
+  "agent.unlock": "a déverrouillé un compte",
+  // Citoyens
+  "citizen.create": "a créé un dossier citoyen",
+  "citizen.update": "a modifié l'identité d'un citoyen",
+  "citizen.archive": "a archivé un dossier citoyen",
+  "citizen.note_add": "a ajouté une note au dossier",
+  "citizen.flag_set": "a posé un signalement sur un citoyen",
+  "citizen.flag_remove": "a retiré un signalement d'un citoyen",
+  "citizen.license_set": "a délivré ou modifié une licence",
+  "citizen.license_remove": "a retiré une licence",
+  "citizen.relation_add": "a ajouté une relation entre citoyens",
+  "citizen.relation_remove": "a retiré une relation entre citoyens",
+  "deposition.create": "a enregistré une déposition",
+  "deposition.delete": "a supprimé une déposition",
+  // Véhicules et armes
+  "vehicle.create": "a enregistré un véhicule",
+  "vehicle.update": "a modifié un véhicule",
+  "vehicle.delete": "a supprimé un véhicule",
+  "vehicle.flag_set": "a posé un signalement sur un véhicule",
+  "vehicle.flag_remove": "a retiré un signalement d'un véhicule",
+  "weapon.create": "a enregistré une arme",
+  "weapon.update": "a modifié une arme",
+  "weapon.delete": "a supprimé une arme",
+  // Casier et procédure
+  "casier.entry_add": "a ajouté une entrée de casier",
+  "casier.entry_delete": "a supprimé une entrée de casier",
+  "casier.arrest_update": "a modifié un dossier d'arrestation",
+  "casier.dossier_close": "a clôturé un dossier d'arrestation",
+  "casier.dossier_reopen": "a rouvert un dossier d'arrestation",
+  "citation.create": "a émis une contravention",
+  "citation.delete": "a supprimé une contravention",
+  "mandat.create": "a émis un mandat",
+  "mandat.execute": "a exécuté un mandat",
+  "mandat.delete": "a supprimé un mandat",
+  "fine.paid": "a marqué une amende payée",
+  "fine.unpaid": "a marqué une amende impayée",
+  "saisie.create": "a enregistré une saisie",
+  "saisie.delete": "a supprimé une saisie",
+  "complaint.create": "a enregistré une plainte",
+  "complaint.update": "a modifié une plainte",
+  "complaint.delete": "a supprimé une plainte",
+  // Avis de recherche
+  "bolo.create": "a émis un avis de recherche",
+  "bolo.close": "a levé un avis de recherche",
+  // Service et RH
+  "service.start": "a pris son service",
+  "service.end": "a terminé son service",
+  "service.cut": "a coupé un service",
+  "service.edit": "a modifié un service",
+  "service.remove": "a supprimé un service",
+  "absence.request": "a demandé une absence",
+  "discipline.create": "a ouvert un dossier disciplinaire",
+  "discipline.close": "a clos un dossier disciplinaire",
+  "discipline.remove": "a supprimé un dossier disciplinaire",
+  // Rapports et documentation
+  "report.create": "a créé un rapport",
+  "report.submit": "a soumis un rapport",
+  "report.validate": "a validé un rapport",
+  "report.reopen": "a rouvert un rapport",
+  "report.delete": "a supprimé un rapport",
+  "protocole.create": "a créé un protocole",
+  "protocole.edit": "a modifié un protocole",
+  "protocole.delete": "a supprimé un protocole",
+  "resource.create": "a créé une ressource",
+  "resource.edit": "a modifié une ressource",
+  "resource.delete": "a supprimé une ressource",
+  "calendar.create": "a créé un évènement",
+  "calendar.remove": "a supprimé un évènement",
+  // Configuration
+  "defcon.change": "a changé le niveau DEFCON",
+  "permission.grant": "a accordé une permission",
+  "permission.revoke": "a retiré une permission",
+  "invite.create": "a généré une invitation",
+  "invite.revoke": "a révoqué une invitation",
+  "grade.create": "a créé un grade",
+  "grade.update": "a modifié un grade",
+  "grade.delete": "a supprimé un grade",
+  "codepenal.category_create": "a créé une catégorie du code pénal",
+  "codepenal.category_update": "a modifié une catégorie du code pénal",
+  "codepenal.category_remove": "a supprimé une catégorie du code pénal",
+  "codepenal.charge_create": "a ajouté une infraction",
+  "codepenal.charge_update": "a modifié une infraction",
+  "codepenal.charge_remove": "a supprimé une infraction",
+  "carte.set_image": "a changé le fond de carte",
+  "carte.add_location": "a ajouté un lieu sur la carte",
+  "carte.remove_location": "a retiré un lieu de la carte",
+  "webhook.create": "a créé un webhook Discord",
+  "webhook.update": "a modifié un webhook Discord",
+  "webhook.delete": "a supprimé un webhook Discord",
+  // Archive
+  "archive.restore": "a restauré un élément archivé",
+  "archive.purge": "a purgé définitivement un élément archivé",
+};
+
+export function actionLabel(action: string): string {
+  return LABELS[action] ?? action;
+}
+
+// Type de ressource en français (colonne / détail).
+const RESOURCE_LABELS: Record<string, string> = {
+  agent: "Agent",
+  citizen: "Citoyen",
+  citizenNote: "Note",
+  vehicle: "Véhicule",
+  weapon: "Arme",
+  casierEntry: "Entrée de casier",
+  citation: "Contravention",
+  mandat: "Mandat",
+  bolo: "Avis de recherche",
+  complaint: "Plainte",
+  deposition: "Déposition",
+  saisie: "Saisie",
+  defcon: "DEFCON",
+  permission: "Permission",
+  invitation: "Invitation",
+  grade: "Grade",
+  config: "Configuration",
+  webhook: "Webhook Discord",
+  service: "Service",
+  serviceSession: "Service",
+  absence: "Absence",
+  discipline: "Discipline",
+  protocol: "Protocole",
+  resource: "Ressource",
+  report: "Rapport",
+  calendarEvent: "Évènement",
+};
+
+export function resourceLabel(type: string): string {
+  return RESOURCE_LABELS[type] ?? type;
+}
+
+// Libellé lisible d'un champ pour le diff avant/après.
+const FIELD_LABELS: Record<string, string> = {
+  nom: "Nom",
+  prenom: "Prénom",
+  empreinte: "Empreinte",
+  dateNaissance: "Date de naissance",
+  sexe: "Sexe",
+  nationalite: "Nationalité",
+  telephone: "Téléphone",
+  adresse: "Adresse",
+  metier: "Métier",
+  employeur: "Employeur",
+  plaque: "Plaque",
+  modele: "Modèle",
+  couleur: "Couleur",
+  motif: "Motif",
+  status: "Statut",
+  totalFine: "Amende totale",
+  totalJailSeconds: "Prison (s)",
+  charges: "Charges",
+  lieu: "Lieu",
+};
+
+export function fieldLabel(key: string): string {
+  return FIELD_LABELS[key] ?? key;
+}
