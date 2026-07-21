@@ -38,10 +38,10 @@ export function SearchOverlay() {
   const [createWeapon, setCreateWeapon] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
 
-  const results = useQuery(api.citizens.search, searchOpen && q.trim() ? { q } : "skip");
-  const vehResults = useQuery(api.vehicles.search, searchOpen && q.trim() ? { q } : "skip");
-  const wpnResults = useQuery(api.weapons.list, searchOpen && q.trim() ? { q } : "skip");
-  const repResults = useQuery(api.reports.search, searchOpen && q.trim() ? { q } : "skip");
+  const results = useQuery(api.citizens.search, searchOpen && q.trim() && can("citoyens.view") ? { q } : "skip");
+  const vehResults = useQuery(api.vehicles.search, searchOpen && q.trim() && can("vehicules.view") ? { q } : "skip");
+  const wpnResults = useQuery(api.weapons.list, searchOpen && q.trim() && can("armes.view") ? { q } : "skip");
+  const repResults = useQuery(api.reports.search, searchOpen && q.trim() && can("rapports.view") ? { q } : "skip");
 
   const close = () => { closeSearch(); setQ(""); setSel(0); };
   const go = (id: string) => { close(); navigate(`/citoyen/${id}`); };

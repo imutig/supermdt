@@ -103,7 +103,8 @@ export function NavRail() {
   const canAdmin = !!me && (me.agent.isOwner || me.grade?.corps === "ETAT_MAJOR");
   const location = useLocation();
   const navigate = useNavigate();
-  const onlineCount = useQuery(api.agents.presence)?.length ?? 0;
+  // Sans permission, la requête lèverait et ferait tomber toute l'application.
+  const onlineCount = useQuery(api.agents.presence, can("effectif.view") ? {} : "skip")?.length ?? 0;
   const { navWidth, setNavWidth } = useApp();
   // Rail compact (icônes seules) : préférence utilisateur, ou automatiquement sur tablette (< lg).
   const [narrow, setNarrow] = useState(() => typeof window !== "undefined" && window.matchMedia("(max-width: 1023px)").matches);

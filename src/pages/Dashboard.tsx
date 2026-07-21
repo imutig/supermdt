@@ -1,6 +1,7 @@
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "convex/react";
 import { api } from "@/lib/api";
+import { useCan } from "@/hooks/useCan";
 import { useApp } from "@/providers/app-state";
 import { useMe } from "@/hooks/useMe";
 import { useService } from "@/hooks/useService";
@@ -31,10 +32,11 @@ export function Dashboard() {
   const { openSearch, openCalc } = useApp();
   const { onDuty, toggle: toggleDuty, dutySince } = useService();
   const me = useMe();
-  const mandatsQ = useQuery(api.mandats.active);
-  const presenceQ = useQuery(api.agents.presence);
-  const feedQ = useQuery(api.activity.home);
-  const upcomingQ = useQuery(api.calendar.upcoming);
+  const { can } = useCan();
+  const mandatsQ = useQuery(api.mandats.active, can("mandats.view") ? {} : "skip");
+  const presenceQ = useQuery(api.agents.presence, can("effectif.view") ? {} : "skip");
+  const feedQ = useQuery(api.activity.home, can("casier.view") ? {} : "skip");
+  const upcomingQ = useQuery(api.calendar.upcoming, can("calendrier.view") ? {} : "skip");
   const mandats = mandatsQ ?? [];
   const presenceList = presenceQ ?? [];
   const feed = feedQ ?? [];
