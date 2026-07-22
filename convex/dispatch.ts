@@ -4,6 +4,7 @@ import type { QueryCtx, MutationCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { requireAgent, requirePermission, can, agentLabel } from "./rbac";
 import { notify, NOTIFY_COLOR } from "./lib/notify";
+import { openTrip, closeTrip, tripAddMember, tripRemoveMember, roofToNumber } from "./fleet";
 
 async function myOpenMembership(ctx: QueryCtx, agentId: Id<"agents">) {
   const memberships = await ctx.db.query("patrolMembers").withIndex("by_agent", (q) => q.eq("agentId", agentId)).collect();
@@ -122,11 +123,14 @@ async function patrolView(ctx: QueryCtx, patrol: Doc<"patrols">, lk: Lookup = ma
       ...tag,
     });
   }
+  const fleetVeh = patrol.fleetVehicleId ? await ctx.db.get(patrol.fleetVehicleId) : null;
   return {
     _id: patrol._id,
     label: patrol.label,
     indicator: patrol.indicator,
     vehicleNumber: patrol.vehicleNumber,
+    fleetVehicleId: patrol.fleetVehicleId ?? null,
+    fleetVehicleLabel: fleetVeh ? `${fleetVeh.modele} · ${fleetVeh.plaque}` : null,
     color: patrol.color ?? null,
     callsignTypeId: patrol.callsignTypeId ?? null,
     operationId: patrol.operationId ?? null,
@@ -309,21 +313,31 @@ async function ensureCanEdit(ctx: MutationCtx, agentId: Id<"agents">, patrol: im
 
 export const create = mutation({
   args: {
-    vehicleNumber: v.string(),
+    vehicleNumber: v.string(), // suffixe (véhicule non enregistré) — ignoré si fleetVehicleId fourni
+    fleetVehicleId: v.optional(v.id("fleetVehicles")),
     memberIds: v.array(v.id("agents")), // agents présents (le créateur n'est PAS ajouté d'office)
     callsignTypeId: v.optional(v.id("callsignTypes")),
     color: v.optional(v.string()),
     detail: v.optional(v.string()),
     fields: v.optional(FIELDS_V),
   },
-  handler: async (ctx, { vehicleNumber, memberIds, callsignTypeId, color, detail, fields }) => {
+  handler: async (ctx, { vehicleNumber, fleetVehicleId, memberIds, callsignTypeId, color, detail, fields }) => {
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "dispatch.self");
     const members = [...new Set(memberIds)];
     if (members.length === 0) throw new Error("Sélectionnez au moins un agent présent.");
-    const num = vehicleNumber.replace(/[^0-9]/g, "").slice(0, 2);
-    if (!num) throw new Error("Numéro de véhicule requis.");
-    const numPadded = num.padStart(2, "0");
+    // Le numéro vient du véhicule LSPD (2 derniers chiffres du toit), sinon
+    // d'une saisie libre pour un véhicule non enregistré.
+    let numPadded: string;
+    if (fleetVehicleId) {
+      const veh = await ctx.db.get(fleetVehicleId);
+      if (!veh) throw new Error("Véhicule LSPD introuvable.");
+      numPadded = roofToNumber(veh.roofNumber);
+    } else {
+      const num = vehicleNumber.replace(/[^0-9]/g, "").slice(0, 2);
+      if (!num) throw new Error("Numéro de véhicule requis.");
+      numPadded = num.padStart(2, "0");
+    }
 
     let indicator: string;
     if (callsignTypeId) {
@@ -339,7 +353,7 @@ export const create = mutation({
     const initialStatus = initialStatusId ? await ctx.db.get(initialStatusId) : null;
     if (initialStatus) assertRequired(initialStatus, fields);
     const patrolId = await ctx.db.insert("patrols", {
-      callsignTypeId, indicator, vehicleNumber: numPadded, label: `13${indicator}${numPadded}`, color,
+      callsignTypeId, indicator, vehicleNumber: numPadded, fleetVehicleId, label: `13${indicator}${numPadded}`, color,
       statusId: initialStatusId, detail: detail?.trim() || undefined,
       fields: initialStatus ? pickFields(initialStatus, fields) : undefined,
       statusSince: now, startedAt: now, createdBy: agent._id,
@@ -350,6 +364,8 @@ export const create = mutation({
       await detachAgent(ctx, members[i]);
       await ctx.db.insert("patrolMembers", { patrolId, agentId: members[i], at: now });
     }
+    // Une patrouille prenant un véhicule LSPD ouvre une sortie.
+    if (fleetVehicleId) await openTrip(ctx, patrolId, fleetVehicleId, agent._id, members);
     await logPatrol(ctx, patrolId, agent._id, "created", `Patrouille créée (${members.length} agent${members.length > 1 ? "s" : ""})`);
     return patrolId;
   },
@@ -405,6 +421,7 @@ export const addMember = mutation({
     await assertOnDuty(ctx, agentId);
     await detachAgent(ctx, agentId);
     await ctx.db.insert("patrolMembers", { patrolId, agentId, at: Date.now() });
+    await tripAddMember(ctx, patrolId, agentId);
     await logPatrol(ctx, patrolId, agent._id, "member_add", `${await agentName(ctx, agentId)} ajouté`);
     await recomputeLabel(ctx, patrolId);
   },
@@ -427,15 +444,41 @@ export const removeMember = mutation({
 });
 
 export const update = mutation({
-  args: { patrolId: v.id("patrols"), vehicleNumber: v.optional(v.string()), color: v.optional(v.union(v.string(), v.null())), callsignTypeId: v.optional(v.union(v.id("callsignTypes"), v.null())) },
-  handler: async (ctx, { patrolId, vehicleNumber, color, callsignTypeId }) => {
+  args: {
+    patrolId: v.id("patrols"),
+    vehicleNumber: v.optional(v.string()),
+    // null = repasser en véhicule non enregistré ; un id = changer de véhicule LSPD.
+    fleetVehicleId: v.optional(v.union(v.id("fleetVehicles"), v.null())),
+    color: v.optional(v.union(v.string(), v.null())),
+    callsignTypeId: v.optional(v.union(v.id("callsignTypes"), v.null())),
+  },
+  handler: async (ctx, { patrolId, vehicleNumber, fleetVehicleId, color, callsignTypeId }) => {
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "dispatch.self");
     const patrol = await ctx.db.get(patrolId);
     if (!patrol || patrol.endedAt) throw new Error("Patrouille introuvable.");
     await ensureCanEdit(ctx, agent._id, patrol);
     const patch: Record<string, unknown> = {};
-    if (vehicleNumber !== undefined) {
+
+    // Changement de véhicule LSPD : clôt la sortie courante et en ouvre une
+    // nouvelle avec les membres présents. La lettre L/A/T/X ne change pas, seul
+    // le numéro suit le nouveau véhicule.
+    if (fleetVehicleId !== undefined && fleetVehicleId !== (patrol.fleetVehicleId ?? null)) {
+      await closeTrip(ctx, patrolId);
+      if (fleetVehicleId) {
+        const veh = await ctx.db.get(fleetVehicleId);
+        if (!veh) throw new Error("Véhicule LSPD introuvable.");
+        patch.fleetVehicleId = fleetVehicleId;
+        patch.vehicleNumber = roofToNumber(veh.roofNumber);
+        const members = (await ctx.db.query("patrolMembers").withIndex("by_patrol", (q) => q.eq("patrolId", patrolId)).collect()).map((m) => m.agentId);
+        await openTrip(ctx, patrolId, fleetVehicleId, agent._id, members);
+        await logPatrol(ctx, patrolId, agent._id, "vehicle", `Véhicule ${veh.modele} · ${veh.plaque} (13x${roofToNumber(veh.roofNumber)})`);
+      } else {
+        patch.fleetVehicleId = undefined;
+      }
+    }
+
+    if (vehicleNumber !== undefined && patch.vehicleNumber === undefined) {
       const num = vehicleNumber.replace(/[^0-9]/g, "").slice(0, 2);
       if (!num) throw new Error("Numéro de véhicule requis.");
       patch.vehicleNumber = num.padStart(2, "0");
@@ -443,7 +486,7 @@ export const update = mutation({
     if (color !== undefined) patch.color = color ?? undefined;
     if (callsignTypeId !== undefined) patch.callsignTypeId = callsignTypeId ?? undefined;
     await ctx.db.patch(patrolId, patch);
-    if (patch.vehicleNumber) await logPatrol(ctx, patrolId, agent._id, "vehicle", `Véhicule n° ${patch.vehicleNumber}`);
+    if (patch.vehicleNumber && fleetVehicleId === undefined) await logPatrol(ctx, patrolId, agent._id, "vehicle", `Véhicule n° ${patch.vehicleNumber}`);
     if (color !== undefined) await logPatrol(ctx, patrolId, agent._id, "color", color ? "Couleur modifiée" : "Couleur retirée");
     await recomputeLabel(ctx, patrolId);
   },
@@ -464,10 +507,15 @@ export const setDetail = mutation({
 });
 
 async function leaveInternal(ctx: MutationCtx, membershipId: Id<"patrolMembers">, patrol: import("./_generated/dataModel").Doc<"patrols">) {
+  const membership = await ctx.db.get(membershipId);
   await ctx.db.delete(membershipId);
   const rest = await ctx.db.query("patrolMembers").withIndex("by_patrol", (q) => q.eq("patrolId", patrol._id)).collect();
   if (rest.length === 0) {
+    // Dernier membre parti : la patrouille se termine, sa sortie aussi (rentrée).
     await ctx.db.patch(patrol._id, { endedAt: Date.now() });
+    await closeTrip(ctx, patrol._id);
+  } else if (membership) {
+    await tripRemoveMember(ctx, patrol._id, membership.agentId);
   }
 }
 
@@ -485,6 +533,7 @@ export const join = mutation({
       await leaveInternal(ctx, current.membership._id, current.patrol);
     }
     await ctx.db.insert("patrolMembers", { patrolId, agentId: agent._id, at: Date.now() });
+    await tripAddMember(ctx, patrolId, agent._id);
     await logPatrol(ctx, patrolId, agent._id, "member_add", `${await agentName(ctx, agent._id)} a rejoint`);
     await recomputeLabel(ctx, patrolId);
   },
@@ -610,6 +659,8 @@ export const dissolve = mutation({
     await logPatrol(ctx, patrolId, agent._id, "ended", "Patrouille dissoute");
     for (const m of members) await ctx.db.delete(m._id);
     await ctx.db.patch(patrolId, { endedAt: Date.now() });
+    // Dissolution manuelle : la sortie se clôt aussi (rentrée).
+    await closeTrip(ctx, patrolId);
   },
 });
 

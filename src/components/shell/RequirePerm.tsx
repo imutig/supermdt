@@ -5,11 +5,14 @@ import { useCan } from "@/hooks/useCan";
 import { LoadingScreen } from "@/components/common/Loader";
 
 // Garde de route : affiche un message d'accès refusé au lieu d'une page blanche (§17).
-export function RequirePerm({ perm, children }: { perm?: string; children: ReactNode }) {
+// `perm` : une permission, ou plusieurs dont au moins une suffit (ex. la page
+// Véhicules s'ouvre avec le registre civil OU la flotte LSPD).
+export function RequirePerm({ perm, children }: { perm?: string | string[]; children: ReactNode }) {
   const { can, ready } = useCan();
   if (!perm) return <>{children}</>;
   if (!ready) return <LoadingScreen label="Vérification des accès…" />;
-  if (!can(perm)) return <PermissionDenied />;
+  const perms = Array.isArray(perm) ? perm : [perm];
+  if (!perms.some((p) => can(p))) return <PermissionDenied />;
   return <>{children}</>;
 }
 

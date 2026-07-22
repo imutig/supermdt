@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { X, Search, Plus, UserPlus } from "lucide-react";
+import { X, Search, Plus, UserPlus, Car } from "lucide-react";
 import { useMutation, useQuery } from "convex/react";
 import { api, type Id } from "@/lib/api";
 import { useToast } from "@/providers/toast";
@@ -21,6 +21,10 @@ export function PatrolCreateModal({ onClose }: { onClose: () => void }) {
   const me = useMe();
 
   const [num, setNum] = useState("");
+  const [fleet, setFleet] = useState<{ _id: string; label: string; number: string } | null>(null);
+  const [unregistered, setUnregistered] = useState(false);
+  const [vq, setVq] = useState("");
+  const vehResults = useQuery(api.fleet.pick, unregistered ? "skip" : { q: vq });
   const [members, setMembers] = useState<Member[]>([]);
   const [specialty, setSpecialty] = useState("");
   const [color, setColor] = useState("");
@@ -36,7 +40,8 @@ export function PatrolCreateModal({ onClose }: { onClose: () => void }) {
   const count = members.length;
   const cs = callsigns.find((c) => c._id === specialty);
   const indicator = cs ? cs.indicator : ["L", "A", "T", "X"][Math.min(Math.max(count || 1, 1), 4) - 1];
-  const preview = `13${indicator}${num ? num.padStart(2, "0") : "…"}`;
+  const effNum = fleet ? fleet.number : num ? num.padStart(2, "0") : "";
+  const preview = `13${indicator}${effNum || "…"}`;
 
   const addMe = () => { if (me && meId && !meInPatrol) setMembers((p) => [...p, { _id: meId, name: `${me.agent.prenomRP} ${me.agent.nomRP}`, matricule: me.agent.matricule ?? null }]); };
 
@@ -48,6 +53,7 @@ export function PatrolCreateModal({ onClose }: { onClose: () => void }) {
     setBusy(true);
     const r = await toast.guard(create({
       vehicleNumber: num,
+      fleetVehicleId: fleet ? (fleet._id as Id<"fleetVehicles">) : undefined,
       memberIds: members.map((m) => m._id as Id<"agents">),
       callsignTypeId: specialty ? (specialty as Id<"callsignTypes">) : undefined,
       color: color || undefined,
@@ -60,7 +66,7 @@ export function PatrolCreateModal({ onClose }: { onClose: () => void }) {
 
   function submit() {
     if (members.length === 0) { toast.error("Sélectionnez au moins un agent présent."); return; }
-    if (!num.trim()) { toast.error("Indiquez le numéro de véhicule."); return; }
+    if (!fleet && !num.trim()) { toast.error("Choisissez un véhicule ou indiquez un numéro."); return; }
     // Si le statut initial exige des informations, on les demande avant de créer.
     if (initialStatus && initialStatus.requires.length > 0) { setAskFields(true); return; }
     void doCreate();
@@ -118,14 +124,54 @@ export function PatrolCreateModal({ onClose }: { onClose: () => void }) {
             </div>
           </div>
 
-          <div className="mb-3 grid grid-cols-2 gap-3">
-            <div><span className={L}>N° véhicule</span><input value={num} onChange={(e) => setNum(e.target.value.replace(/[^0-9]/g, "").slice(0, 2))} placeholder="09" className={`${F} font-data`} /></div>
-            <div><span className={L}>Type</span>
-              <select value={specialty} onChange={(e) => setSpecialty(e.target.value)} className={F}>
-                <option value="">Auto ({["L", "A", "T", "X"][Math.min(Math.max(count || 1, 1), 4) - 1]} · effectif)</option>
-                {callsigns.map((c) => <option key={c._id} value={c._id}>{c.indicator} · {c.code} ({c.label})</option>)}
-              </select>
+          {/* Véhicule : LSPD (fixe le numéro) ou non enregistré (numéro libre). */}
+          <div className="mb-3">
+            <div className="mb-[6px] flex items-center gap-2">
+              <span className="text-[10.5px] font-bold uppercase tracking-[0.09em] text-faint">Véhicule</span>
+              <div className="flex-1" />
+              <label className="flex cursor-pointer items-center gap-[5px] text-[11px] font-semibold text-muted">
+                <input type="checkbox" checked={unregistered} onChange={(e) => { setUnregistered(e.target.checked); setFleet(null); }} className="h-[13px] w-[13px] accent-[var(--accent)]" />
+                Non enregistré
+              </label>
             </div>
+
+            {unregistered ? (
+              <input value={num} onChange={(e) => setNum(e.target.value.replace(/[^0-9]/g, "").slice(0, 2))} placeholder="Fin d'indicatif, ex. 09" className={`${F} font-data`} />
+            ) : fleet ? (
+              <div className="flex items-center gap-2 rounded-sm border border-accent bg-surface-2 px-3 py-[8px]">
+                <Car className="h-[15px] w-[15px] text-accent" />
+                <span className="flex-1 text-[12.5px] font-semibold">{fleet.label}</span>
+                <span className="font-data text-[12px] text-accent">13x{fleet.number}</span>
+                <button onClick={() => setFleet(null)} className="text-faint hover:text-danger"><X className="h-[14px] w-[14px]" /></button>
+              </div>
+            ) : (
+              <div className="relative">
+                <div className="flex items-center gap-2 rounded-sm border border-border bg-surface-2 px-2">
+                  <Search className="h-[14px] w-[14px] text-faint" />
+                  <input value={vq} onChange={(e) => setVq(e.target.value)} placeholder="Numéro de toit ou plaque…" className="h-9 flex-1 bg-transparent text-[12.5px] outline-none" />
+                </div>
+                {(vehResults ?? []).length > 0 && (
+                  <div className="mt-1 max-h-[170px] overflow-y-auto rounded-sm border border-border bg-surface">
+                    {(vehResults ?? []).map((v) => (
+                      <button key={v._id} disabled={v.inUse} onClick={() => { setFleet({ _id: v._id, label: `${v.modele} · ${v.plaque}`, number: v.number }); setVq(""); }} className="flex w-full items-center gap-2 border-b border-border px-3 py-2 text-left last:border-0 hover:bg-surface-2 disabled:opacity-40">
+                        <span className="font-data text-[13px] font-bold text-accent">{v.roofNumber}</span>
+                        <span className="flex-1 text-[12.5px] font-semibold">{v.modele}</span>
+                        <span className="font-data text-[11px] text-muted">{v.plaque}</span>
+                        {v.inUse && <span className="rounded-[4px] px-[5px] py-px text-[9px] font-bold uppercase text-danger" style={{ background: "color-mix(in srgb, var(--danger) 14%, transparent)" }}>sorti</span>}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="mb-3">
+            <span className={L}>Type</span>
+            <select value={specialty} onChange={(e) => setSpecialty(e.target.value)} className={F}>
+              <option value="">Auto ({["L", "A", "T", "X"][Math.min(Math.max(count || 1, 1), 4) - 1]} · effectif)</option>
+              {callsigns.map((c) => <option key={c._id} value={c._id}>{c.indicator} · {c.code} ({c.label})</option>)}
+            </select>
           </div>
 
           <div className="mb-3"><span className={L}>Détail (libre, optionnel)</span><input value={detail} onChange={(e) => setDetail(e.target.value)} placeholder="Ex. secteur nord, banalisée…" className={F} /></div>

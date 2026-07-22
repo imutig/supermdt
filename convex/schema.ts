@@ -140,6 +140,45 @@ export default defineSchema({
     active: v.boolean(),
   }),
 
+  // ============ FLOTTE LSPD (véhicules de service + sorties) ============
+  // Véhicules de la station. Le numéro de toit fixe l'indicatif de patrouille :
+  // ses deux derniers chiffres deviennent le suffixe (toit 509 -> 13x09).
+  fleetVehicles: defineTable({
+    modele: v.string(),
+    plaque: v.string(),
+    roofNumber: v.string(), // numéro de toit complet (ex. "509")
+    photoUrls: v.optional(v.array(v.string())),
+    searchText: v.string(), // toit + plaque + modèle, normalisés (recherche)
+    active: v.boolean(),
+    createdBy: v.optional(v.id("agents")),
+  }).searchIndex("search", { searchField: "searchText" }),
+
+  // Une sortie = une patrouille roulant avec un véhicule LSPD donné. Changer de
+  // véhicule clôt la sortie courante et en ouvre une nouvelle.
+  fleetTrips: defineTable({
+    fleetVehicleId: v.id("fleetVehicles"),
+    patrolId: v.id("patrols"),
+    roofNumber: v.string(), // snapshot, l'historique survit à la suppression du véhicule
+    vehicleLabel: v.string(), // "Modèle · Plaque", snapshot
+    startedBy: v.id("agents"),
+    startedAt: v.number(),
+    endedAt: v.optional(v.number()),
+  })
+    .index("by_vehicle", ["fleetVehicleId"])
+    .index("by_patrol_open", ["patrolId", "endedAt"])
+    .index("by_open", ["endedAt"]),
+
+  // Passage d'un agent dans une sortie : entrées et sorties horodatées, pour
+  // retracer tous ceux ayant composé la patrouille, même partis.
+  fleetTripMembers: defineTable({
+    tripId: v.id("fleetTrips"),
+    agentId: v.id("agents"),
+    joinedAt: v.number(),
+    leftAt: v.optional(v.number()),
+  })
+    .index("by_trip", ["tripId"])
+    .index("by_trip_agent_open", ["tripId", "agentId", "leftAt"]),
+
   // ============ DISPATCH (patrouilles + statuts) ============
   // Statuts configurables = colonnes du board. Les statuts partageant un même `group`
   // sont rassemblés dans UNE colonne, en sections empilées.
@@ -174,7 +213,8 @@ export default defineSchema({
   patrols: defineTable({
     callsignTypeId: v.optional(v.id("callsignTypes")), // spécialité optionnelle ; absent = classique (auto)
     indicator: v.string(), // lettre dérivée (snapshot)
-    vehicleNumber: v.string(), // "09"
+    vehicleNumber: v.string(), // "09" — 2 derniers chiffres du numéro de toit, ou saisie libre
+    fleetVehicleId: v.optional(v.id("fleetVehicles")), // véhicule LSPD pris (absent = non enregistré)
     label: v.string(), // "13T09"
     color: v.optional(v.string()), // couleur de la patrouille (teinte le fond de la carte)
     statusId: v.optional(v.id("dispatchStatuses")),

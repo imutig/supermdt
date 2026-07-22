@@ -40,6 +40,7 @@ interface NavItem {
   badge?: number;
   admin?: boolean;
   perm?: string; // permission de consultation requise (masque l'item sinon)
+  anyPerm?: string[]; // ... ou l'une de ces permissions suffit
 }
 interface NavGroup {
   label: string;
@@ -58,7 +59,7 @@ const GROUPS: NavGroup[] = [
       { key: "contraventions", label: "Historique judiciaire", icon: ReceiptText, to: "/contraventions", perm: "contraventions.view" },
       { key: "rapports", label: "Rapports", icon: FileText, to: "/rapports", perm: "rapports.view" },
       { key: "armes", label: "Armes", icon: Crosshair, to: "/armes", perm: "armes.view" },
-      { key: "vehicules", label: "Véhicules", icon: Car, to: "/vehicules", perm: "vehicules.view" },
+      { key: "vehicules", label: "Véhicules", icon: Car, to: "/vehicules", anyPerm: ["vehicules.view", "flotte.view"] },
       { key: "saisies", label: "Saisies", icon: Boxes, to: "/saisies", perm: "saisies.view" },
       { key: "carte", label: "Carte", icon: MapIcon, to: "/carte", perm: "carte.view" },
       { key: "calendrier", label: "Calendrier", icon: CalendarDays, to: "/calendrier", perm: "calendrier.view" },
@@ -122,7 +123,8 @@ export function NavRail() {
     return !!item.to && location.pathname === item.to;
   };
   // Masque les items sans permission de consultation (§17). Pendant le chargement des perms, on montre tout.
-  const canShow = (item: NavItem) => !item.perm || !ready || can(item.perm);
+  const canShow = (item: NavItem) =>
+    !ready || (item.anyPerm ? item.anyPerm.some((p) => can(p)) : !item.perm || can(item.perm));
 
   const groups = GROUPS.filter((g) => !g.commandOnly || canAdmin)
     .map((g) => ({ ...g, items: g.items.filter(canShow) }))

@@ -39,6 +39,11 @@ export const PERMISSION_SLUGS: { slug: string; domain: string; description: stri
   { slug: "vehicules.create", domain: "vehicules", description: "Créer un véhicule" },
   { slug: "vehicules.edit", domain: "vehicules", description: "Éditer un véhicule" },
   { slug: "vehicules.flag", domain: "vehicules", description: "Poser / retirer un flag véhicule" },
+  // Flotte LSPD (véhicules de service)
+  { slug: "flotte.view", domain: "flotte", description: "Consulter la flotte LSPD et les sorties" },
+  { slug: "flotte.create", domain: "flotte", description: "Ajouter un véhicule à la flotte" },
+  { slug: "flotte.edit", domain: "flotte", description: "Modifier un véhicule de la flotte" },
+  { slug: "flotte.delete", domain: "flotte", description: "Retirer un véhicule de la flotte" },
   // Casier
   { slug: "casier.view", domain: "casier", description: "Consulter les casiers" },
   { slug: "casier.create", domain: "casier", description: "Créer une entrée de casier" },

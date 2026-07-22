@@ -8,11 +8,17 @@ import { SkeletonRows } from "@/components/common/Skeleton";
 import { Clover } from "@/components/common/Clover";
 import { LoadMore } from "@/components/common/Pagination";
 import { VehicleModal } from "@/components/dossier/VehicleModal";
+import { FleetPanel } from "@/components/fleet/FleetPanel";
+import { TripsPanel } from "@/components/fleet/TripsPanel";
+
+type Tab = "citoyens" | "flotte" | "sorties";
 
 export function Vehicules() {
   const { can } = useCan();
   const canCreate = can("vehicules.create");
   const canEdit = can("vehicules.edit");
+  const canFleet = can("flotte.view");
+  const [tab, setTab] = useState<Tab>("citoyens");
   const [q, setQ] = useState("");
   const searching = q.trim().length > 0;
   const searchRes = useQuery(api.vehicles.list, searching ? { q } : "skip");
@@ -21,14 +27,31 @@ export function Vehicules() {
   const loadingFirst = searching ? searchRes === undefined : paged.status === "LoadingFirstPage";
   const [modal, setModal] = useState<{ id?: Id<"vehicles"> } | null>(null);
 
+  const TabBtn = ({ id, label }: { id: Tab; label: string }) => (
+    <button
+      onClick={() => setTab(id)}
+      className="mdt-press rounded-[9px] px-[14px] py-[8px] text-[13px] font-semibold"
+      style={tab === id ? { background: "var(--accent-soft)", color: "var(--accent)" } : { color: "var(--muted)" }}
+    >
+      {label}
+    </button>
+  );
+
   return (
     <div className="p-[22px_26px]" style={{ animation: "mdtFade .2s ease" }}>
-      <div className="mb-[16px] flex items-center gap-3">
-        <h1 className="m-0 text-[21px] font-bold tracking-tight">Registre des véhicules</h1>
+      <div className="mb-[16px] flex flex-wrap items-center gap-3">
+        <h1 className="m-0 text-[21px] font-bold tracking-tight">Véhicules</h1>
+        <div className="ml-2 flex gap-1">
+          <TabBtn id="citoyens" label="Registre civil" />
+          {canFleet && <TabBtn id="flotte" label="Véhicules LSPD" />}
+          {canFleet && <TabBtn id="sorties" label="Sorties véhicules" />}
+        </div>
         <div className="flex-1" />
-        {canCreate && <button onClick={() => setModal({})} className="mdt-press flex items-center gap-[7px] rounded-[9px] bg-accent px-[14px] py-[8px] text-[13px] font-semibold text-accent-contrast hover:brightness-[1.06]"><Clover color="#fff" size={17} /> Véhicule</button>}
+        {tab === "citoyens" && canCreate && <button onClick={() => setModal({})} className="mdt-press flex items-center gap-[7px] rounded-[9px] bg-accent px-[14px] py-[8px] text-[13px] font-semibold text-accent-contrast hover:brightness-[1.06]"><Clover color="#fff" size={17} /> Véhicule</button>}
       </div>
 
+      {tab === "flotte" ? <FleetPanel /> : tab === "sorties" ? <TripsPanel /> : (
+      <>
       <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Rechercher (plaque, modèle, couleur, type)…" className="mb-[14px] h-10 w-full max-w-[440px] rounded-sm border border-border bg-surface-2 px-3 text-[13px] outline-none focus:border-accent" />
 
       <div className="overflow-hidden rounded-card border border-border bg-surface">
@@ -59,6 +82,8 @@ export function Vehicules() {
         ))}
         {!searching && <LoadMore status={paged.status} onLoadMore={() => paged.loadMore(20)} count={vehicles.length} label="véhicules" />}
       </div>
+      </>
+      )}
 
       {modal && <VehicleModal vehicleId={modal.id} canEdit={canEdit} onClose={() => setModal(null)} />}
     </div>
