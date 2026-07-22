@@ -1,0 +1,23 @@
+{
+  "name": "station13-bot",
+  "private": true,
+  "type": "module",
+  "description": "Bot Discord de la LSPD Station 13 - relié au MDT (Convex).",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "convex": "^1.42.3",
+    "discord.js": "^14.16.3",
+    "node-cron": "^3.0.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/node-cron": "^3.0.11",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

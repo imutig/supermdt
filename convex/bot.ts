@@ -1,0 +1,138 @@
+import { query } from "./_generated/server";
+import { v } from "convex/values";
+import type { QueryCtx } from "./_generated/server";
+import type { Doc } from "./_generated/dataModel";
+
+// Passerelle pour le bot Discord.
+//
+// Le bot est un service externe, il n'a pas de session d'agent : ces fonctions
+// sont donc publiques mais protégées par un secret partagé (variable Convex
+// BOT_SECRET, jamais dans le bundle client). Toute fonction exposée ici est en
+// LECTURE SEULE — le bot n'écrit rien dans le MDT.
+function assertBot(secret: string) {
+  const expected = process.env.BOT_SECRET;
+  if (!expected) throw new Error("BOT_SECRET non configuré côté Convex.");
+  if (secret !== expected) throw new Error("Secret invalide.");
+}
+
+const DAY = 86_400_000;
+function startOfToday() {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}
+
+async function gradeName(ctx: QueryCtx, a: Doc<"agents">) {
+  if (a.isOwner) return "Owner";
+  const g = a.gradeId ? await ctx.db.get(a.gradeId) : null;
+  return g?.name ?? "Sans grade";
+}
+
+// Agents actuellement en service — alimente l'embed de présence.
+export const agentsOnDuty = query({
+  args: { secret: v.string() },
+  handler: async (ctx, { secret }) => {
+    assertBot(secret);
+    const open = await ctx.db
+      .query("serviceSessions")
+      .withIndex("by_open", (q) => q.eq("endedAt", undefined))
+      .collect();
+    const out = [];
+    for (const s of open) {
+      const a = await ctx.db.get(s.agentId);
+      if (!a || a.status !== "ACTIVE") continue;
+      out.push({
+        name: `${a.prenomRP} ${a.nomRP}`,
+        matricule: a.matricule ?? (a.isOwner ? 0 : null),
+        grade: await gradeName(ctx, a),
+        gradePosition: a.gradeId ? (await ctx.db.get(a.gradeId))?.position ?? 0 : 0,
+        since: s.startedAt,
+        callsign: s.callsignType ?? null,
+      });
+    }
+    // Les plus gradés d'abord, puis par ancienneté de prise de service.
+    out.sort((x, y) => (y.gradePosition - x.gradePosition) || (x.since - y.since));
+    return out;
+  },
+});
+
+// Récapitulatif de la journée — alimente le résumé quotidien.
+export const dayStats = query({
+  args: { secret: v.string() },
+  handler: async (ctx, { secret }) => {
+    assertBot(secret);
+    const now = Date.now();
+    const dayStart = startOfToday();
+
+    // Sessions du jour (démarrées aujourd'hui) : temps travaillé et présences.
+    const sessions = await ctx.db.query("serviceSessions").withIndex("by_open").order("desc").take(400);
+    const recent = await ctx.db.query("serviceSessions").order("desc").take(400);
+    const all = [...sessions, ...recent];
+    const seen = new Set<string>();
+    let workedMs = 0;
+    const perAgent = new Map<string, number>();
+    let onDutyNow = 0;
+    for (const s of all) {
+      if (seen.has(s._id as string)) continue;
+      seen.add(s._id as string);
+      if (s.endedAt == null) onDutyNow++;
+      const end = s.endedAt ?? now;
+      if (end < dayStart) continue;
+      const from = Math.max(s.startedAt, dayStart);
+      const dur = Math.max(0, end - from);
+      workedMs += dur;
+      perAgent.set(s.agentId as string, (perAgent.get(s.agentId as string) ?? 0) + dur);
+    }
+
+    // Patrouilles ouvertes aujourd'hui.
+    const patrols = await ctx.db.query("patrols").order("desc").take(200);
+    const patrolsToday = patrols.filter((p) => p.startedAt >= dayStart).length;
+
+    // Actes du jour.
+    const casier = (await ctx.db.query("casierEntries").order("desc").take(200)).filter((e) => !e.deletedAt && e.at >= dayStart).length;
+    const citations = (await ctx.db.query("citations").order("desc").take(200)).filter((c) => !c.deletedAt && c.at >= dayStart).length;
+
+    // Top 5 des présences du jour.
+    const topRaw = [...perAgent.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5);
+    const top = [];
+    for (const [agentId, ms] of topRaw) {
+      const a = await ctx.db.get(agentId as Doc<"agents">["_id"]);
+      if (a) top.push({ name: `${a.prenomRP} ${a.nomRP}`, minutes: Math.round(ms / 60000) });
+    }
+
+    // Répartition horaire de la présence (24 tranches) pour un mini-graphique.
+    const hourly = new Array(24).fill(0) as number[];
+    for (const s of all) {
+      const end = s.endedAt ?? now;
+      if (end < dayStart) continue;
+      const from = Math.max(s.startedAt, dayStart);
+      for (let t = from; t < end && t < dayStart + DAY; t += 5 * 60000) {
+        hourly[new Date(t).getHours()]++;
+      }
+    }
+
+    return {
+      date: dayStart,
+      onDutyNow,
+      workedMinutes: Math.round(workedMs / 60000),
+      distinctAgents: perAgent.size,
+      patrolsToday,
+      casier,
+      citations,
+      top,
+      hourly, // nombre de tranches de 5 min actives par heure (0-23)
+    };
+  },
+});
+
+// Effectif présent + effectif total — petit état des lieux rapide.
+export const overview = query({
+  args: { secret: v.string() },
+  handler: async (ctx, { secret }) => {
+    assertBot(secret);
+    const active = (await ctx.db.query("agents").withIndex("by_status", (q) => q.eq("status", "ACTIVE")).collect()).filter((a) => !a.isOwner);
+    const onDuty = (await ctx.db.query("serviceSessions").withIndex("by_open", (q) => q.eq("endedAt", undefined)).collect()).length;
+    const openPatrols = (await ctx.db.query("patrols").withIndex("by_open", (q) => q.eq("endedAt", undefined)).collect()).length;
+    return { totalAgents: active.length, onDuty, openPatrols };
+  },
+});
