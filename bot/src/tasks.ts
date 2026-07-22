@@ -18,8 +18,10 @@ async function channel(client: Client, id: string | null): Promise<TextChannel |
 }
 
 export function startTasks(client: Client) {
-  // Message de présence réutilisé, édité en boucle au lieu de réémis.
+  // Message de présence réutilisé, édité en boucle. L'id est persisté côté MDT
+  // pour survivre à un redémarrage du bot : on ne reposte pas un doublon.
   let presenceMessageId: string | null = null;
+  let presenceLoaded = false;
   // Date (YYYY-MM-DD) du dernier récap envoyé, pour n'en envoyer qu'un par jour.
   let lastDailySent = "";
   let lastRollcallOpened = "";
@@ -38,10 +40,18 @@ export function startTasks(client: Client) {
       const chan = await channel(client, cfg.presenceChannel);
       if (chan) {
         try {
+          // Au premier passage, on récupère l'id mémorisé pour éditer le
+          // message existant plutôt que d'en créer un nouveau.
+          if (!presenceLoaded) { presenceMessageId = await mdt.presenceMessageGet().catch(() => null); presenceLoaded = true; }
           const embed = presenceEmbed(await mdt.agentsOnDuty());
           const existing = presenceMessageId ? await chan.messages.fetch(presenceMessageId).catch(() => null) : null;
-          if (existing) await existing.edit({ embeds: [embed] });
-          else presenceMessageId = (await chan.send({ embeds: [embed] })).id;
+          if (existing) {
+            await existing.edit({ embeds: [embed] });
+          } else {
+            const sent = await chan.send({ embeds: [embed] });
+            presenceMessageId = sent.id;
+            await mdt.presenceMessageSet(sent.id).catch(() => {});
+          }
         } catch (err) {
           console.error("[presence] erreur :", err);
         }

@@ -127,7 +127,7 @@ function BotConfigEditor() {
     <div className="rounded-card border border-border bg-surface p-[16px]">
       <h2 className="m-0 mb-[4px] text-[15px] font-bold">Bot Discord</h2>
       <p className="mb-[12px] mt-0 text-[12.5px] text-muted">
-        Salons où le bot publie. L'identifiant d'un salon s'obtient par clic droit sur le salon &gt; Copier l'identifiant (mode développeur activé). Laisser vide pour désactiver une fonction.
+        Salons où le bot publie. L'identifiant d'un salon s'obtient par clic droit sur le salon &gt; Copier l'identifiant (mode développeur activé). Laisser vide pour désactiver une fonction. Les heures suivent le fuseau du serveur du bot.
       </p>
       <div className="flex flex-col gap-[12px]">
         <ChanRow label="Salon de présence" value={shown.presenceChannel} onChange={set("presenceChannel")} cls={field} hint="Embed des agents en service, tenu à jour en continu." />
@@ -138,12 +138,12 @@ function BotConfigEditor() {
             <div className="mb-[4px] text-[11px] font-bold uppercase tracking-[0.07em] text-faint">Récap à</div>
             <input value={shown.dailyAt} onChange={set("dailyAt")} placeholder="23:30" className={field} />
           </div>
-          <div className="w-[110px]">
-            <div className="mb-[4px] text-[11px] font-bold uppercase tracking-[0.07em] text-faint">Appel de</div>
+          <div className="w-[130px]">
+            <div className="mb-[4px] text-[11px] font-bold uppercase tracking-[0.07em] text-faint">Appel ouvert à</div>
             <input value={shown.rollcallStartAt} onChange={set("rollcallStartAt")} placeholder="20:00" className={field} />
           </div>
-          <div className="w-[110px]">
-            <div className="mb-[4px] text-[11px] font-bold uppercase tracking-[0.07em] text-faint">Appel jusqu'à</div>
+          <div className="w-[130px]">
+            <div className="mb-[4px] text-[11px] font-bold uppercase tracking-[0.07em] text-faint">Vote fermé à</div>
             <input value={shown.rollcallEndAt} onChange={set("rollcallEndAt")} placeholder="21:00" className={field} />
           </div>
           <button

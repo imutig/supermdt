@@ -772,6 +772,7 @@ export default defineSchema({
     botDailyAt: v.optional(v.string()), // "HH:MM" (fuseau du serveur bot)
     botRollcallStartAt: v.optional(v.string()), // ouverture de l'appel
     botRollcallEndAt: v.optional(v.string()), // clôture : plus de vote possible
+    botPresenceMessageId: v.optional(v.string()), // message de présence édité en boucle
     updatedBy: v.optional(v.id("agents")),
     updatedAt: v.number(),
   }),

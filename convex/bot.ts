@@ -290,3 +290,125 @@ export const agentWeeklyHours = query({
     };
   },
 });
+
+// ============ Consultations self-service ============
+
+// Véhicule civil enregistré, par plaque. Ne renvoie pas la flotte LSPD.
+export const vehicleByPlate = query({
+  args: { secret: v.string(), plaque: v.string() },
+  handler: async (ctx, { secret, plaque }) => {
+    assertBot(secret);
+    const p = plaque.trim().toUpperCase().replace(/\s+/g, "");
+    if (!p) return null;
+    const all = await ctx.db.query("vehicles").collect();
+    const veh = all.find((v) => v.plaque.toUpperCase().replace(/\s+/g, "") === p);
+    if (!veh) return null;
+    const owner = veh.ownerId ? await ctx.db.get(veh.ownerId) : null;
+    const flags = [];
+    for (const fl of await ctx.db.query("vehicleFlags").withIndex("by_vehicle", (q) => q.eq("vehicleId", veh._id)).collect()) {
+      if (!fl.active) continue;
+      const t = await ctx.db.get(fl.flagTypeId);
+      if (t) flags.push(t.name);
+    }
+    return {
+      plaque: veh.plaque,
+      modele: veh.modele ?? "-",
+      couleur: veh.couleur ?? "-",
+      type: veh.type ?? "-",
+      owner: owner ? `${owner.prenom} ${owner.nom}` : null,
+      notes: veh.notes ?? null,
+      flags,
+    };
+  },
+});
+
+// Extrait de casier d'un citoyen recherché par son nom (« prénom nom »).
+export const casierByName = query({
+  args: { secret: v.string(), query: v.string() },
+  handler: async (ctx, { secret, query }) => {
+    assertBot(secret);
+    const needle = nrm(query);
+    if (!needle) return { found: false as const };
+    const citizens = await ctx.db.query("citizens").collect();
+    const c =
+      citizens.find((x) => x.status === "ACTIVE" && (nrm(`${x.prenom} ${x.nom}`) === needle || nrm(`${x.nom} ${x.prenom}`) === needle)) ??
+      citizens.find((x) => x.status === "ACTIVE" && nrm(`${x.prenom} ${x.nom}`).includes(needle));
+    if (!c) return { found: false as const };
+
+    const entries = await ctx.db.query("casierEntries").withIndex("by_citizen", (q) => q.eq("citizenId", c._id)).order("desc").collect();
+    let fine = 0, jail = 0;
+    const rows = [];
+    for (const e of entries) {
+      if (e.deletedAt || e.status === "ANNULEE") continue;
+      const charges = await ctx.db.query("casierCharges").withIndex("by_entry", (q) => q.eq("entryId", e._id)).collect();
+      fine += e.totalFine;
+      jail += e.totalJailSeconds;
+      rows.push({
+        at: e.at,
+        type: e.arrestType === "DOSSIER" ? "Dossier" : "Rapport",
+        charges: charges.map((ch) => ch.snapshot.name).join(", ") || "-",
+        fine: e.totalFine,
+        jailSeconds: e.totalJailSeconds,
+      });
+    }
+    return {
+      found: true as const,
+      name: `${c.prenom} ${c.nom}`,
+      dateNaissance: c.dateNaissance ?? null,
+      sexe: c.sexe ?? null,
+      nationalite: c.nationalite ?? null,
+      totalFine: fine,
+      totalJailSeconds: jail,
+      count: rows.length,
+      rows: rows.slice(0, 12),
+    };
+  },
+});
+
+// ============ Écritures self-service ============
+
+// Demande d'absence posée depuis Discord pour un agent nommé. Statut EN_ATTENTE,
+// à valider ensuite dans le MDT. Le demandeur Discord est tracé dans l'audit.
+export const requestAbsence = mutation({
+  args: { secret: v.string(), query: v.string(), from: v.number(), to: v.number(), reason: v.string(), discordName: v.string() },
+  handler: async (ctx, { secret, query, from, to, reason, discordName }) => {
+    assertBot(secret);
+    const needle = nrm(query);
+    const agents = await ctx.db.query("agents").collect();
+    const agent =
+      agents.find((a) => a.status === "ACTIVE" && (nrm(`${a.prenomRP} ${a.nomRP}`) === needle || nrm(`${a.nomRP} ${a.prenomRP}`) === needle)) ??
+      agents.find((a) => a.status === "ACTIVE" && nrm(`${a.prenomRP} ${a.nomRP}`).includes(needle));
+    if (!agent) return { ok: false as const, reason: "introuvable" };
+    if (to < from) return { ok: false as const, reason: "dates" };
+
+    const id = await ctx.db.insert("absences", { agentId: agent._id, reason: reason.trim(), from, to, status: "EN_ATTENTE", at: Date.now() });
+    await ctx.db.insert("auditLog", {
+      at: Date.now(),
+      action: "absence.request",
+      resourceType: "absence",
+      resourceId: id,
+      resourceLabel: `${agent.prenomRP} ${agent.nomRP}`,
+      metadata: { via: "discord", by: discordName },
+    });
+    return { ok: true as const, name: `${agent.prenomRP} ${agent.nomRP}` };
+  },
+});
+
+// ============ État du message de présence ============
+export const presenceMessageGet = query({
+  args: { secret: v.string() },
+  handler: async (ctx, { secret }) => {
+    assertBot(secret);
+    return (await ctx.db.query("integrationConfig").first())?.botPresenceMessageId ?? null;
+  },
+});
+
+export const presenceMessageSet = mutation({
+  args: { secret: v.string(), messageId: v.string() },
+  handler: async (ctx, { secret, messageId }) => {
+    assertBot(secret);
+    const cfg = await ctx.db.query("integrationConfig").first();
+    if (cfg) await ctx.db.patch(cfg._id, { botPresenceMessageId: messageId });
+    else await ctx.db.insert("integrationConfig", { botPresenceMessageId: messageId, updatedAt: Date.now() });
+  },
+});

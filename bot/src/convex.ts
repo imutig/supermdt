@@ -42,6 +42,11 @@ export type RollStatus = "PRESENT" | "ABSENT" | "RETARD";
 type RollcallRef = { _id: string; channelId: string; messageId: string; endsAt: number; closed: boolean };
 type RollcallState = { endsAt: number; closed: boolean; present: string[]; retard: string[]; absent: string[] };
 
+type VehicleInfo = { plaque: string; modele: string; couleur: string; type: string; owner: string | null; notes: string | null; flags: string[] };
+type CasierInfo =
+  | { found: false }
+  | { found: true; name: string; dateNaissance: string | null; sexe: string | null; nationalite: string | null; totalFine: number; totalJailSeconds: number; count: number; rows: { at: number; type: string; charges: string; fine: number; jailSeconds: number }[] };
+
 type WeeklyHours =
   | { found: false }
   | { found: true; name: string; matricule: number | null; grade: string; totalMinutes: number; perDay: number[] };
@@ -60,6 +65,13 @@ export const mdt = {
   rollcallVote: (rollcallId: string, discordUserId: string, discordName: string, status: RollStatus) =>
     client.mutation(anyApi.bot.rollcallVote, { secret: env.botSecret, rollcallId, discordUserId, discordName, status }) as Promise<{ ok: boolean; reason?: string }>,
   rollcallClose: (rollcallId: string) => client.mutation(anyApi.bot.rollcallClose, { secret: env.botSecret, rollcallId }) as Promise<void>,
+
+  vehicleByPlate: (plaque: string) => client.query(anyApi.bot.vehicleByPlate, { secret: env.botSecret, plaque }) as Promise<VehicleInfo | null>,
+  casierByName: (query: string) => client.query(anyApi.bot.casierByName, { secret: env.botSecret, query }) as Promise<CasierInfo>,
+  requestAbsence: (query: string, from: number, to: number, reason: string, discordName: string) =>
+    client.mutation(anyApi.bot.requestAbsence, { secret: env.botSecret, query, from, to, reason, discordName }) as Promise<{ ok: boolean; reason?: string; name?: string }>,
+  presenceMessageGet: () => client.query(anyApi.bot.presenceMessageGet, { secret: env.botSecret }) as Promise<string | null>,
+  presenceMessageSet: (messageId: string) => client.mutation(anyApi.bot.presenceMessageSet, { secret: env.botSecret, messageId }) as Promise<void>,
 };
 
-export type { OnDutyAgent, DayStats, Overview, BotConfig, WeeklyHours, RollcallState };
+export type { OnDutyAgent, DayStats, Overview, BotConfig, WeeklyHours, RollcallState, VehicleInfo, CasierInfo };
