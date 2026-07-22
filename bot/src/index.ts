@@ -11,7 +11,11 @@ const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
 client.once(Events.ClientReady, async (c) => {
   console.log(`[bot] connecté en tant que ${c.user.tag}`);
-  await registerCommands();
+  try {
+    await registerCommands();
+  } catch (err) {
+    console.error("[bot] enregistrement des commandes impossible :", err);
+  }
   startTasks(client);
 });
 

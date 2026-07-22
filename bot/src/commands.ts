@@ -21,8 +21,18 @@ export const commands = [
 // aux commandes globales qui mettent jusqu'à une heure à se propager.
 export async function registerCommands() {
   const rest = new REST({ version: "10" }).setToken(env.discordToken);
-  await rest.put(Routes.applicationGuildCommands(env.discordAppId, env.guildId), { body: commands });
-  console.log(`[commands] ${commands.length} commande(s) enregistrée(s) sur le serveur.`);
+  try {
+    const res = await rest.put(
+      Routes.applicationGuildCommands(env.discordAppId, env.guildId),
+      { body: commands },
+    );
+    const n = Array.isArray(res) ? res.length : commands.length;
+    console.log(`[commands] ${n} commande(s) enregistrée(s) sur le serveur ${env.guildId}.`);
+    console.log("[commands] Si elles n'apparaissent pas dans Discord, ré-invitez le bot avec le scope applications.commands (voir le README de déploiement).");
+  } catch (err) {
+    console.error("[commands] échec de l'enregistrement :", err);
+    console.error("[commands] Vérifiez DISCORD_BOT_ID (= Application ID) et DISCORD_GUILD_ID, et que le bot est bien membre du serveur.");
+  }
 }
 
 export async function handleCommand(interaction: ChatInputCommandInteraction) {
