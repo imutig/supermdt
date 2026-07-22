@@ -95,6 +95,20 @@ export function WebhooksEditor() {
   );
 }
 
+// Ligne de saisie d'un salon. Défini au niveau module : un composant recréé à
+// l'intérieur du parent à chaque frappe démonterait l'input et le focus.
+function ChanRow({ label, value, onChange, cls, hint }: {
+  label: string; value: string; onChange: (e: React.ChangeEvent<HTMLInputElement>) => void; cls: string; hint: string;
+}) {
+  return (
+    <div>
+      <div className="mb-[4px] text-[11px] font-bold uppercase tracking-[0.07em] text-faint">{label}</div>
+      <input value={value} onChange={onChange} placeholder="123456789012345678" className={cls} />
+      <div className="mt-[3px] text-[11px] text-faint">{hint}</div>
+    </div>
+  );
+}
+
 // Configuration du bot Discord : salons et heure du récapitulatif. Le bot lit
 // ces réglages en direct, un changement ici n'exige pas de le redémarrer.
 function BotConfigEditor() {
@@ -105,17 +119,9 @@ function BotConfigEditor() {
   const shown = f ?? current ?? { presenceChannel: "", dailyChannel: "", rollcallChannel: "", dailyAt: "23:30", rollcallStartAt: "", rollcallEndAt: "" };
 
   const field = "flex-1 rounded-[9px] border border-border bg-surface-2 px-[11px] py-[9px] font-data text-[12.5px] outline-none focus:border-accent";
+  // `set` renvoie un gestionnaire stable de frappe ; les champs sont écrits en
+  // ligne car un sous-composant recréé à chaque rendu perdrait le focus.
   const set = (k: keyof typeof shown) => (e: React.ChangeEvent<HTMLInputElement>) => setF({ ...shown, [k]: e.target.value });
-
-  const Row = ({ label, hint, k, mono = true, ph }: { label: string; hint: string; k: keyof typeof shown; mono?: boolean; ph: string }) => (
-    <div>
-      <div className="mb-[4px] text-[11px] font-bold uppercase tracking-[0.07em] text-faint">{label}</div>
-      <div className="flex items-center gap-2">
-        <input value={shown[k]} onChange={set(k)} placeholder={ph} className={mono ? field : field.replace(" font-data", "")} />
-      </div>
-      <div className="mt-[3px] text-[11px] text-faint">{hint}</div>
-    </div>
-  );
 
   return (
     <div className="rounded-card border border-border bg-surface p-[16px]">
@@ -124,9 +130,9 @@ function BotConfigEditor() {
         Salons où le bot publie. L'identifiant d'un salon s'obtient par clic droit sur le salon &gt; Copier l'identifiant (mode développeur activé). Laisser vide pour désactiver une fonction.
       </p>
       <div className="flex flex-col gap-[12px]">
-        <Row label="Salon de présence" k="presenceChannel" ph="123456789012345678" hint="Embed des agents en service, tenu à jour en continu." />
-        <Row label="Salon du récapitulatif" k="dailyChannel" ph="123456789012345678" hint="Bilan quotidien automatique." />
-        <Row label="Salon de l'appel de présence" k="rollcallChannel" ph="123456789012345678" hint="Appel quotidien : les agents indiquent Présent, En retard ou Absent." />
+        <ChanRow label="Salon de présence" value={shown.presenceChannel} onChange={set("presenceChannel")} cls={field} hint="Embed des agents en service, tenu à jour en continu." />
+        <ChanRow label="Salon du récapitulatif" value={shown.dailyChannel} onChange={set("dailyChannel")} cls={field} hint="Bilan quotidien automatique." />
+        <ChanRow label="Salon de l'appel de présence" value={shown.rollcallChannel} onChange={set("rollcallChannel")} cls={field} hint="Appel quotidien : les agents indiquent Présent, En retard ou Absent." />
         <div className="flex flex-wrap items-end gap-3">
           <div className="w-[110px]">
             <div className="mb-[4px] text-[11px] font-bold uppercase tracking-[0.07em] text-faint">Récap à</div>
