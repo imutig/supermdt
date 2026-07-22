@@ -1,6 +1,7 @@
 import { type Client, type TextChannel } from "discord.js";
 import { mdt } from "./convex.js";
 import { presenceEmbed, dailyEmbed } from "./embeds.js";
+import { openRollcall, closeRollcall } from "./rollcall.js";
 
 // Les salons et l'heure du récap sont lus depuis le MDT (page Configuration),
 // pas depuis l'environnement : un changement sur le site prend effet sans
@@ -21,6 +22,7 @@ export function startTasks(client: Client) {
   let presenceMessageId: string | null = null;
   // Date (YYYY-MM-DD) du dernier récap envoyé, pour n'en envoyer qu'un par jour.
   let lastDailySent = "";
+  let lastRollcallOpened = "";
 
   const tick = async () => {
     let cfg;
@@ -46,10 +48,24 @@ export function startTasks(client: Client) {
       }
     }
 
-    // --- Récapitulatif quotidien ---
     const now = new Date();
     const hhmm = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
     const today = now.toISOString().slice(0, 10);
+
+    // --- Appel de présence : ouverture, puis clôture à l'heure de fin ---
+    if (cfg.rollcallChannel && cfg.rollcallStartAt && cfg.rollcallEndAt) {
+      const [eh, em] = cfg.rollcallEndAt.split(":").map(Number);
+      const endsAt = new Date(now); endsAt.setHours(eh, em, 0, 0);
+      const existing = await mdt.rollcallToday(today).catch(() => null);
+      if (cfg.rollcallStartAt === hhmm && lastRollcallOpened !== today && !existing) {
+        lastRollcallOpened = today;
+        await openRollcall(client, cfg.rollcallChannel, today, endsAt.getTime());
+      } else if (existing && !existing.closed && Date.now() >= existing.endsAt) {
+        await closeRollcall(client, existing._id, existing.channelId, existing.messageId);
+      }
+    }
+
+    // --- Récapitulatif quotidien ---
     if (cfg.dailyChannel && cfg.dailyAt === hhmm && lastDailySent !== today) {
       lastDailySent = today;
       const chan = await channel(client, cfg.dailyChannel);

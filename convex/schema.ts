@@ -770,6 +770,8 @@ export default defineSchema({
     botDailyChannel: v.optional(v.string()),
     botRollcallChannel: v.optional(v.string()),
     botDailyAt: v.optional(v.string()), // "HH:MM" (fuseau du serveur bot)
+    botRollcallStartAt: v.optional(v.string()), // ouverture de l'appel
+    botRollcallEndAt: v.optional(v.string()), // clôture : plus de vote possible
     updatedBy: v.optional(v.id("agents")),
     updatedAt: v.number(),
   }),
@@ -782,6 +784,27 @@ export default defineSchema({
     lastStatus: v.optional(v.string()), // résultat du dernier envoi (diagnostic)
     lastAt: v.optional(v.number()),
   }).index("by_active", ["active"]),
+
+  // Appel de présence quotidien piloté par le bot Discord. Le bot est le seul
+  // à écrire ici, via des mutations protégées par le secret partagé.
+  rollcalls: defineTable({
+    date: v.string(), // "YYYY-MM-DD" : un appel par jour
+    channelId: v.string(),
+    messageId: v.string(),
+    startedAt: v.number(),
+    endsAt: v.number(),
+    closed: v.boolean(),
+  }).index("by_date", ["date"]),
+
+  rollcallVotes: defineTable({
+    rollcallId: v.id("rollcalls"),
+    discordUserId: v.string(),
+    discordName: v.string(),
+    status: v.union(v.literal("PRESENT"), v.literal("ABSENT"), v.literal("RETARD")),
+    at: v.number(),
+  })
+    .index("by_rollcall", ["rollcallId"])
+    .index("by_rollcall_user", ["rollcallId", "discordUserId"]),
 
   // ============ BOLO / AVIS DE RECHERCHE ============
   bolos: defineTable({

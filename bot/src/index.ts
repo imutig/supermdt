@@ -3,6 +3,7 @@ import { createServer } from "node:http";
 import { env } from "./env.js";
 import { registerCommands, handleCommand } from "./commands.js";
 import { startTasks } from "./tasks.js";
+import { handleRollcallButton } from "./rollcall.js";
 
 // Le bot lit les événements de la Gateway (aucun intent privilégié requis :
 // il ne lit pas le contenu des messages, seulement les commandes slash).
@@ -16,6 +17,7 @@ client.once(Events.ClientReady, async (c) => {
 
 client.on(Events.InteractionCreate, async (interaction) => {
   if (interaction.isChatInputCommand()) await handleCommand(interaction);
+  else if (interaction.isButton() && interaction.customId.startsWith("rc|")) await handleRollcallButton(interaction);
 });
 
 client.on(Events.Error, (err) => console.error("[bot] erreur client :", err));

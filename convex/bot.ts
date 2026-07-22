@@ -1,4 +1,4 @@
-import { query } from "./_generated/server";
+import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import type { QueryCtx } from "./_generated/server";
 import type { Doc } from "./_generated/dataModel";
@@ -137,6 +137,84 @@ export const overview = query({
   },
 });
 
+// ============ Appel de présence (rollcall) ============
+// Le bot écrit ici, mais seulement le rollcall, et toujours derrière le secret.
+
+// Rollcall du jour, s'il existe (reprise après redémarrage du bot).
+export const rollcallToday = query({
+  args: { secret: v.string(), date: v.string() },
+  handler: async (ctx, { secret, date }) => {
+    assertBot(secret);
+    const rc = await ctx.db.query("rollcalls").withIndex("by_date", (q) => q.eq("date", date)).first();
+    if (!rc) return null;
+    return { _id: rc._id, channelId: rc.channelId, messageId: rc.messageId, endsAt: rc.endsAt, closed: rc.closed };
+  },
+});
+
+export const rollcallOpen = mutation({
+  args: { secret: v.string(), date: v.string(), channelId: v.string(), messageId: v.string(), endsAt: v.number() },
+  handler: async (ctx, { secret, date, channelId, messageId, endsAt }) => {
+    assertBot(secret);
+    // Course éventuelle : si un appel existe déjà pour la date, on renvoie
+    // l'existant, le bot supprimera son message en double.
+    const existing = await ctx.db.query("rollcalls").withIndex("by_date", (q) => q.eq("date", date)).first();
+    if (existing) return { _id: existing._id, duplicate: existing.messageId !== messageId };
+    const _id = await ctx.db.insert("rollcalls", { date, channelId, messageId, startedAt: Date.now(), endsAt, closed: false });
+    return { _id, duplicate: false };
+  },
+});
+
+// Statuts groupés d'un appel : reconstruit l'embed après chaque vote.
+export const rollcallState = query({
+  args: { secret: v.string(), rollcallId: v.id("rollcalls") },
+  handler: async (ctx, { secret, rollcallId }) => {
+    assertBot(secret);
+    const rc = await ctx.db.get(rollcallId);
+    if (!rc) return null;
+    const votes = await ctx.db.query("rollcallVotes").withIndex("by_rollcall", (q) => q.eq("rollcallId", rollcallId)).collect();
+    const group = (st: string) => votes.filter((v) => v.status === st).sort((a, b) => a.at - b.at).map((v) => v.discordName);
+    return {
+      endsAt: rc.endsAt,
+      closed: rc.closed,
+      present: group("PRESENT"),
+      retard: group("RETARD"),
+      absent: group("ABSENT"),
+    };
+  },
+});
+
+export const rollcallVote = mutation({
+  args: {
+    secret: v.string(),
+    rollcallId: v.id("rollcalls"),
+    discordUserId: v.string(),
+    discordName: v.string(),
+    status: v.union(v.literal("PRESENT"), v.literal("ABSENT"), v.literal("RETARD")),
+  },
+  handler: async (ctx, { secret, rollcallId, discordUserId, discordName, status }) => {
+    assertBot(secret);
+    const rc = await ctx.db.get(rollcallId);
+    if (!rc) return { ok: false as const, reason: "introuvable" };
+    if (rc.closed || Date.now() > rc.endsAt) return { ok: false as const, reason: "clos" };
+    const existing = await ctx.db
+      .query("rollcallVotes")
+      .withIndex("by_rollcall_user", (q) => q.eq("rollcallId", rollcallId).eq("discordUserId", discordUserId))
+      .first();
+    if (existing) await ctx.db.patch(existing._id, { status, discordName, at: Date.now() });
+    else await ctx.db.insert("rollcallVotes", { rollcallId, discordUserId, discordName, status, at: Date.now() });
+    return { ok: true as const };
+  },
+});
+
+export const rollcallClose = mutation({
+  args: { secret: v.string(), rollcallId: v.id("rollcalls") },
+  handler: async (ctx, { secret, rollcallId }) => {
+    assertBot(secret);
+    const rc = await ctx.db.get(rollcallId);
+    if (rc && !rc.closed) await ctx.db.patch(rollcallId, { closed: true });
+  },
+});
+
 // Configuration lue par le bot au fil de l'eau : salons et heures définis
 // depuis la page Configuration du site, pas en variables d'environnement.
 export const config = query({
@@ -149,6 +227,8 @@ export const config = query({
       dailyChannel: cfg?.botDailyChannel ?? null,
       rollcallChannel: cfg?.botRollcallChannel ?? null,
       dailyAt: cfg?.botDailyAt ?? "23:30",
+      rollcallStartAt: cfg?.botRollcallStartAt ?? null,
+      rollcallEndAt: cfg?.botRollcallEndAt ?? null,
     };
   },
 });

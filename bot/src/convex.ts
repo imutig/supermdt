@@ -34,7 +34,13 @@ type BotConfig = {
   dailyChannel: string | null;
   rollcallChannel: string | null;
   dailyAt: string;
+  rollcallStartAt: string | null;
+  rollcallEndAt: string | null;
 };
+
+export type RollStatus = "PRESENT" | "ABSENT" | "RETARD";
+type RollcallRef = { _id: string; channelId: string; messageId: string; endsAt: number; closed: boolean };
+type RollcallState = { endsAt: number; closed: boolean; present: string[]; retard: string[]; absent: string[] };
 
 type WeeklyHours =
   | { found: false }
@@ -46,6 +52,14 @@ export const mdt = {
   overview: () => client.query(anyApi.bot.overview, { secret: env.botSecret }) as Promise<Overview>,
   config: () => client.query(anyApi.bot.config, { secret: env.botSecret }) as Promise<BotConfig>,
   weeklyHours: (query: string) => client.query(anyApi.bot.agentWeeklyHours, { secret: env.botSecret, query }) as Promise<WeeklyHours>,
+
+  rollcallToday: (date: string) => client.query(anyApi.bot.rollcallToday, { secret: env.botSecret, date }) as Promise<RollcallRef | null>,
+  rollcallOpen: (date: string, channelId: string, messageId: string, endsAt: number) =>
+    client.mutation(anyApi.bot.rollcallOpen, { secret: env.botSecret, date, channelId, messageId, endsAt }) as Promise<{ _id: string; duplicate: boolean }>,
+  rollcallState: (rollcallId: string) => client.query(anyApi.bot.rollcallState, { secret: env.botSecret, rollcallId }) as Promise<RollcallState | null>,
+  rollcallVote: (rollcallId: string, discordUserId: string, discordName: string, status: RollStatus) =>
+    client.mutation(anyApi.bot.rollcallVote, { secret: env.botSecret, rollcallId, discordUserId, discordName, status }) as Promise<{ ok: boolean; reason?: string }>,
+  rollcallClose: (rollcallId: string) => client.mutation(anyApi.bot.rollcallClose, { secret: env.botSecret, rollcallId }) as Promise<void>,
 };
 
-export type { OnDutyAgent, DayStats, Overview, BotConfig, WeeklyHours };
+export type { OnDutyAgent, DayStats, Overview, BotConfig, WeeklyHours, RollcallState };

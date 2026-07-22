@@ -64,6 +64,8 @@ export const botConfig = query({
       dailyChannel: c?.botDailyChannel ?? "",
       rollcallChannel: c?.botRollcallChannel ?? "",
       dailyAt: c?.botDailyAt ?? "23:30",
+      rollcallStartAt: c?.botRollcallStartAt ?? "",
+      rollcallEndAt: c?.botRollcallEndAt ?? "",
     };
   },
 });
@@ -74,6 +76,8 @@ export const setBotConfig = mutation({
     dailyChannel: v.optional(v.string()),
     rollcallChannel: v.optional(v.string()),
     dailyAt: v.optional(v.string()),
+    rollcallStartAt: v.optional(v.string()),
+    rollcallEndAt: v.optional(v.string()),
   },
   handler: async (ctx, a) => {
     const agent = await requireAgent(ctx);
@@ -84,14 +88,18 @@ export const setBotConfig = mutation({
       if (t && !/^\d{17,20}$/.test(t)) throw new Error("Identifiant de salon invalide (17 à 20 chiffres).");
       return t || undefined;
     };
-    if (a.dailyAt !== undefined && a.dailyAt.trim() && !/^\d{1,2}:\d{2}$/.test(a.dailyAt.trim())) {
-      throw new Error("Heure invalide (format HH:MM).");
-    }
+    const time = (label: string, v?: string) => {
+      const t = (v ?? "").trim();
+      if (t && !/^\d{1,2}:\d{2}$/.test(t)) throw new Error(`${label} : heure invalide (format HH:MM).`);
+      return t || undefined;
+    };
     const patch = {
       botPresenceChannel: chan(a.presenceChannel),
       botDailyChannel: chan(a.dailyChannel),
       botRollcallChannel: chan(a.rollcallChannel),
-      botDailyAt: a.dailyAt?.trim() || undefined,
+      botDailyAt: time("Récap", a.dailyAt),
+      botRollcallStartAt: time("Début de l'appel", a.rollcallStartAt),
+      botRollcallEndAt: time("Fin de l'appel", a.rollcallEndAt),
       updatedBy: agent._id,
       updatedAt: Date.now(),
     };

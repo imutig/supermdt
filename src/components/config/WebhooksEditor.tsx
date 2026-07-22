@@ -101,8 +101,8 @@ function BotConfigEditor() {
   const current = useQuery(api.webhooks.botConfig);
   const save = useMutation(api.webhooks.setBotConfig);
   const toast = useToast();
-  const [f, setF] = useState<null | { presenceChannel: string; dailyChannel: string; rollcallChannel: string; dailyAt: string }>(null);
-  const shown = f ?? current ?? { presenceChannel: "", dailyChannel: "", rollcallChannel: "", dailyAt: "23:30" };
+  const [f, setF] = useState<null | { presenceChannel: string; dailyChannel: string; rollcallChannel: string; dailyAt: string; rollcallStartAt: string; rollcallEndAt: string }>(null);
+  const shown = f ?? current ?? { presenceChannel: "", dailyChannel: "", rollcallChannel: "", dailyAt: "23:30", rollcallStartAt: "", rollcallEndAt: "" };
 
   const field = "flex-1 rounded-[9px] border border-border bg-surface-2 px-[11px] py-[9px] font-data text-[12.5px] outline-none focus:border-accent";
   const set = (k: keyof typeof shown) => (e: React.ChangeEvent<HTMLInputElement>) => setF({ ...shown, [k]: e.target.value });
@@ -126,11 +126,19 @@ function BotConfigEditor() {
       <div className="flex flex-col gap-[12px]">
         <Row label="Salon de présence" k="presenceChannel" ph="123456789012345678" hint="Embed des agents en service, tenu à jour en continu." />
         <Row label="Salon du récapitulatif" k="dailyChannel" ph="123456789012345678" hint="Bilan quotidien automatique." />
-        <Row label="Salon de l'appel de présence" k="rollcallChannel" ph="123456789012345678" hint="Réservé (fonction à venir)." />
-        <div className="flex items-end gap-3">
-          <div className="w-[120px]">
-            <div className="mb-[4px] text-[11px] font-bold uppercase tracking-[0.07em] text-faint">Heure du récap</div>
+        <Row label="Salon de l'appel de présence" k="rollcallChannel" ph="123456789012345678" hint="Appel quotidien : les agents indiquent Présent, En retard ou Absent." />
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="w-[110px]">
+            <div className="mb-[4px] text-[11px] font-bold uppercase tracking-[0.07em] text-faint">Récap à</div>
             <input value={shown.dailyAt} onChange={set("dailyAt")} placeholder="23:30" className={field} />
+          </div>
+          <div className="w-[110px]">
+            <div className="mb-[4px] text-[11px] font-bold uppercase tracking-[0.07em] text-faint">Appel de</div>
+            <input value={shown.rollcallStartAt} onChange={set("rollcallStartAt")} placeholder="20:00" className={field} />
+          </div>
+          <div className="w-[110px]">
+            <div className="mb-[4px] text-[11px] font-bold uppercase tracking-[0.07em] text-faint">Appel jusqu'à</div>
+            <input value={shown.rollcallEndAt} onChange={set("rollcallEndAt")} placeholder="21:00" className={field} />
           </div>
           <button
             onClick={async () => {
