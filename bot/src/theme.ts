@@ -21,13 +21,6 @@ export function baseEmbed(color: ColorResolvable = BRAND.green): EmbedBuilder {
   return e;
 }
 
-// Sparkline en blocs Unicode : un mini-graphique lisible dans un embed, sans
-// générer d'image ni dépendance externe.
-const BLOCKS = ["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"];
-export function sparkline(values: number[]): string {
-  const max = Math.max(1, ...values);
-  return values.map((v) => BLOCKS[Math.min(BLOCKS.length - 1, Math.round((v / max) * (BLOCKS.length - 1)))]).join("");
-}
 
 // « il y a 1h23 » à partir d'un timestamp.
 export function ago(ts: number): string {

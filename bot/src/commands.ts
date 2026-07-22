@@ -4,13 +4,17 @@ import {
 } from "discord.js";
 import { env } from "./env.js";
 import { mdt } from "./convex.js";
-import { presenceEmbed, dailyEmbed, overviewEmbed } from "./embeds.js";
+import { presenceEmbed, dailyEmbed, overviewEmbed, weeklyHoursEmbed } from "./embeds.js";
 
 // Définition des commandes slash. Chaque réponse est un embed élaboré.
 export const commands = [
   new SlashCommandBuilder().setName("enservice").setDescription("Voir les agents actuellement en service"),
   new SlashCommandBuilder().setName("effectif").setDescription("État de la station en un coup d'œil"),
   new SlashCommandBuilder().setName("recap").setDescription("Récapitulatif de la journée en cours"),
+  new SlashCommandBuilder()
+    .setName("heures")
+    .setDescription("Heures de service d'un agent sur la semaine")
+    .addStringOption((o) => o.setName("agent").setDescription("Prénom et nom RP de l'agent").setRequired(true)),
 ].map((c) => c.toJSON());
 
 // Enregistrement au niveau du serveur : mise à jour instantanée, contrairement
@@ -37,6 +41,12 @@ export async function handleCommand(interaction: ChatInputCommandInteraction) {
     if (interaction.commandName === "recap") {
       await interaction.deferReply();
       await interaction.editReply({ embeds: [dailyEmbed(await mdt.dayStats())] });
+      return;
+    }
+    if (interaction.commandName === "heures") {
+      await interaction.deferReply();
+      const q = interaction.options.getString("agent", true);
+      await interaction.editReply({ embeds: [weeklyHoursEmbed(await mdt.weeklyHours(q), q)] });
       return;
     }
   } catch (err) {

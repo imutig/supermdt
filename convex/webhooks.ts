@@ -52,6 +52,55 @@ export const baseUrl = query({
   },
 });
 
+// Configuration du bot Discord (salons + heure du récap), éditée sur le site.
+export const botConfig = query({
+  args: {},
+  handler: async (ctx) => {
+    const agent = await requireAgent(ctx);
+    await requirePermission(ctx, agent, "webhooks.manage");
+    const c = await ctx.db.query("integrationConfig").first();
+    return {
+      presenceChannel: c?.botPresenceChannel ?? "",
+      dailyChannel: c?.botDailyChannel ?? "",
+      rollcallChannel: c?.botRollcallChannel ?? "",
+      dailyAt: c?.botDailyAt ?? "23:30",
+    };
+  },
+});
+
+export const setBotConfig = mutation({
+  args: {
+    presenceChannel: v.optional(v.string()),
+    dailyChannel: v.optional(v.string()),
+    rollcallChannel: v.optional(v.string()),
+    dailyAt: v.optional(v.string()),
+  },
+  handler: async (ctx, a) => {
+    const agent = await requireAgent(ctx);
+    await requirePermission(ctx, agent, "webhooks.manage");
+    // Un id de salon Discord est une suite de 17 à 20 chiffres.
+    const chan = (v?: string) => {
+      const t = (v ?? "").trim();
+      if (t && !/^\d{17,20}$/.test(t)) throw new Error("Identifiant de salon invalide (17 à 20 chiffres).");
+      return t || undefined;
+    };
+    if (a.dailyAt !== undefined && a.dailyAt.trim() && !/^\d{1,2}:\d{2}$/.test(a.dailyAt.trim())) {
+      throw new Error("Heure invalide (format HH:MM).");
+    }
+    const patch = {
+      botPresenceChannel: chan(a.presenceChannel),
+      botDailyChannel: chan(a.dailyChannel),
+      botRollcallChannel: chan(a.rollcallChannel),
+      botDailyAt: a.dailyAt?.trim() || undefined,
+      updatedBy: agent._id,
+      updatedAt: Date.now(),
+    };
+    const existing = await ctx.db.query("integrationConfig").first();
+    if (existing) await ctx.db.patch(existing._id, patch);
+    else await ctx.db.insert("integrationConfig", patch);
+  },
+});
+
 export const setBaseUrl = mutation({
   args: { url: v.string() },
   handler: async (ctx, { url }) => {

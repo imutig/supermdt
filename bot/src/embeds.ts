@@ -1,6 +1,7 @@
 import { EmbedBuilder } from "discord.js";
-import { baseEmbed, BRAND, sparkline, ago, fmtDuration, badge } from "./theme.js";
-import type { OnDutyAgent, DayStats, Overview } from "./convex.js";
+import { baseEmbed, BRAND, ago, fmtDuration, badge } from "./theme.js";
+import { dailyPresenceChart, weeklyHoursChart } from "./charts.js";
+import type { OnDutyAgent, DayStats, Overview, WeeklyHours } from "./convex.js";
 
 // Embed de présence : agents actuellement en service, groupés et signés.
 export function presenceEmbed(agents: OnDutyAgent[]): EmbedBuilder {
@@ -46,17 +47,8 @@ export function dailyEmbed(s: DayStats): EmbedBuilder {
       { name: "🎫 Contraventions", value: `**${s.citations}**`, inline: true },
     );
 
-  // Courbe horaire : on affiche la plage active pour éviter une ligne de zéros.
-  const active = s.hourly.map((v, h) => ({ v, h })).filter((x) => x.v > 0);
-  if (active.length > 0) {
-    const from = active[0].h;
-    const to = active[active.length - 1].h;
-    const slice = s.hourly.slice(from, to + 1);
-    e.addFields({
-      name: "📈 Présence par heure",
-      value: `\`${String(from).padStart(2, "0")}h\` ${sparkline(slice)} \`${String(to).padStart(2, "0")}h\``,
-    });
-  }
+  // Courbe de présence en image (QuickChart) sous les statistiques.
+  if (s.hourly.some((v) => v > 0)) e.setImage(dailyPresenceChart(s.hourly));
 
   if (s.top.length > 0) {
     const medals = ["🥇", "🥈", "🥉", "▪️", "▪️"];
@@ -76,4 +68,28 @@ export function overviewEmbed(o: Overview): EmbedBuilder {
       { name: "🟢 En service", value: `**${o.onDuty}** / ${o.totalAgents}`, inline: true },
       { name: "🚓 Patrouilles ouvertes", value: `**${o.openPatrols}**`, inline: true },
     );
+}
+
+// Heures de service d'un agent sur la semaine, avec un graphique en barres.
+export function weeklyHoursEmbed(h: WeeklyHours, query: string): EmbedBuilder {
+  if (!h.found) {
+    return baseEmbed(BRAND.warning)
+      .setTitle("Agent introuvable")
+      .setDescription(`Aucun agent actif ne correspond à **${query}**. Vérifiez l'orthographe du prénom et du nom RP.`);
+  }
+  const total = fmtDuration(h.totalMinutes);
+  const badgeStr = badge(h.matricule);
+  const e = baseEmbed(BRAND.green)
+    .setTitle(`⏱️ Heures de ${h.name}`)
+    .setDescription(`${h.grade}${badgeStr ? ` · \`${badgeStr}\`` : ""}
+**${total}** de service cette semaine.`)
+    .setImage(weeklyHoursChart(h.perDay));
+
+  const days = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
+  const detail = h.perDay
+    .map((m, i) => (m > 0 ? `**${days[i]}** ${fmtDuration(m)}` : null))
+    .filter(Boolean)
+    .join(" · ");
+  if (detail) e.addFields({ name: "Détail", value: detail });
+  return e;
 }

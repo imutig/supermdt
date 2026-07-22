@@ -1,20 +1,12 @@
 import { type Client, type TextChannel } from "discord.js";
-import cron from "node-cron";
-import { env } from "./env.js";
 import { mdt } from "./convex.js";
 import { presenceEmbed, dailyEmbed } from "./embeds.js";
 
-// « HH:MM » -> expression cron « M H * * * ».
-function toCron(hhmm: string): string | null {
-  const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm);
-  if (!m) return null;
-  const h = Number(m[1]);
-  const min = Number(m[2]);
-  if (h > 23 || min > 59) return null;
-  return `${min} ${h} * * *`;
-}
+// Les salons et l'heure du récap sont lus depuis le MDT (page Configuration),
+// pas depuis l'environnement : un changement sur le site prend effet sans
+// redémarrer le bot. Une seule boucle chaque minute pilote tout.
 
-async function channel(client: Client, id: string): Promise<TextChannel | null> {
+async function channel(client: Client, id: string | null): Promise<TextChannel | null> {
   if (!id) return null;
   try {
     const c = await client.channels.fetch(id);
@@ -24,51 +16,55 @@ async function channel(client: Client, id: string): Promise<TextChannel | null> 
   }
 }
 
-// Embed de présence tenu à jour : un unique message édité en boucle, plutôt
-// qu'un flot de nouveaux messages.
-function startPresenceLoop(client: Client) {
-  const chanId = env.channels.presence;
-  if (!chanId) return;
-  let messageId: string | null = null;
+export function startTasks(client: Client) {
+  // Message de présence réutilisé, édité en boucle au lieu de réémis.
+  let presenceMessageId: string | null = null;
+  // Date (YYYY-MM-DD) du dernier récap envoyé, pour n'en envoyer qu'un par jour.
+  let lastDailySent = "";
 
   const tick = async () => {
-    const chan = await channel(client, chanId);
-    if (!chan) return;
-    const embed = presenceEmbed(await mdt.agentsOnDuty());
+    let cfg;
     try {
-      if (messageId) {
-        const msg = await chan.messages.fetch(messageId).catch(() => null);
-        if (msg) { await msg.edit({ embeds: [embed] }); return; }
-      }
-      const sent = await chan.send({ embeds: [embed] });
-      messageId = sent.id;
+      cfg = await mdt.config();
     } catch (err) {
-      console.error("[presence] erreur :", err);
+      console.error("[tasks] config injoignable :", err);
+      return;
+    }
+
+    // --- Embed de présence ---
+    if (cfg.presenceChannel) {
+      const chan = await channel(client, cfg.presenceChannel);
+      if (chan) {
+        try {
+          const embed = presenceEmbed(await mdt.agentsOnDuty());
+          const existing = presenceMessageId ? await chan.messages.fetch(presenceMessageId).catch(() => null) : null;
+          if (existing) await existing.edit({ embeds: [embed] });
+          else presenceMessageId = (await chan.send({ embeds: [embed] })).id;
+        } catch (err) {
+          console.error("[presence] erreur :", err);
+        }
+      }
+    }
+
+    // --- Récapitulatif quotidien ---
+    const now = new Date();
+    const hhmm = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+    const today = now.toISOString().slice(0, 10);
+    if (cfg.dailyChannel && cfg.dailyAt === hhmm && lastDailySent !== today) {
+      lastDailySent = today;
+      const chan = await channel(client, cfg.dailyChannel);
+      if (chan) {
+        try {
+          await chan.send({ embeds: [dailyEmbed(await mdt.dayStats())] });
+          console.log("[tasks] récapitulatif quotidien envoyé.");
+        } catch (err) {
+          console.error("[daily] erreur :", err);
+        }
+      }
     }
   };
 
   void tick();
-  setInterval(() => void tick(), 60_000); // rafraîchi chaque minute
-  console.log("[tasks] boucle de présence active (rafraîchie chaque minute).");
-}
-
-function scheduleDaily(client: Client) {
-  const expr = toCron(env.dailySummaryAt);
-  if (!expr || !env.channels.daily) return;
-  cron.schedule(expr, async () => {
-    const chan = await channel(client, env.channels.daily);
-    if (!chan) return;
-    try {
-      await chan.send({ embeds: [dailyEmbed(await mdt.dayStats())] });
-      console.log("[tasks] récapitulatif quotidien envoyé.");
-    } catch (err) {
-      console.error("[daily] erreur :", err);
-    }
-  });
-  console.log(`[tasks] récapitulatif quotidien planifié à ${env.dailySummaryAt}.`);
-}
-
-export function startTasks(client: Client) {
-  startPresenceLoop(client);
-  scheduleDaily(client);
+  setInterval(() => void tick(), 60_000);
+  console.log("[tasks] boucle active (présence + récap, config lue depuis le MDT).");
 }

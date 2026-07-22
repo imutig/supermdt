@@ -29,10 +29,23 @@ type DayStats = {
 
 type Overview = { totalAgents: number; onDuty: number; openPatrols: number };
 
+type BotConfig = {
+  presenceChannel: string | null;
+  dailyChannel: string | null;
+  rollcallChannel: string | null;
+  dailyAt: string;
+};
+
+type WeeklyHours =
+  | { found: false }
+  | { found: true; name: string; matricule: number | null; grade: string; totalMinutes: number; perDay: number[] };
+
 export const mdt = {
   agentsOnDuty: () => client.query(anyApi.bot.agentsOnDuty, { secret: env.botSecret }) as Promise<OnDutyAgent[]>,
   dayStats: () => client.query(anyApi.bot.dayStats, { secret: env.botSecret }) as Promise<DayStats>,
   overview: () => client.query(anyApi.bot.overview, { secret: env.botSecret }) as Promise<Overview>,
+  config: () => client.query(anyApi.bot.config, { secret: env.botSecret }) as Promise<BotConfig>,
+  weeklyHours: (query: string) => client.query(anyApi.bot.agentWeeklyHours, { secret: env.botSecret, query }) as Promise<WeeklyHours>,
 };
 
-export type { OnDutyAgent, DayStats, Overview };
+export type { OnDutyAgent, DayStats, Overview, BotConfig, WeeklyHours };

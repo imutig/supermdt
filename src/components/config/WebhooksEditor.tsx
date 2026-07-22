@@ -29,6 +29,7 @@ export function WebhooksEditor() {
   return (
     <div className="flex flex-col gap-[14px]">
     <BaseUrlEditor />
+    <BotConfigEditor />
     <div className="rounded-card border border-border bg-surface p-[16px]">
       <div className="mb-[4px] flex items-center gap-3">
         <h2 className="m-0 flex-1 text-[15px] font-bold">Webhooks Discord</h2>
@@ -90,6 +91,59 @@ export function WebhooksEditor() {
         />
       )}
     </div>
+    </div>
+  );
+}
+
+// Configuration du bot Discord : salons et heure du récapitulatif. Le bot lit
+// ces réglages en direct, un changement ici n'exige pas de le redémarrer.
+function BotConfigEditor() {
+  const current = useQuery(api.webhooks.botConfig);
+  const save = useMutation(api.webhooks.setBotConfig);
+  const toast = useToast();
+  const [f, setF] = useState<null | { presenceChannel: string; dailyChannel: string; rollcallChannel: string; dailyAt: string }>(null);
+  const shown = f ?? current ?? { presenceChannel: "", dailyChannel: "", rollcallChannel: "", dailyAt: "23:30" };
+
+  const field = "flex-1 rounded-[9px] border border-border bg-surface-2 px-[11px] py-[9px] font-data text-[12.5px] outline-none focus:border-accent";
+  const set = (k: keyof typeof shown) => (e: React.ChangeEvent<HTMLInputElement>) => setF({ ...shown, [k]: e.target.value });
+
+  const Row = ({ label, hint, k, mono = true, ph }: { label: string; hint: string; k: keyof typeof shown; mono?: boolean; ph: string }) => (
+    <div>
+      <div className="mb-[4px] text-[11px] font-bold uppercase tracking-[0.07em] text-faint">{label}</div>
+      <div className="flex items-center gap-2">
+        <input value={shown[k]} onChange={set(k)} placeholder={ph} className={mono ? field : field.replace(" font-data", "")} />
+      </div>
+      <div className="mt-[3px] text-[11px] text-faint">{hint}</div>
+    </div>
+  );
+
+  return (
+    <div className="rounded-card border border-border bg-surface p-[16px]">
+      <h2 className="m-0 mb-[4px] text-[15px] font-bold">Bot Discord</h2>
+      <p className="mb-[12px] mt-0 text-[12.5px] text-muted">
+        Salons où le bot publie. L'identifiant d'un salon s'obtient par clic droit sur le salon &gt; Copier l'identifiant (mode développeur activé). Laisser vide pour désactiver une fonction.
+      </p>
+      <div className="flex flex-col gap-[12px]">
+        <Row label="Salon de présence" k="presenceChannel" ph="123456789012345678" hint="Embed des agents en service, tenu à jour en continu." />
+        <Row label="Salon du récapitulatif" k="dailyChannel" ph="123456789012345678" hint="Bilan quotidien automatique." />
+        <Row label="Salon de l'appel de présence" k="rollcallChannel" ph="123456789012345678" hint="Réservé (fonction à venir)." />
+        <div className="flex items-end gap-3">
+          <div className="w-[120px]">
+            <div className="mb-[4px] text-[11px] font-bold uppercase tracking-[0.07em] text-faint">Heure du récap</div>
+            <input value={shown.dailyAt} onChange={set("dailyAt")} placeholder="23:30" className={field} />
+          </div>
+          <button
+            onClick={async () => {
+              const ok = await toast.guard(save(shown), "Enregistrement impossible");
+              if (ok !== undefined) { toast.success("Configuration du bot enregistrée."); setF(null); }
+            }}
+            className="mdt-press ml-auto rounded-[9px] px-4 py-[9px] text-[13px] font-bold text-accent-contrast"
+            style={{ background: "var(--accent)" }}
+          >
+            Enregistrer
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

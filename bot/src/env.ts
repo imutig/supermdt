@@ -21,14 +21,7 @@ export const env = {
   convexUrl: required("CONVEX_URL"),
   botSecret: required("BOT_SECRET"),
 
-  channels: {
-    presence: optional("CHANNEL_PRESENCE"),
-    daily: optional("CHANNEL_DAILY"),
-    rollcall: optional("CHANNEL_ROLLCALL"),
-  },
-
-  dailySummaryAt: optional("DAILY_SUMMARY_AT", "23:30"),
-  rollcallAt: optional("ROLLCALL_AT", "20:00"),
-
+  // Salons et heures ne sont PAS ici : ils se règlent sur le site (page
+  // Configuration > Intégrations) et sont lus en direct via Convex.
   brandIconUrl: optional("BRAND_ICON_URL"),
 };

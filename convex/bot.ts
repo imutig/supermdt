@@ -136,3 +136,77 @@ export const overview = query({
     return { totalAgents: active.length, onDuty, openPatrols };
   },
 });
+
+// Configuration lue par le bot au fil de l'eau : salons et heures définis
+// depuis la page Configuration du site, pas en variables d'environnement.
+export const config = query({
+  args: { secret: v.string() },
+  handler: async (ctx, { secret }) => {
+    assertBot(secret);
+    const cfg = await ctx.db.query("integrationConfig").first();
+    return {
+      presenceChannel: cfg?.botPresenceChannel ?? null,
+      dailyChannel: cfg?.botDailyChannel ?? null,
+      rollcallChannel: cfg?.botRollcallChannel ?? null,
+      dailyAt: cfg?.botDailyAt ?? "23:30",
+    };
+  },
+});
+
+const nrm = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+
+// Heures de service d'un agent sur la semaine en cours, recherché par son nom
+// RP (« prénom nom »). Sert à la commande /heures — pas de compte Discord lié.
+export const agentWeeklyHours = query({
+  args: { secret: v.string(), query: v.string() },
+  handler: async (ctx, { secret, query }) => {
+    assertBot(secret);
+    const needle = nrm(query);
+    if (!needle) return { found: false as const };
+
+    // Correspondance sur « prénom nom », « nom prénom » ou le login prenom.nom.
+    const agents = await ctx.db.query("agents").collect();
+    const match = agents.find((a) => {
+      if (a.status !== "ACTIVE") return false;
+      const full = nrm(`${a.prenomRP} ${a.nomRP}`);
+      const rev = nrm(`${a.nomRP} ${a.prenomRP}`);
+      return full === needle || rev === needle || nrm(a.login) === needle.replace(/\s+/g, ".");
+    }) ?? agents.find((a) => a.status === "ACTIVE" && nrm(`${a.prenomRP} ${a.nomRP}`).includes(needle));
+
+    if (!match) return { found: false as const };
+
+    // Début de la semaine ISO (lundi 00:00).
+    const now = new Date();
+    const monday = new Date(now);
+    const dow = (now.getDay() + 6) % 7; // 0 = lundi
+    monday.setDate(now.getDate() - dow);
+    monday.setHours(0, 0, 0, 0);
+    const weekStart = monday.getTime();
+
+    const sessions = await ctx.db.query("serviceSessions").withIndex("by_agent", (q) => q.eq("agentId", match._id)).collect();
+    const perDay = new Array(7).fill(0) as number[]; // minutes, lun..dim
+    let total = 0;
+    const nowMs = Date.now();
+    for (const s of sessions) {
+      const end = s.endedAt ?? nowMs;
+      if (end < weekStart) continue;
+      const from = Math.max(s.startedAt, weekStart);
+      // Réparti sur les jours traversés (une session peut chevaucher minuit).
+      for (let t = from; t < end; t += 5 * 60000) {
+        const dayIdx = Math.floor((t - weekStart) / DAY);
+        if (dayIdx < 0 || dayIdx > 6) continue;
+        perDay[dayIdx] += 5;
+        total += 5;
+      }
+    }
+
+    return {
+      found: true as const,
+      name: `${match.prenomRP} ${match.nomRP}`,
+      matricule: match.matricule ?? (match.isOwner ? 0 : null),
+      grade: await gradeName(ctx, match),
+      totalMinutes: total,
+      perDay, // minutes par jour, lundi -> dimanche
+    };
+  },
+});

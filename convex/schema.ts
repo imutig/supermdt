@@ -765,6 +765,11 @@ export default defineSchema({
   // profonds envoyés dans les webhooks (le serveur ignore l'URL du client).
   integrationConfig: defineTable({
     baseUrl: v.optional(v.string()),
+    // Salons Discord où le bot poste (id de salon). Vide = fonction désactivée.
+    botPresenceChannel: v.optional(v.string()),
+    botDailyChannel: v.optional(v.string()),
+    botRollcallChannel: v.optional(v.string()),
+    botDailyAt: v.optional(v.string()), // "HH:MM" (fuseau du serveur bot)
     updatedBy: v.optional(v.id("agents")),
     updatedAt: v.number(),
   }),
