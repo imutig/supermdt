@@ -25,7 +25,7 @@ export function ResultView({ sessionId, onBack }: { sessionId: Id<"quizSessions"
   const tint = r.passed ? "var(--accent)" : "var(--danger)";
 
   return (
-    <div className="mx-auto max-w-[760px] p-[22px_24px]" style={{ animation: "mdtFade .2s ease" }}>
+    <div className="mx-auto max-w-[920px] p-[22px_24px]" style={{ animation: "mdtFade .2s ease" }}>
       <button onClick={onBack} className="mb-[16px] flex items-center gap-[6px] text-[12.5px] font-semibold text-muted hover:text-text">
         <ArrowLeft className="h-[14px] w-[14px]" /> Retour
       </button>

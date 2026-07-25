@@ -1,6 +1,6 @@
 import { Suspense, useEffect } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { GraduationCap, Home, Users, ClipboardList, ArrowLeftRight, Sun, Moon } from "lucide-react";
+import { Home, Users, ClipboardList, ShieldCheck, ArrowLeftRight, Sun, Moon } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useApp } from "@/providers/app-state";
 import { useCan } from "@/hooks/useCan";
@@ -18,6 +18,9 @@ const ITEMS: Item[] = [
   { to: "/lspa", label: "Accueil", icon: Home },
   { to: "/lspa/effectif", label: "Effectif", icon: Users, perm: "lspa.effectif.view" },
   { to: "/lspa/quiz", label: "Quiz", icon: ClipboardList },
+  // Même administration que le MDT (validation des comptes, invitations,
+  // permissions…), accessible ici pour l'encadrement de l'académie.
+  { to: "/lspa/admin", label: "Administration", icon: ShieldCheck, perm: "effectif.validate" },
 ];
 
 export function LspaShell() {
@@ -36,12 +39,7 @@ export function LspaShell() {
     <div className="relative flex h-full flex-col overflow-hidden">
       <div className="z-[5] flex h-[50px] flex-shrink-0 items-center gap-[10px] border-b border-border bg-surface px-[14px]">
         <div className="flex flex-shrink-0 items-center gap-[9px]">
-          <span
-            className="flex h-[26px] w-[26px] items-center justify-center rounded-[8px]"
-            style={{ background: "color-mix(in srgb, #3B82F6 16%, transparent)", color: "#3B82F6" }}
-          >
-            <GraduationCap className="h-[16px] w-[16px]" />
-          </span>
+          <img src="/logos/lspa-badge.svg" alt="LSPA" className="h-[28px] w-[28px]" />
           <div className="hidden leading-[1.05] xl:block">
             <div className="text-[13px] font-bold tracking-[0.01em]">Portail LSPA</div>
             <div className="text-[9.5px] font-semibold uppercase tracking-[0.1em] text-faint">

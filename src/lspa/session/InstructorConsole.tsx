@@ -50,7 +50,7 @@ export function InstructorConsole({ sessionId }: { sessionId: Id<"quizSessions">
   if (grading) return <GradingBoard sessionId={sessionId} onBack={() => setGrading(false)} />;
 
   return (
-    <div className="mx-auto max-w-[820px] p-[22px_24px]" style={{ animation: "mdtFade .2s ease" }}>
+    <div className="mx-auto max-w-[1100px] p-[22px_28px]" style={{ animation: "mdtFade .2s ease" }}>
       <button onClick={() => navigate(`/lspa/quiz/${session.quizId}`)} className="mb-[14px] flex items-center gap-[6px] text-[12.5px] font-semibold text-muted hover:text-text">
         <ArrowLeft className="h-[14px] w-[14px]" /> Retour au quiz
       </button>
@@ -199,7 +199,7 @@ function GradingBoard({ sessionId, onBack }: { sessionId: Id<"quizSessions">; on
   const toGrade = data.rows.filter((r) => r.needsGrading);
   if (toGrade.length === 0) {
     return (
-      <div className="mx-auto max-w-[720px] p-[26px]">
+      <div className="mx-auto max-w-[900px] p-[26px]">
         <EmptyState title="Correction terminée" message="Toutes les copies sont notées. Vous pouvez publier les résultats." action={<Button variant="primary" onClick={onBack}>Retour à la session</Button>} />
       </div>
     );
@@ -207,7 +207,7 @@ function GradingBoard({ sessionId, onBack }: { sessionId: Id<"quizSessions">; on
 
   const row = toGrade[Math.min(idx, toGrade.length - 1)];
   return (
-    <div className="mx-auto max-w-[760px] p-[22px_24px]" style={{ animation: "mdtFade .2s ease" }}>
+    <div className="mx-auto max-w-[900px] p-[22px_24px]" style={{ animation: "mdtFade .2s ease" }}>
       <button onClick={onBack} className="mb-[14px] flex items-center gap-[6px] text-[12.5px] font-semibold text-muted hover:text-text">
         <ArrowLeft className="h-[14px] w-[14px]" /> Retour à la session
       </button>

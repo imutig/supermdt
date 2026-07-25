@@ -135,6 +135,9 @@ function Gated() {
         <Route path="quiz" element={<LspaQuiz />} />
         <Route path="quiz/:id" element={<RequirePerm perm="lspa.quiz.view"><QuizEditor /></RequirePerm>} />
         <Route path="session/:id" element={<SessionScreen />} />
+        {/* Profil et administration partagés avec le MDT, servis dans le portail. */}
+        <Route path="profil" element={<Profil />} />
+        <Route path="admin" element={<RequirePerm perm="effectif.validate"><Admin /></RequirePerm>} />
         <Route path="*" element={<Navigate to="/lspa" replace />} />
       </Route>
 

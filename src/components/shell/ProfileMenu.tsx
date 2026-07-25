@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { LogOut, Camera, IdCard, ChevronDown, X, User } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useAuthActions } from "@convex-dev/auth/react";
 import { useMutation } from "convex/react";
 import { api } from "@/lib/api";
@@ -16,6 +16,9 @@ export function ProfileMenu() {
   const setAvatar = useMutation(api.agents.setAvatar);
   const toast = useToast();
   const navigate = useNavigate();
+  // Le portail de l'académie réutilise ce menu ; on y route « Mon profil » vers
+  // la route LSPA et on masque la fiche de renseignement, propre au MDT.
+  const inLspa = useLocation().pathname.startsWith("/lspa");
   const [open, setOpen] = useState(false);
   const [photo, setPhoto] = useState(false);
   const [fiche, setFiche] = useState(false);
@@ -56,9 +59,9 @@ export function ProfileMenu() {
               <div className="text-[11.5px] text-muted"><span className="font-data text-accent">{matricule}</span> · {gradeName}</div>
             </div>
           </div>
-          <MenuItem icon={User} label="Mon profil" onClick={() => { navigate("/profil"); setOpen(false); }} />
+          <MenuItem icon={User} label="Mon profil" onClick={() => { navigate(inLspa ? "/lspa/profil" : "/profil"); setOpen(false); }} />
           <MenuItem icon={Camera} label="Photo de profil" onClick={() => { setPhoto(true); setOpen(false); }} />
-          <MenuItem icon={IdCard} label="Fiche de renseignement" onClick={() => { setFiche(true); setOpen(false); }} />
+          {!inLspa && <MenuItem icon={IdCard} label="Fiche de renseignement" onClick={() => { setFiche(true); setOpen(false); }} />}
           <div className="border-t border-border" />
           <MenuItem icon={LogOut} label="Se déconnecter" danger onClick={() => signOut()} />
         </div>
