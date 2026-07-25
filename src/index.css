@@ -253,6 +253,19 @@ body {
 @keyframes mdtSpinClover { to { transform: rotate(360deg); } }
 @keyframes mdtBlink { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
 
+/* --- écran de choix du portail --- */
+/* halos d'ambiance qui respirent doucement derrière les cartes */
+@keyframes portalAura {
+  0%, 100% { opacity: .45; transform: scale(1) translate3d(0,0,0); }
+  50% { opacity: .8; transform: scale(1.08) translate3d(0,-2%,0); }
+}
+/* flottement du badge d'en-tête */
+@keyframes portalFloat { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+/* entrée d'une carte : montée + léger zoom */
+@keyframes portalCardIn { from { opacity: 0; transform: translateY(18px) scale(.96); } to { opacity: 1; transform: none; } }
+/* liseré d'accent qui court en haut de carte au survol */
+@keyframes portalSweep { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+
 /* --- apparition de page (routée) + apparition en fondu montant --- */
 .mdt-page { animation: mdtRise .34s cubic-bezier(.16, 1, .3, 1) both; }
 .mdt-reveal { animation: mdtRise .42s cubic-bezier(.16, 1, .3, 1) both; }

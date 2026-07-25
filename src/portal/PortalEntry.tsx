@@ -35,21 +35,46 @@ export function PortalEntry({
   }
 
   return (
-    <div className="relative flex h-full items-center justify-center overflow-y-auto bg-bg p-6">
+    <div className="relative flex h-full items-center justify-center overflow-hidden bg-bg p-6">
+      {/* Halos d'ambiance : vert Station 13 et laiton LSPA, chacun de son côté,
+          jamais mêlés dans un même signe (règle de marque). */}
+      <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
+        <span
+          className="absolute -left-[12%] -top-[18%] h-[52vh] w-[52vh] rounded-full blur-[110px]"
+          style={{ background: "radial-gradient(circle, color-mix(in srgb, #49A24A 34%, transparent), transparent 70%)", animation: "portalAura 9s ease-in-out infinite" }}
+        />
+        <span
+          className="absolute -bottom-[18%] -right-[12%] h-[52vh] w-[52vh] rounded-full blur-[110px]"
+          style={{ background: "radial-gradient(circle, color-mix(in srgb, #C4A24A 32%, transparent), transparent 70%)", animation: "portalAura 11s ease-in-out infinite 1.5s" }}
+        />
+      </div>
+
       <button
         onClick={toggleMode}
         title={mode === "dark" ? "Passer en clair" : "Passer en sombre"}
-        className="absolute right-5 top-5 flex h-[36px] w-[36px] items-center justify-center rounded-[10px] border border-border bg-surface text-muted hover:border-border-strong hover:text-text"
+        className="absolute right-5 top-5 z-10 flex h-[36px] w-[36px] items-center justify-center rounded-[10px] border border-border bg-surface/80 text-muted backdrop-blur hover:border-border-strong hover:text-text"
       >
         {mode === "dark" ? <Sun className="h-[17px] w-[17px]" /> : <Moon className="h-[17px] w-[17px]" />}
       </button>
 
-      <div className="w-full max-w-[720px]" style={{ animation: "s13Rise .45s cubic-bezier(.16,1,.3,1)" }}>
-        <div className="mb-[26px] flex flex-col items-center gap-[13px]">
-          <img src="/logos/logo-badge.svg" alt="LSPD Station 13" className="h-[76px] w-[76px]" />
-          <div className="text-center">
-            <div className="text-[20px] font-bold leading-none tracking-[-0.01em] text-text">LSPD · Station 13</div>
-            <div className="mt-[7px] text-[10.5px] font-bold uppercase tracking-[0.2em] text-accent">
+      <div className="relative z-[1] w-full max-w-[730px]">
+        <div className="mb-[28px] flex flex-col items-center gap-[14px]">
+          <div className="relative" style={{ animation: "portalFloat 5.5s ease-in-out infinite" }}>
+            <span
+              aria-hidden
+              className="absolute inset-0 -z-[1] rounded-full blur-[26px]"
+              style={{ background: "radial-gradient(circle, color-mix(in srgb, var(--accent) 55%, transparent), transparent 70%)" }}
+            />
+            <img
+              src="/logos/logo-badge.svg"
+              alt="LSPD Station 13"
+              className="h-[80px] w-[80px] drop-shadow-[0_10px_28px_rgba(0,0,0,.35)]"
+              style={{ animation: "s13Leaf .7s cubic-bezier(.16,1,.3,1) both" }}
+            />
+          </div>
+          <div className="text-center" style={{ animation: "s13Rise .5s cubic-bezier(.16,1,.3,1) both", animationDelay: ".08s" }}>
+            <div className="text-[21px] font-bold leading-none tracking-[-0.01em] text-text">LSPD · Station 13</div>
+            <div className="mt-[8px] text-[10.5px] font-bold uppercase tracking-[0.22em] text-accent">
               Newton Street · Los Santos
             </div>
           </div>
@@ -59,11 +84,15 @@ export function PortalEntry({
           <UnlockCard onBack={() => setAsking(false)} onUnlocked={(exp) => { markUnlocked(exp); pick("mdt"); }} />
         ) : (
           <>
-            <div className="mb-[18px] text-center text-[13.5px] text-muted">
+            <div
+              className="mb-[20px] text-center text-[13.5px] text-muted"
+              style={{ animation: "s13Rise .5s cubic-bezier(.16,1,.3,1) both", animationDelay: ".14s" }}
+            >
               Choisissez l'accès à ouvrir.
             </div>
-            <div className="grid grid-cols-1 gap-[14px] sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-[16px] sm:grid-cols-2">
               <Card
+                index={0}
                 logo="/logos/logo-badge.svg"
                 tint="#49A24A"
                 title="MDT · Station 13"
@@ -75,6 +104,7 @@ export function PortalEntry({
                 onOpen={openMdt}
               />
               <Card
+                index={1}
                 logo="/logos/lspa-badge.svg"
                 tint="#C4A24A"
                 title="Portail LSPA"
@@ -87,7 +117,10 @@ export function PortalEntry({
           </>
         )}
 
-        <div className="mt-[20px] text-center text-[11px] tracking-[0.03em] text-faint">
+        <div
+          className="mt-[22px] text-center text-[11px] tracking-[0.03em] text-faint"
+          style={{ animation: "s13Rise .5s cubic-bezier(.16,1,.3,1) both", animationDelay: ".26s" }}
+        >
           Accès réservé au personnel assermenté · Lucky Thirteen · Newton Street
         </div>
       </div>
@@ -96,8 +129,9 @@ export function PortalEntry({
 }
 
 function Card({
-  logo, tint, title, subtitle, lines, cta, locked, disabled, onOpen,
+  index, logo, tint, title, subtitle, lines, cta, locked, disabled, onOpen,
 }: {
+  index: number;
   logo: string;
   tint: string;
   title: string;
@@ -112,36 +146,73 @@ function Card({
     <button
       onClick={disabled ? undefined : onOpen}
       disabled={disabled}
-      className={`group mdt-reveal flex flex-col rounded-[14px] border p-[19px] text-left transition-all ${
-        disabled ? "cursor-not-allowed" : "mdt-press cursor-pointer hover:shadow-[0_14px_44px_var(--shadow)]"
+      className={`group relative flex flex-col overflow-hidden rounded-[16px] border p-[20px] text-left ${
+        disabled ? "cursor-not-allowed" : "mdt-press cursor-pointer"
       }`}
       style={{
         borderColor: disabled ? "var(--border)" : "var(--border-strong)",
         background: disabled ? "var(--surface)" : `color-mix(in srgb, ${tint} 5%, var(--surface))`,
-        opacity: disabled ? 0.55 : 1,
+        opacity: disabled ? 0.6 : 1,
+        // Entrée en cascade, puis la transition prend le relais pour le survol.
+        animation: `portalCardIn .5s cubic-bezier(.16,1,.3,1) both`,
+        animationDelay: `${0.18 + index * 0.08}s`,
+        transition: "transform .2s cubic-bezier(.16,1,.3,1), box-shadow .22s ease, border-color .18s ease",
+        // @ts-expect-error variable CSS locale consommée plus bas
+        "--tint": tint,
+      }}
+      onMouseEnter={(e) => {
+        if (disabled) return;
+        e.currentTarget.style.transform = "translateY(-4px)";
+        e.currentTarget.style.boxShadow = `0 20px 50px -12px color-mix(in srgb, ${tint} 45%, transparent)`;
+        e.currentTarget.style.borderColor = `color-mix(in srgb, ${tint} 55%, var(--border-strong))`;
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.transform = "";
+        e.currentTarget.style.boxShadow = "";
+        e.currentTarget.style.borderColor = "var(--border-strong)";
       }}
     >
-      <div className="mb-[13px] flex items-center gap-[12px]">
-        <img src={logo} alt="" className="h-[48px] w-[48px] flex-shrink-0" style={{ filter: disabled ? "grayscale(1)" : undefined }} />
+      {/* Liseré d'accent qui s'illumine en haut de carte au survol */}
+      <span
+        aria-hidden
+        className="absolute inset-x-0 top-0 h-[2px] opacity-0 transition-opacity duration-300 group-hover:opacity-100"
+        style={{ background: `linear-gradient(90deg, transparent, ${tint}, transparent)`, backgroundSize: "200% 100%", animation: "portalSweep 2.4s linear infinite" }}
+      />
+      {/* Filigrane du badge, très discret, qui se révèle un peu au survol */}
+      <img
+        src={logo}
+        alt=""
+        aria-hidden
+        className="pointer-events-none absolute -bottom-[26px] -right-[22px] h-[150px] w-[150px] opacity-[0.05] transition-all duration-300 group-hover:scale-105 group-hover:opacity-[0.09]"
+        style={{ filter: disabled ? "grayscale(1)" : undefined }}
+      />
+
+      <div className="relative mb-[14px] flex items-center gap-[13px]">
+        <img
+          src={logo}
+          alt=""
+          className="h-[52px] w-[52px] flex-shrink-0 transition-transform duration-300 group-hover:scale-[1.06]"
+          style={{ filter: disabled ? "grayscale(1)" : `drop-shadow(0 6px 16px color-mix(in srgb, ${tint} 40%, transparent))` }}
+        />
         <div className="min-w-0">
-          <div className="text-[15.5px] font-bold leading-tight">{title}</div>
-          <div className="mt-[2px] text-[10.5px] font-semibold uppercase tracking-[0.1em] text-faint">{subtitle}</div>
+          <div className="text-[16px] font-bold leading-tight">{title}</div>
+          <div className="mt-[3px] text-[10.5px] font-semibold uppercase tracking-[0.11em] text-faint">{subtitle}</div>
         </div>
       </div>
 
-      <ul className="m-0 mb-[15px] flex list-none flex-col gap-[6px] p-0">
+      <ul className="relative m-0 mb-[16px] flex list-none flex-col gap-[7px] p-0">
         {lines.map((l) => (
-          <li key={l} className="flex items-center gap-[8px] text-[12.5px] text-muted">
-            <span className="h-[4px] w-[4px] flex-shrink-0 rounded-full" style={{ background: tint }} />
+          <li key={l} className="flex items-center gap-[9px] text-[12.5px] text-muted">
+            <span className="h-[5px] w-[5px] flex-shrink-0 rounded-full" style={{ background: tint, boxShadow: `0 0 8px color-mix(in srgb, ${tint} 60%, transparent)` }} />
             {l}
           </li>
         ))}
       </ul>
 
-      <div className="mt-auto flex items-center gap-[7px] text-[12.5px] font-semibold" style={{ color: disabled ? "var(--faint)" : tint }}>
+      <div className="relative mt-auto flex items-center gap-[7px] text-[12.5px] font-semibold" style={{ color: disabled ? "var(--faint)" : tint }}>
         {locked ? <Lock className="h-[14px] w-[14px]" /> : null}
         {cta}
-        {!locked && <ArrowRight className="h-[15px] w-[15px] transition-transform group-hover:translate-x-[3px]" />}
+        {!locked && <ArrowRight className="h-[15px] w-[15px] transition-transform duration-200 group-hover:translate-x-[4px]" />}
       </div>
     </button>
   );
