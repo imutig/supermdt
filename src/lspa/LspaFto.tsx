@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery } from "convex/react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Navigate } from "react-router-dom";
+import { usePortals } from "@/hooks/usePortals";
 import { ShieldCheck, ChevronRight, Settings, Plus, Trash2, ChevronUp, ChevronDown, ArrowLeft, Star, ListChecks, SplitSquareHorizontal, Lock } from "lucide-react";
 import { api } from "@/lib/api";
 import type { Id } from "convex/_generated/dataModel";
@@ -12,18 +13,22 @@ import { Button } from "@/components/common/Button";
 import { Modal } from "@/components/common/Modal";
 import { fmtMatricule } from "@/components/common/AgentTag";
 
-// Formation terrain : liste des Officiers 1, accès à leur fiche FTO.
+// Formation terrain : liste des Officiers 1, accès à leur fiche FTO. Jamais
+// accessible aux cadets (la formation terrain concerne les agents assermentés).
 export function LspaFto() {
   const list = useQuery(api.fto.listOffi1);
   const navigate = useNavigate();
   const { can } = useCan();
+  const { academyOnly } = usePortals();
   const [configuring, setConfiguring] = useState(false);
+
+  if (academyOnly) return <Navigate to="/lspa" replace />;
 
   return (
     <div className="p-[22px_26px]" style={{ animation: "mdtFade .2s ease" }}>
       <div className="mb-[18px] flex items-end gap-3">
         <div className="flex-1">
-          <h1 className="m-0 text-[21px] font-bold tracking-tight">Formation terrain (FTO)</h1>
+          <h1 className="m-0 text-[21px] font-bold tracking-tight">Formation terrain</h1>
           <div className="mt-[3px] text-[13px] text-muted">Les Officiers 1 en formation, encadrés par leur tuteur jusqu'au passage Officier 2.</div>
         </div>
         {can("fto.manage") && <Button onClick={() => setConfiguring(true)}><Settings className="h-[15px] w-[15px]" /> Configurer la fiche</Button>}

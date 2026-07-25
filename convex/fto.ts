@@ -34,10 +34,12 @@ async function assertEdit(ctx: MutationCtx, viewer: Doc<"agents">, agentId: Id<"
 export const listOffi1 = query({
   args: {},
   handler: async (ctx) => {
-    // Ouvert à tout agent : la liste des Officiers 1 est visible de tous. Seul
-    // l'accès à une fiche est restreint (référent ou fto.view), signalé par
-    // `canOpen` sur chaque ligne.
+    // Ouvert à tout agent assermenté : la liste des Officiers 1 est visible de
+    // tous, sauf des cadets. Seul l'accès à une fiche est restreint (référent ou
+    // fto.view), signalé par `canOpen` sur chaque ligne.
     const viewer = await requireAgent(ctx);
+    const viewerGrade = viewer.gradeId ? await ctx.db.get(viewer.gradeId) : null;
+    if (viewerGrade?.academyOnly) return [];
     const grade = await entryGrade(ctx);
     if (!grade) return [];
     const hasFtoView = viewer.isOwner || (await can(ctx, viewer, "fto.view"));

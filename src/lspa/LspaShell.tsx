@@ -13,15 +13,16 @@ import { PageBoundary } from "@/components/shell/PageBoundary";
 // Enveloppe du portail de l'académie. Structure volontairement proche du MDT
 // (barre haute, rail de navigation, contenu) pour ne pas dérouter, mais avec sa
 // propre navigation : les deux surfaces n'ont rien de commun au-delà du compte.
-type Item = { to: string; label: string; icon: LucideIcon; perm?: string };
+type Item = { to: string; label: string; icon: LucideIcon; perm?: string; hideForCadet?: boolean };
 
 const ITEMS: Item[] = [
   { to: "/lspa", label: "Accueil", icon: Home, perm: "lspa.view" },
   { to: "/lspa/effectif", label: "Effectif", icon: Users, perm: "lspa.effectif.view" },
   { to: "/lspa/promotions", label: "Promotions", icon: GraduationCap, perm: "lspa.effectif.view" },
   { to: "/lspa/quiz", label: "Quiz", icon: ClipboardList, perm: "lspa.view" },
-  // Formation terrain : ouverte à tout agent (les référents y accèdent).
-  { to: "/lspa/fto", label: "Formation terrain", icon: Compass },
+  // Formation terrain : ouverte à tout agent assermenté (les référents y
+  // accèdent), mais jamais aux cadets.
+  { to: "/lspa/fto", label: "Formation terrain", icon: Compass, hideForCadet: true },
   { to: "/lspa/historique", label: "Historique", icon: History, perm: "lspa.session.manage" },
   // Même administration que le MDT (validation des comptes, invitations,
   // permissions…), accessible ici pour l'encadrement de l'académie.
@@ -33,12 +34,12 @@ export function LspaShell() {
   const navigate = useNavigate();
   const { mode, toggleMode, exitFocus } = useApp();
   const { can, ready } = useCan();
-  const { canMdt } = usePortals();
+  const { canMdt, academyOnly } = usePortals();
 
   const routeKey = location.pathname;
   useEffect(() => { exitFocus(); }, [routeKey, exitFocus]);
 
-  const items = ITEMS.filter((i) => !i.perm || !ready || can(i.perm));
+  const items = ITEMS.filter((i) => (!i.perm || !ready || can(i.perm)) && !(i.hideForCadet && academyOnly));
 
   return (
     <div className="relative flex h-full flex-col overflow-hidden">

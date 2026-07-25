@@ -156,7 +156,7 @@ function Header({ agentId, data }: { agentId: Id<"agents">; data: SheetData }) {
         </div>
       </div>
       <div className="flex flex-col items-end gap-[4px]">
-        <div className="text-[10.5px] font-bold uppercase tracking-[0.09em] text-faint">Tuteur</div>
+        <div className="text-[10.5px] font-bold uppercase tracking-[0.09em] text-faint">Officier référent (FTO)</div>
         <button onClick={() => setEditTutor(true)} className="text-[13px] font-semibold hover:text-accent" title="Attribuer un tuteur">
           {data.tutor ? <>{fmtMatricule(data.tutor.matricule) ?? ""} {data.tutor.name}</> : <span className="text-faint">À attribuer</span>}
         </button>
@@ -182,7 +182,7 @@ function TutorModal({ agentId, currentStart, onClose }: { agentId: Id<"agents">;
         }}>Enregistrer</Button></>}
     >
       <div className="flex flex-col gap-[12px]">
-        <label className="flex flex-col gap-[5px]"><span className="text-[11px] font-bold uppercase tracking-[0.07em] text-faint">Officier référent</span>
+        <label className="flex flex-col gap-[5px]"><span className="text-[11px] font-bold uppercase tracking-[0.07em] text-faint">Officier référent (FTO)</span>
           <select value={tutorId} onChange={(e) => setTutorId(e.target.value)} className="h-9 w-full rounded-sm border border-border bg-surface-2 px-2 text-[13px] outline-none focus:border-accent">
             <option value="">Ne pas changer</option>
             {(tutors ?? []).map((t) => <option key={t._id} value={t._id}>{fmtMatricule(t.matricule) ?? ""} {t.prenomRP} {t.nomRP}</option>)}

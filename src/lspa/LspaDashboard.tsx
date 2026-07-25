@@ -17,7 +17,7 @@ export function LspaDashboard() {
     { label: "Encadrants", value: d?.encadrants, icon: Users, to: "/lspa/effectif" },
     { label: "Promotions ouvertes", value: d?.promosOuvertes, icon: GraduationCap, to: "/lspa/promotions" },
     { label: "Sessions en cours", value: d?.sessionsEnCours, icon: Radio, to: "/lspa/quiz" },
-    { label: "Officiers 1 en FTO", value: d?.offi1, icon: ShieldCheck, to: "/lspa/fto" },
+    { label: "Officiers 1 en formation", value: d?.offi1, icon: ShieldCheck, to: "/lspa/fto" },
   ];
 
   const todo = [
