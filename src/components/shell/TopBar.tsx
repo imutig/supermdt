@@ -1,6 +1,8 @@
-import { Search, Sun, Moon } from "lucide-react";
+import { Search, Sun, Moon, ArrowLeftRight } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { useApp } from "@/providers/app-state";
 import { useService } from "@/hooks/useService";
+import { usePortals } from "@/hooks/usePortals";
 import { ServiceToggle } from "@/components/common/ServiceToggle";
 import { DispatchStatus } from "./DispatchStatus";
 import { ProfileMenu } from "./ProfileMenu";
@@ -11,6 +13,8 @@ import { ProfileMenu } from "./ProfileMenu";
 export function TopBar() {
   const { openSearch, mode, toggleMode } = useApp();
   const { onDuty, toggle: toggleDuty } = useService();
+  const { canLspa } = usePortals();
+  const navigate = useNavigate();
 
   return (
     <div className="z-[5] flex h-[50px] flex-shrink-0 items-center gap-[10px] border-b border-border bg-surface px-[14px]">
@@ -46,6 +50,18 @@ export function TopBar() {
       <div className="flex-shrink-0 rounded-[9px] border border-border bg-surface-2 px-[10px] py-[5px]">
         <ServiceToggle onDuty={onDuty} onToggle={toggleDuty} />
       </div>
+
+      {/* Bascule vers l'aiguillage des portails : n'apparaît que pour ceux qui
+          ont réellement un second accès, sinon c'est un bouton mort. */}
+      {canLspa && (
+        <button
+          onClick={() => navigate("/portail")}
+          title="Changer de portail"
+          className="mdt-press flex h-[32px] w-[32px] flex-shrink-0 items-center justify-center rounded-[9px] border border-border bg-surface-2 text-muted hover:border-border-strong hover:text-text"
+        >
+          <ArrowLeftRight className="h-[15px] w-[15px]" />
+        </button>
+      )}
 
       <button
         onClick={toggleMode}

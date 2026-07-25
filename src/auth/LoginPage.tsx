@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useAuthActions } from "@convex-dev/auth/react";
+import { useNavigate } from "react-router-dom";
 import { AuthShell } from "./AuthShell";
 import { useApp } from "@/providers/app-state";
 
@@ -8,6 +9,7 @@ const ID_RE = /^[a-zà-öø-ÿ'-]{2,}\.[a-zà-öø-ÿ'-]{2,}$/i;
 export function LoginPage() {
   const { signIn } = useAuthActions();
   const { requestEntry } = useApp();
+  const navigate = useNavigate();
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [id, setId] = useState("");
   const [pw, setPw] = useState("");
@@ -33,8 +35,8 @@ export function LoginPage() {
     try {
       const login = id.trim().toLowerCase();
       await signIn("password", { email: login, password: pw, name: login, flow: isLogin ? "signIn" : "signUp" });
-      // Connexion réussie -> déclenche la transition d'entrée (l'inscription passe par la finalisation).
-      if (isLogin) requestEntry();
+      // Connexion réussie -> transition d'entrée, puis choix du portail.
+      if (isLogin) { requestEntry(); navigate("/portail", { replace: true }); }
     } catch (e) {
       // Convex enrobe ses erreurs ; on extrait le message lisible quand il y en
       // a un. Sans cela, une panne de configuration serveur se présentait comme

@@ -66,6 +66,16 @@ export const PERMISSION_SLUGS: { slug: string; domain: string; description: stri
   { slug: "bolo.manage", domain: "bolo", description: "Émettre et clore un avis de recherche" },
   // Intégrations
   { slug: "webhooks.manage", domain: "config", description: "Gérer les webhooks Discord" },
+  // LSPA - Police Academy
+  { slug: "lspa.view", domain: "lspa", description: "Accéder au portail de l'académie" },
+  { slug: "lspa.effectif.view", domain: "lspa", description: "Consulter l'effectif de l'académie" },
+  { slug: "lspa.rank.manage", domain: "lspa", description: "Attribuer les grades d'académie" },
+  { slug: "lspa.quiz.view", domain: "lspa", description: "Consulter les quiz de l'académie" },
+  { slug: "lspa.quiz.create", domain: "lspa", description: "Créer un quiz" },
+  { slug: "lspa.quiz.edit", domain: "lspa", description: "Modifier un quiz" },
+  { slug: "lspa.quiz.delete", domain: "lspa", description: "Supprimer un quiz" },
+  { slug: "lspa.session.manage", domain: "lspa", description: "Ouvrir et piloter une session de quiz" },
+  { slug: "lspa.grade", domain: "lspa", description: "Corriger et publier les résultats" },
   // Statistiques
   { slug: "stats.view", domain: "stats", description: "Consulter les statistiques de la station" },
   // Dispatch
@@ -170,6 +180,15 @@ export async function can(ctx: QueryCtx, agent: Doc<"agents">, slug: string): Pr
     const hit = await ctx.db
       .query("gradePermissions")
       .withIndex("by_grade_permission", (q) => q.eq("gradeId", agent.gradeId!).eq("permissionId", perm._id))
+      .first();
+    if (hit) return true;
+  }
+
+  // Grade d'académie : porte les droits propres à la Police Academy.
+  if (agent.academyRankId) {
+    const hit = await ctx.db
+      .query("academyRankPermissions")
+      .withIndex("by_rank_permission", (q) => q.eq("rankId", agent.academyRankId!).eq("permissionId", perm._id))
       .first();
     if (hit) return true;
   }

@@ -25,6 +25,8 @@ export default defineSchema({
     avatarStorageId: v.optional(v.id("_storage")),
     avatarUrl: v.optional(v.string()),
     dateEntree: v.optional(v.number()),
+    // Grade d'académie, cumulé au grade LSPD (Instructor, Supervisor, Director).
+    academyRankId: v.optional(v.id("academyRanks")),
     // Mot de passe temporaire remis par l'État-Major : impose un changement
     // au prochain accès tant qu'il n'a pas été renouvelé par l'agent.
     mustChangePassword: v.optional(v.boolean()),
@@ -62,6 +64,8 @@ export default defineSchema({
     color: v.optional(v.string()),
     // Grade extérieur (ex. DOJ) : peut se connecter avec ses permissions mais hors effectif/organigramme (item 8).
     external: v.optional(v.boolean()),
+    // Grade d'académie (ex. Cadet) : n'ouvre que le portail LSPA, pas le MDT.
+    academyOnly: v.optional(v.boolean()),
   }).index("by_position", ["position"]),
 
   divisions: defineTable({
@@ -139,6 +143,25 @@ export default defineSchema({
     position: v.number(),
     active: v.boolean(),
   }),
+
+  // ============ LSPA (Los Santos Police Academy) ============
+  // Grades de l'académie. Ils se CUMULENT au grade LSPD (un Sergent peut être
+  // Academy Instructor) et portent leurs propres permissions, car deux agents
+  // de même grade LSPD n'ont pas les mêmes droits à l'académie.
+  academyRanks: defineTable({
+    name: v.string(),
+    abbrev: v.optional(v.string()),
+    color: v.optional(v.string()),
+    position: v.number(),
+    active: v.boolean(),
+  }).index("by_position", ["position"]),
+
+  academyRankPermissions: defineTable({
+    rankId: v.id("academyRanks"),
+    permissionId: v.id("permissions"),
+  })
+    .index("by_rank", ["rankId"])
+    .index("by_rank_permission", ["rankId", "permissionId"]),
 
   // ============ FLOTTE LSPD (véhicules de service + sorties) ============
   // Véhicules de la station. Le numéro de toit fixe l'indicatif de patrouille :

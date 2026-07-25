@@ -37,9 +37,12 @@ export const me = query({
       .withIndex("by_agent", (q) => q.eq("agentId", agent._id))
       .filter((q) => q.eq(q.field("endedAt"), undefined))
       .first();
+    // Grade d'académie : présent seulement pour les instructeurs et cadres LSPA.
+    const academyRank = agent.academyRankId ? await ctx.db.get(agent.academyRankId) : null;
     return {
       agent,
       grade,
+      academyRank: academyRank ? { _id: academyRank._id, name: academyRank.name, abbrev: academyRank.abbrev ?? null, color: academyRank.color ?? null } : null,
       divisions,
       onDuty: !!openSession,
       dutySince: openSession?.startedAt,
@@ -69,6 +72,18 @@ export const myPermissions = query({
         .withIndex("by_grade", (q) => q.eq("gradeId", agent.gradeId!))
         .collect();
       for (const x of gp) {
+        const s = permById.get(x.permissionId);
+        if (s) slugs.add(s);
+      }
+    }
+    // Grade d'académie : troisième porteur de permissions, à côté du grade et
+    // des divisions.
+    if (agent.academyRankId) {
+      const ap = await ctx.db
+        .query("academyRankPermissions")
+        .withIndex("by_rank", (q) => q.eq("rankId", agent.academyRankId!))
+        .collect();
+      for (const x of ap) {
         const s = permById.get(x.permissionId);
         if (s) slugs.add(s);
       }

@@ -1,5 +1,5 @@
 import { lazy } from "react";
-import { Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { Authenticated, Unauthenticated, AuthLoading } from "convex/react";
 import { AppStateProvider, useApp } from "@/providers/app-state";
 import { useMe } from "@/hooks/useMe";
@@ -37,6 +37,10 @@ import { LoginPage } from "@/auth/LoginPage";
 import { Onboarding } from "@/auth/Onboarding";
 import { PendingScreen } from "@/auth/PendingScreen";
 import { ChangePasswordScreen } from "@/auth/ChangePasswordScreen";
+import { PortalChoice } from "@/portal/PortalChoice";
+import { LspaShell } from "@/lspa/LspaShell";
+import { LspaDashboard } from "@/lspa/LspaDashboard";
+import { usePortals } from "@/hooks/usePortals";
 import { Splash } from "@/auth/Splash";
 
 export default function App() {
@@ -57,6 +61,8 @@ export default function App() {
 
 function Gated() {
   const me = useMe();
+  const location = useLocation();
+  const { canMdt, ready: portalsReady } = usePortals();
   const { entryPending, endEntry } = useApp();
   if (me === undefined) return <Splash />;
   if (me === null) return <Onboarding />;
@@ -66,6 +72,11 @@ function Gated() {
   if (status === "INACTIVE" || status === "SUSPENDED") return <PendingScreen suspended />;
   // Mot de passe temporaire : aucun accès au MDT tant qu'il n'est pas remplacé.
   if (me.agent.mustChangePassword) return <ChangePasswordScreen />;
+
+  // Un cadet n'a pas accès au MDT : toute route hors académie le renvoie sur
+  // son portail, plutôt que de lui refuser page après page.
+  const inLspa = location.pathname.startsWith("/lspa") || location.pathname === "/portail";
+  if (portalsReady && !canMdt && !inLspa) return <Navigate to="/lspa" replace />;
 
   return (
     <>
@@ -77,6 +88,14 @@ function Gated() {
         />
       )}
     <Routes>
+      {/* Aiguillage entre les deux surfaces, hors de toute enveloppe. */}
+      <Route path="/portail" element={<PortalChoice />} />
+
+      {/* Portail de l'académie */}
+      <Route path="/lspa" element={<RequirePerm perm="lspa.view"><LspaShell /></RequirePerm>}>
+        <Route index element={<LspaDashboard />} />
+      </Route>
+
       <Route element={<AppShell />}>
         <Route path="/" element={<Dashboard />} />
         <Route path="/profil" element={<Profil />} />

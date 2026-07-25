@@ -458,3 +458,78 @@ export const dedupeDispatch = internalMutation({
     return `${statutsSupprimes} statut(s) et ${secteursSupprimes} secteur(s) dupliqués supprimés, ${patrouillesReaffectees} patrouille(s) réaffectée(s)${dryRun ? " (simulation)" : ""}.`;
   },
 });
+
+// Fondations de la Police Academy : grade Cadet et grades d'académie.
+// Idempotent : ne crée que ce qui manque, ne touche pas à l'existant.
+export const seedAcademy = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const report: string[] = [];
+
+    // --- Grade Cadet ---
+    // Placé sous le grade le plus bas : un cadet n'est pas encore agent, et la
+    // hiérarchie (assertOutranks) doit le refléter.
+    const grades = await ctx.db.query("grades").collect();
+    if (!grades.some((g) => g.name.toLowerCase() === "cadet")) {
+      const minPos = grades.reduce((m, g) => Math.min(m, g.position), 0);
+      await ctx.db.insert("grades", {
+        name: "Cadet",
+        abbrev: "CDT",
+        corps: "OPERATIONNEL",
+        color: "#8A929C",
+        position: minPos - 1,
+        academyOnly: true, // n'ouvre que le portail LSPA
+      });
+      report.push("grade Cadet créé");
+    }
+
+    // --- Grades d'académie ---
+    const RANKS: { name: string; abbrev: string; color: string; perms: string[] }[] = [
+      {
+        name: "Academy Instructor", abbrev: "INS", color: "#3B82F6",
+        perms: ["lspa.view", "lspa.effectif.view", "lspa.quiz.view", "lspa.quiz.create", "lspa.quiz.edit", "lspa.session.manage", "lspa.grade"],
+      },
+      {
+        name: "Academy Supervisor", abbrev: "SUP", color: "#8B5CF6",
+        perms: ["lspa.view", "lspa.effectif.view", "lspa.quiz.view", "lspa.quiz.create", "lspa.quiz.edit", "lspa.quiz.delete", "lspa.session.manage", "lspa.grade"],
+      },
+      {
+        name: "Academy Director", abbrev: "DIR", color: "#E0A030",
+        perms: ["lspa.view", "lspa.effectif.view", "lspa.rank.manage", "lspa.quiz.view", "lspa.quiz.create", "lspa.quiz.edit", "lspa.quiz.delete", "lspa.session.manage", "lspa.grade"],
+      },
+    ];
+
+    const permBySlug = new Map((await ctx.db.query("permissions").collect()).map((p) => [p.slug, p._id]));
+    const existingRanks = await ctx.db.query("academyRanks").collect();
+    let created = 0;
+    for (let i = 0; i < RANKS.length; i++) {
+      const r = RANKS[i];
+      if (existingRanks.some((x) => x.name.toLowerCase() === r.name.toLowerCase())) continue;
+      const rankId = await ctx.db.insert("academyRanks", {
+        name: r.name, abbrev: r.abbrev, color: r.color, position: i, active: true,
+      });
+      for (const slug of r.perms) {
+        const permissionId = permBySlug.get(slug);
+        if (permissionId) await ctx.db.insert("academyRankPermissions", { rankId, permissionId });
+      }
+      created++;
+    }
+    if (created) report.push(`${created} grade(s) d'académie créé(s)`);
+
+    // --- Le grade Cadet reçoit l'accès au portail ---
+    const cadet = (await ctx.db.query("grades").collect()).find((g) => g.name.toLowerCase() === "cadet");
+    const lspaView = permBySlug.get("lspa.view");
+    if (cadet && lspaView) {
+      const has = await ctx.db
+        .query("gradePermissions")
+        .withIndex("by_grade_permission", (q) => q.eq("gradeId", cadet._id).eq("permissionId", lspaView))
+        .first();
+      if (!has) {
+        await ctx.db.insert("gradePermissions", { gradeId: cadet._id, permissionId: lspaView });
+        report.push("accès portail accordé au grade Cadet");
+      }
+    }
+
+    return report.length ? report.join(", ") + "." : "Déjà en place, rien à faire.";
+  },
+});
