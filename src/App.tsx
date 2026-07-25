@@ -44,6 +44,7 @@ import { LspaDashboard } from "@/lspa/LspaDashboard";
 import { LspaEffectif } from "@/lspa/LspaEffectif";
 import { LspaQuiz } from "@/lspa/LspaQuiz";
 const QuizEditor = lazy(() => import("@/lspa/QuizEditor").then((m) => ({ default: m.QuizEditor })));
+const SessionScreen = lazy(() => import("@/lspa/session/SessionScreen").then((m) => ({ default: m.SessionScreen })));
 import { usePortals } from "@/hooks/usePortals";
 import { Splash } from "@/auth/Splash";
 
@@ -133,6 +134,7 @@ function Gated() {
         <Route path="effectif" element={<RequirePerm perm="lspa.effectif.view"><LspaEffectif /></RequirePerm>} />
         <Route path="quiz" element={<LspaQuiz />} />
         <Route path="quiz/:id" element={<RequirePerm perm="lspa.quiz.view"><QuizEditor /></RequirePerm>} />
+        <Route path="session/:id" element={<SessionScreen />} />
         <Route path="*" element={<Navigate to="/lspa" replace />} />
       </Route>
 

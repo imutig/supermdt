@@ -3,7 +3,7 @@ import { useMutation, useQuery } from "convex/react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft, Plus, ChevronUp, ChevronDown, Trash2, Pencil, X, CheckCircle2, Circle,
-  Type, ListChecks, CircleDot, PenLine, Clock,
+  Type, ListChecks, CircleDot, PenLine, Clock, Radio, Play,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import type { Id } from "convex/_generated/dataModel";
@@ -68,9 +68,13 @@ export function QuizEditor() {
   const toast = useToast();
   const { can } = useCan();
   const canEdit = can("lspa.quiz.edit");
+  const canManage = can("lspa.session.manage");
+  const liveSession = useQuery(api.quizSession.currentForQuiz, canManage ? { quizId } : "skip");
+  const openSession = useMutation(api.quizSession.open);
 
   const [draft, setDraft] = useState<QuestionDraft | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [opening, setOpening] = useState(false);
 
   if (data === undefined) return <div className="p-[22px_26px]"><SkeletonRows rows={5} /></div>;
   if (data === null) {
@@ -98,6 +102,45 @@ export function QuizEditor() {
         <ArrowLeft className="h-[14px] w-[14px]" />
         Tous les quiz
       </button>
+
+      {/* Pilotage d'une session : ouvrir une nouvelle épreuve ou reprendre celle
+          en cours. C'est d'ici qu'on lance la promotion sur le quiz. */}
+      {canManage && (
+        <div className="mb-[16px] flex flex-wrap items-center gap-[12px] rounded-card border p-[14px_18px]" style={{ borderColor: "color-mix(in srgb, var(--accent) 40%, var(--border))", background: "var(--accent-soft)" }}>
+          <span className="flex h-[36px] w-[36px] flex-shrink-0 items-center justify-center rounded-[10px] bg-surface text-accent">
+            <Radio className="h-[17px] w-[17px]" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="text-[13.5px] font-bold">Faire passer ce quiz</div>
+            <div className="text-[12px] text-muted">
+              {liveSession
+                ? liveSession.status === "LOBBY" ? "Une session attend en salle d'attente."
+                  : liveSession.status === "RUNNING" ? "Une session est en cours."
+                  : "Une session est terminée, à corriger ou publier."
+                : "Ouvrez une session pour lancer la promotion."}
+            </div>
+          </div>
+          {liveSession ? (
+            <Button variant="primary" onClick={() => navigate(`/lspa/session/${liveSession._id}`)}>
+              <Radio className="h-[15px] w-[15px]" /> Reprendre la session
+            </Button>
+          ) : (
+            <Button
+              variant="primary"
+              loading={opening}
+              disabled={questions.length === 0}
+              onClick={async () => {
+                setOpening(true);
+                const sid = await toast.guard(openSession({ quizId }), "Ouverture impossible");
+                setOpening(false);
+                if (sid) navigate(`/lspa/session/${sid}`);
+              }}
+            >
+              <Play className="h-[15px] w-[15px]" /> Ouvrir une session
+            </Button>
+          )}
+        </div>
+      )}
 
       {/* Réglages du quiz */}
       <section className="mb-[16px] rounded-card border border-border bg-surface p-[16px_18px]">

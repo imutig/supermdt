@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { useNavigate } from "react-router-dom";
-import { ClipboardList, Plus, Clock, Target, PenLine, Radio } from "lucide-react";
+import { ClipboardList, Plus, Clock, Target, PenLine, Radio, Award, XCircle } from "lucide-react";
 import { api } from "@/lib/api";
 import type { Id } from "convex/_generated/dataModel";
 import { useCan } from "@/hooks/useCan";
@@ -20,19 +20,85 @@ export function LspaQuiz() {
   return can("lspa.quiz.view") ? <Catalogue /> : <VueCadet />;
 }
 
+// Vue du cadet : une session à rejoindre (ou à reprendre) et ses résultats.
 function VueCadet() {
+  const data = useQuery(api.quizSession.forMe);
+  const navigate = useNavigate();
+
   return (
     <div className="p-[22px_26px]" style={{ animation: "mdtFade .2s ease" }}>
       <div className="mb-[18px]">
         <h1 className="m-0 text-[21px] font-bold tracking-tight">Quiz</h1>
         <div className="mt-[3px] text-[13px] text-muted">Vos épreuves de formation.</div>
       </div>
-      <div className="rounded-card border border-border bg-surface">
-        <EmptyState
-          title="Aucune session en cours"
-          message="Un quiz apparaîtra ici dès qu'un instructeur en ouvrira un."
-        />
-      </div>
+
+      {data === undefined ? (
+        <div className="rounded-card border border-border bg-surface p-4"><SkeletonRows rows={3} /></div>
+      ) : data.openSessions.length === 0 && data.results.length === 0 ? (
+        <div className="rounded-card border border-border bg-surface">
+          <EmptyState title="Aucune session en cours" message="Un quiz apparaîtra ici dès qu'un instructeur en ouvrira un." />
+        </div>
+      ) : (
+        <div className="flex flex-col gap-[20px]">
+          {data.openSessions.length > 0 && (
+            <section>
+              <h2 className="mb-[9px] text-[11px] font-bold uppercase tracking-[0.09em] text-faint">Sessions ouvertes</h2>
+              <div className="flex flex-col gap-[10px]">
+                {data.openSessions.map((s) => (
+                  <button
+                    key={s._id}
+                    onClick={() => navigate(`/lspa/session/${s._id}`)}
+                    className="mdt-press flex items-center gap-[13px] rounded-card border p-[15px_17px] text-left"
+                    style={{ borderColor: "color-mix(in srgb, var(--accent) 45%, var(--border))", background: "var(--accent-soft)" }}
+                  >
+                    <span className="flex h-[38px] w-[38px] flex-shrink-0 items-center justify-center rounded-[11px] bg-surface text-accent">
+                      <Radio className="h-[18px] w-[18px]" />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-[14.5px] font-bold">{s.title}</div>
+                      <div className="mt-[2px] text-[12px] text-muted">
+                        {s.submitted ? "Copie rendue, en attente des résultats"
+                          : s.status === "RUNNING" ? (s.joined ? "Épreuve en cours, reprenez votre copie" : "Épreuve en cours")
+                          : s.joined ? "En salle d'attente" : "Session ouverte, rejoignez-la"}
+                      </div>
+                    </div>
+                    <span className="flex-shrink-0 rounded-[7px] px-[9px] py-[4px] text-[11px] font-bold uppercase tracking-[0.06em] text-accent" style={{ background: "color-mix(in srgb, var(--accent) 14%, transparent)" }}>
+                      {s.submitted ? "Rendu" : s.status === "RUNNING" ? "En cours" : "Ouverte"}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {data.results.length > 0 && (
+            <section>
+              <h2 className="mb-[9px] text-[11px] font-bold uppercase tracking-[0.09em] text-faint">Mes résultats</h2>
+              <div className="flex flex-col gap-[8px]">
+                {data.results.map((r) => {
+                  const tint = r.passed ? "var(--accent)" : "var(--danger)";
+                  return (
+                    <button
+                      key={r.sessionId}
+                      onClick={() => navigate(`/lspa/session/${r.sessionId}`)}
+                      className="mdt-press flex items-center gap-[12px] rounded-card border border-border bg-surface p-[13px_16px] text-left hover:border-border-strong"
+                    >
+                      <span className="flex h-[32px] w-[32px] flex-shrink-0 items-center justify-center rounded-full" style={{ background: `color-mix(in srgb, ${tint} 14%, transparent)`, color: tint }}>
+                        {r.passed ? <Award className="h-[16px] w-[16px]" /> : <XCircle className="h-[16px] w-[16px]" />}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-[13.5px] font-semibold">{r.title}</div>
+                        <div className="text-[12px] text-muted">{r.score} / {r.maxPoints} points</div>
+                      </div>
+                      <span className="flex-shrink-0 text-[12.5px] font-bold" style={{ color: tint }}>{r.passed ? "Réussi" : "Non validé"}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+          )}
+        </div>
+      )}
     </div>
   );
 }
