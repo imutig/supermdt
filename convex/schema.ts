@@ -163,6 +163,106 @@ export default defineSchema({
     .index("by_rank", ["rankId"])
     .index("by_rank_permission", ["rankId", "permissionId"]),
 
+  // ---- Quiz de l'académie ----
+  // Un quiz est un modèle réutilisable ; on le fait passer en ouvrant une
+  // « session ». Le barème vit sur les questions, le quiz n'en porte que le
+  // seuil de réussite et le temps global.
+  quizzes: defineTable({
+    title: v.string(),
+    description: v.optional(v.string()),
+    passPercent: v.number(), // seuil de réussite, en % du total
+    durationSeconds: v.optional(v.number()), // temps global ; absent = illimité
+    shuffleQuestions: v.optional(v.boolean()),
+    status: v.union(v.literal("DRAFT"), v.literal("PUBLISHED"), v.literal("ARCHIVED")),
+    createdBy: v.id("agents"),
+    updatedAt: v.number(),
+  }).index("by_status", ["status"]),
+
+  quizQuestions: defineTable({
+    quizId: v.id("quizzes"),
+    position: v.number(),
+    // SINGLE : une seule bonne réponse · MULTI : plusieurs · TEXT : champ libre.
+    kind: v.union(v.literal("SINGLE"), v.literal("MULTI"), v.literal("TEXT")),
+    prompt: v.string(), // texte riche (HTML)
+    mediaUrls: v.optional(v.array(v.string())), // illustrations de l'énoncé
+    points: v.number(),
+    timeLimitSeconds: v.optional(v.number()), // temps propre à la question
+    // Sur une question à choix, réclame en plus une justification écrite : c'est
+    // ce qui permet d'avoir « les deux » sur une même question. Elle bascule
+    // alors en correction manuelle, comme une question libre.
+    requireJustification: v.optional(v.boolean()),
+    expectedAnswer: v.optional(v.string()), // repère de correction, jamais montré au cadet
+    explanation: v.optional(v.string()), // affichée à la publication des résultats
+  }).index("by_quiz", ["quizId", "position"]),
+
+  quizChoices: defineTable({
+    questionId: v.id("quizQuestions"),
+    quizId: v.id("quizzes"), // dénormalisé : charge toutes les options d'un quiz d'un coup
+    position: v.number(),
+    label: v.string(),
+    imageUrl: v.optional(v.string()),
+    correct: v.boolean(),
+  })
+    .index("by_question", ["questionId", "position"])
+    .index("by_quiz", ["quizId"]),
+
+  // ---- Passage : sessions live ----
+  // Le cadet ne voit rien tant qu'aucune session n'est ouverte. LOBBY = salle
+  // d'attente, RUNNING = épreuve en cours, CLOSED = terminée mais non corrigée,
+  // PUBLISHED = résultats visibles des cadets (décision de l'instructeur).
+  quizSessions: defineTable({
+    quizId: v.id("quizzes"),
+    title: v.string(), // instantané : le quiz peut être renommé après coup
+    status: v.union(
+      v.literal("LOBBY"),
+      v.literal("RUNNING"),
+      v.literal("CLOSED"),
+      v.literal("PUBLISHED"),
+    ),
+    openedBy: v.id("agents"),
+    openedAt: v.number(),
+    startedAt: v.optional(v.number()),
+    endsAt: v.optional(v.number()), // startedAt + durationSeconds, si temps global
+    closedAt: v.optional(v.number()),
+    publishedAt: v.optional(v.number()),
+  })
+    .index("by_status", ["status"])
+    .index("by_quiz", ["quizId"]),
+
+  quizParticipants: defineTable({
+    sessionId: v.id("quizSessions"),
+    agentId: v.id("agents"),
+    name: v.string(), // instantané pour l'affichage live
+    joinedAt: v.number(),
+    submittedAt: v.optional(v.number()),
+    answeredCount: v.number(), // progression suivie en direct par l'instructeur
+    autoScore: v.number(), // points attribués automatiquement
+    manualScore: v.optional(v.number()), // points ajoutés à la correction
+    needsGrading: v.boolean(), // reste au moins une réponse libre non corrigée
+    gradedAt: v.optional(v.number()),
+  })
+    .index("by_session", ["sessionId"])
+    .index("by_session_agent", ["sessionId", "agentId"])
+    .index("by_agent", ["agentId"]),
+
+  // Une ligne par question répondue. Écrite à chaque changement : c'est elle qui
+  // assure la reprise après actualisation de la page.
+  quizAnswers: defineTable({
+    participantId: v.id("quizParticipants"),
+    sessionId: v.id("quizSessions"),
+    questionId: v.id("quizQuestions"),
+    choiceIds: v.optional(v.array(v.id("quizChoices"))),
+    text: v.optional(v.string()),
+    answeredAt: v.number(),
+    awarded: v.optional(v.number()), // points retenus (auto ou après correction)
+    gradedBy: v.optional(v.id("agents")),
+    gradedAt: v.optional(v.number()),
+    comment: v.optional(v.string()),
+  })
+    .index("by_participant", ["participantId"])
+    .index("by_participant_question", ["participantId", "questionId"])
+    .index("by_session", ["sessionId"]),
+
   // ============ FLOTTE LSPD (véhicules de service + sorties) ============
   // Véhicules de la station. Le numéro de toit fixe l'indicatif de patrouille :
   // ses deux derniers chiffres deviennent le suffixe (toit 509 -> 13x09).

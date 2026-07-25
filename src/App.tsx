@@ -41,6 +41,8 @@ import { PortalChoice } from "@/portal/PortalChoice";
 import { LspaShell } from "@/lspa/LspaShell";
 import { LspaDashboard } from "@/lspa/LspaDashboard";
 import { LspaEffectif } from "@/lspa/LspaEffectif";
+import { LspaQuiz } from "@/lspa/LspaQuiz";
+const QuizEditor = lazy(() => import("@/lspa/QuizEditor").then((m) => ({ default: m.QuizEditor })));
 import { usePortals } from "@/hooks/usePortals";
 import { Splash } from "@/auth/Splash";
 
@@ -96,6 +98,9 @@ function Gated() {
       <Route path="/lspa" element={<RequirePerm perm="lspa.view"><LspaShell /></RequirePerm>}>
         <Route index element={<LspaDashboard />} />
         <Route path="effectif" element={<RequirePerm perm="lspa.effectif.view"><LspaEffectif /></RequirePerm>} />
+        <Route path="quiz" element={<LspaQuiz />} />
+        <Route path="quiz/:id" element={<RequirePerm perm="lspa.quiz.view"><QuizEditor /></RequirePerm>} />
+        <Route path="*" element={<Navigate to="/lspa" replace />} />
       </Route>
 
       <Route element={<AppShell />}>
