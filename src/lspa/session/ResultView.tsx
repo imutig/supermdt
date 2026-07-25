@@ -6,6 +6,7 @@ import { LoadingScreen } from "@/components/common/Loader";
 import { EmptyState } from "@/components/common/EmptyState";
 import { Button } from "@/components/common/Button";
 import { RichTextEditor } from "@/components/common/RichTextEditor";
+import { QuizMedia } from "@/components/common/QuizMedia";
 
 type Review = {
   title: string;
@@ -84,6 +85,12 @@ export function CopyReview({ review, onBack, showCandidate }: { review: Review; 
               </div>
               <ScorePill awarded={q.awarded} points={q.points} manual={q.manual} />
             </div>
+
+            {q.mediaUrls.length > 0 && (
+              <div className="mb-[8px] ml-[37px] grid grid-cols-1 gap-[8px] sm:grid-cols-2">
+                {q.mediaUrls.map((u) => <QuizMedia key={u} url={u} />)}
+              </div>
+            )}
 
             {q.kind !== "TEXT" && (
               <ul className="m-0 mb-[6px] ml-[37px] flex list-none flex-col gap-[4px] p-0">

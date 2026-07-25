@@ -13,7 +13,7 @@ import { Button } from "@/components/common/Button";
 import { EmptyState } from "@/components/common/EmptyState";
 import { SkeletonRows } from "@/components/common/Skeleton";
 import { RichTextEditor, richTextToPlain } from "@/components/common/RichTextEditor";
-import { ImageGallery } from "@/components/common/ImageGallery";
+import { MediaGallery } from "@/components/common/QuizMedia";
 import { Modal } from "@/components/common/Modal";
 import { QuestionCard, type PlayQuestion } from "./session/CadetPlay";
 import { StatusChip } from "./LspaQuiz";
@@ -328,7 +328,7 @@ export function QuizEditor() {
                     {q.manual && (
                       <span className="flex items-center gap-[5px] text-warning"><PenLine className="h-[12px] w-[12px]" />Correction manuelle</span>
                     )}
-                    {q.mediaUrls.length > 0 && <span>{q.mediaUrls.length} image{q.mediaUrls.length > 1 ? "s" : ""}</span>}
+                    {q.mediaUrls.length > 0 && <span>{q.mediaUrls.length} média{q.mediaUrls.length > 1 ? "s" : ""}</span>}
                   </div>
                   {q.kind !== "TEXT" && (
                     <ul className="m-0 mt-[8px] flex list-none flex-col gap-[3px] p-0">
@@ -568,8 +568,8 @@ function QuestionPanel({ quizId, draft, onClose }: { quizId: Id<"quizzes">; draf
             <RichTextEditor value={d.prompt} onChange={(html) => setD((s) => ({ ...s, prompt: html }))} placeholder="Posez la question…" minHeight={110} />
           </Field>
 
-          <Field label="Illustrations" hint="Images affichées avec l'énoncé.">
-            <ImageGallery urls={d.mediaUrls} onChange={(urls) => setD((s) => ({ ...s, mediaUrls: urls }))} emptyLabel="Aucune illustration." />
+          <Field label="Médias" hint="Images, vidéos ou audio affichés avec l'énoncé.">
+            <MediaGallery urls={d.mediaUrls} onChange={(urls) => setD((s) => ({ ...s, mediaUrls: urls }))} />
           </Field>
 
           <div className="grid grid-cols-2 gap-[12px]">

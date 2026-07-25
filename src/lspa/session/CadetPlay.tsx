@@ -11,6 +11,7 @@ import { LoadingScreen } from "@/components/common/Loader";
 import { EmptyState } from "@/components/common/EmptyState";
 import { Button } from "@/components/common/Button";
 import { RichTextEditor } from "@/components/common/RichTextEditor";
+import { QuizMedia } from "@/components/common/QuizMedia";
 import { Countdown, useCountdownLabel } from "./Countdown";
 import { ResultView } from "./ResultView";
 
@@ -309,10 +310,8 @@ export function QuestionCard({
       </div>
 
       {q.mediaUrls.length > 0 && (
-        <div className="mb-[16px] grid grid-cols-2 gap-[8px]">
-          {q.mediaUrls.map((u) => (
-            <img key={u} src={u} alt="" className="w-full rounded-sm border border-border object-cover" />
-          ))}
+        <div className="mb-[16px] grid grid-cols-1 gap-[8px] sm:grid-cols-2">
+          {q.mediaUrls.map((u) => <QuizMedia key={u} url={u} />)}
         </div>
       )}
 
