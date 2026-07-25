@@ -98,6 +98,78 @@ export const effectif = query({
   },
 });
 
+// Fiche d'un cadet : identité, moyenne par catégorie de quiz, et l'historique
+// de ses épreuves publiées. Base volontairement sobre ; le contenu détaillé
+// (évaluations, notes d'encadrant) viendra s'y greffer.
+export const cadetSheet = query({
+  args: { agentId: v.id("agents") },
+  handler: async (ctx, { agentId }) => {
+    const viewer = await requireAgent(ctx);
+    await requirePermission(ctx, viewer, "lspa.effectif.view");
+    const agent = await ctx.db.get(agentId);
+    if (!agent) return null;
+    const grade = agent.gradeId ? await ctx.db.get(agent.gradeId) : null;
+
+    const categories = (await ctx.db.query("quizCategories").withIndex("by_position").collect());
+    const catById = new Map(categories.map((c) => [c._id as string, c]));
+
+    const participations = await ctx.db
+      .query("quizParticipants")
+      .withIndex("by_agent", (q) => q.eq("agentId", agentId))
+      .collect();
+
+    // Par catégorie : cumul des points obtenus / possibles, pour une moyenne.
+    const catAgg = new Map<string, { got: number; max: number; count: number }>();
+    const history = [];
+    for (const p of participations) {
+      const session = await ctx.db.get(p.sessionId);
+      if (!session || session.status !== "PUBLISHED") continue;
+      const quiz = await ctx.db.get(session.quizId);
+      const maxPoints = (await ctx.db.query("quizQuestions").withIndex("by_quiz", (q) => q.eq("quizId", session.quizId)).collect())
+        .reduce((s, q) => s + q.points, 0);
+      const score = p.autoScore + (p.manualScore ?? 0);
+      const pct = maxPoints > 0 ? Math.round((score / maxPoints) * 100) : 0;
+      const catKey = (quiz?.categoryId as string) ?? "__none__";
+      const agg = catAgg.get(catKey) ?? { got: 0, max: 0, count: 0 };
+      agg.got += score; agg.max += maxPoints; agg.count += 1;
+      catAgg.set(catKey, agg);
+      history.push({
+        sessionId: session._id,
+        title: session.title,
+        category: quiz?.categoryId ? catById.get(quiz.categoryId as string)?.name ?? null : null,
+        score, maxPoints, pct,
+        passed: typeof quiz?.passPercent === "number" ? pct >= quiz.passPercent : null,
+        publishedAt: session.publishedAt ?? 0,
+      });
+    }
+    history.sort((a, b) => b.publishedAt - a.publishedAt);
+
+    const byCategory = [...catAgg.entries()].map(([key, agg]) => {
+      const cat = key === "__none__" ? null : catById.get(key);
+      return {
+        categoryId: key === "__none__" ? null : key,
+        name: cat?.name ?? "Sans catégorie",
+        color: cat?.color ?? null,
+        average: agg.max > 0 ? Math.round((agg.got / agg.max) * 100) : 0,
+        quizzes: agg.count,
+      };
+    }).sort((a, b) => (a.categoryId === null ? 1 : b.categoryId === null ? -1 : 0));
+
+    return {
+      agent: {
+        _id: agent._id,
+        prenomRP: agent.prenomRP,
+        nomRP: agent.nomRP,
+        avatarUrl: agent.avatarUrl ?? null,
+        grade: grade?.name ?? null,
+        dateEntree: agent.dateEntree ?? null,
+      },
+      byCategory,
+      history,
+    };
+  },
+});
+
 // Attribution ou retrait d'un grade d'académie. Volontairement sans contrôle
 // hiérarchique LSPD : l'encadrement de l'académie ne suit pas la hiérarchie
 // opérationnelle, un Academy Director peut être Officier au commissariat.

@@ -1,6 +1,7 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery } from "convex/react";
-import { GraduationCap, Users, Plus, X } from "lucide-react";
+import { GraduationCap, Users, Plus, X, ChevronRight } from "lucide-react";
 import { api } from "@/lib/api";
 import { readableError } from "@/lib/errors";
 import type { Id } from "convex/_generated/dataModel";
@@ -30,6 +31,7 @@ type Rank = { _id: Id<"academyRanks">; name: string; abbrev: string; color?: str
 export function LspaEffectif() {
   const data = useQuery(api.lspa.effectif);
   const setRank = useMutation(api.lspa.setAcademyRank);
+  const navigate = useNavigate();
   const { can } = useCan();
   const manage = can("lspa.rank.manage");
   const [adding, setAdding] = useState(false);
@@ -76,10 +78,11 @@ export function LspaEffectif() {
             ) : (
               <div className="flex flex-col">
                 {data.cadets.map((c) => (
-                  <Row key={c._id} p={c as Person} hideBadge>
+                  <Row key={c._id} p={c as Person} hideBadge onOpen={() => navigate(`/lspa/cadet/${c._id}`)}>
                     <span className="text-[12px] text-faint">
                       {c.dateEntree ? `Entré le ${new Date(c.dateEntree).toLocaleDateString("fr-FR")}` : "Date d'entrée inconnue"}
                     </span>
+                    <ChevronRight className="h-[15px] w-[15px] flex-shrink-0 text-faint" />
                   </Row>
                 ))}
               </div>
@@ -173,10 +176,14 @@ function Section({
   );
 }
 
-function Row({ p, hideBadge, children }: { p: Person; hideBadge?: boolean; children?: React.ReactNode }) {
+function Row({ p, hideBadge, onOpen, children }: { p: Person; hideBadge?: boolean; onOpen?: () => void; children?: React.ReactNode }) {
   const badge = !hideBadge ? fmtBadge(p.matricule) : null;
+  const Tag = onOpen ? "button" : "div";
   return (
-    <div className="flex items-center gap-[11px] border-b border-border px-[15px] py-[10px] last:border-b-0">
+    <Tag
+      onClick={onOpen}
+      className={`flex w-full items-center gap-[11px] border-b border-border px-[15px] py-[10px] text-left last:border-b-0 ${onOpen ? "hover:bg-surface-2" : ""}`}
+    >
       <Avatar p={p} />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-[7px] text-[13.5px] font-semibold">
@@ -189,7 +196,7 @@ function Row({ p, hideBadge, children }: { p: Person; hideBadge?: boolean; child
         </div>
       </div>
       {children}
-    </div>
+    </Tag>
   );
 }
 
