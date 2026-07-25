@@ -9,6 +9,8 @@ import { fmtBadge } from "@/components/common/AgentTag";
 import { EmptyState } from "@/components/common/EmptyState";
 import { SkeletonRows } from "@/components/common/Skeleton";
 import { Button } from "@/components/common/Button";
+import { Modal } from "@/components/common/Modal";
+import { AgentPicker } from "@/components/common/AgentPicker";
 
 // Effectif de l'académie. Deux populations distinctes : la promotion en cours
 // (les cadets) et l'encadrement. Un encadrant garde son grade LSPD ; le grade
@@ -89,7 +91,7 @@ export function LspaEffectif() {
             title="Encadrement"
             count={data.encadrants.length}
             action={
-              manage && !adding && data.assignables.length > 0 ? (
+              manage ? (
                 <Button onClick={() => setAdding(true)} className="!py-[5px] !text-[12px]">
                   <Plus className="h-[13px] w-[13px]" />
                   Ajouter
@@ -97,17 +99,6 @@ export function LspaEffectif() {
               ) : undefined
             }
           >
-            {adding && (
-              <AddPanel
-                agents={data.assignables as Person[]}
-                ranks={data.ranks as Rank[]}
-                onClose={() => setAdding(false)}
-                onPick={async (agentId, rankId) => {
-                  await apply(agentId, rankId);
-                  setAdding(false);
-                }}
-              />
-            )}
             {data.encadrants.length === 0 ? (
               <EmptyState compact title="Aucun encadrant" message="Attribuez un grade d'académie à un agent." />
             ) : (
@@ -142,6 +133,18 @@ export function LspaEffectif() {
             )}
           </Section>
         </div>
+      )}
+
+      {adding && data && (
+        <AddEncadrantModal
+          agents={data.assignables as Person[]}
+          ranks={data.ranks as Rank[]}
+          onClose={() => setAdding(false)}
+          onPick={async (agentId, rankId) => {
+            await apply(agentId, rankId);
+            setAdding(false);
+          }}
+        />
       )}
     </div>
   );
@@ -213,8 +216,9 @@ function RankChip({ rank }: { rank: Rank }) {
   );
 }
 
-// Panneau d'ajout : on choisit l'agent puis le grade d'académie à lui donner.
-function AddPanel({
+// Ajout d'un encadrant : on choisit un agent (recherche vivante) puis le grade
+// d'académie à lui attribuer. En modale, jamais greffé sur la page.
+function AddEncadrantModal({
   agents, ranks, onClose, onPick,
 }: {
   agents: Person[];
@@ -222,55 +226,60 @@ function AddPanel({
   onClose: () => void;
   onPick: (agentId: Id<"agents">, rankId: Id<"academyRanks">) => void | Promise<void>;
 }) {
-  const [q, setQ] = useState("");
-  const [agentId, setAgentId] = useState<Id<"agents"> | "">("");
+  const [selected, setSelected] = useState<string[]>([]);
   const [rankId, setRankId] = useState<Id<"academyRanks"> | "">(ranks[0]?._id ?? "");
+  const [busy, setBusy] = useState(false);
+  const agentId = selected[0] as Id<"agents"> | undefined;
 
-  const needle = q.trim().toLowerCase();
-  const list = needle
-    ? agents.filter((a) => `${a.prenomRP} ${a.nomRP}`.toLowerCase().includes(needle))
-    : agents;
+  async function submit() {
+    if (!agentId || !rankId) return;
+    setBusy(true);
+    await onPick(agentId, rankId);
+    setBusy(false);
+  }
 
   return (
-    <div className="border-b border-border bg-surface-2 p-[13px_15px]">
-      <div className="mb-[9px] flex items-center gap-[9px]">
-        <input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="Rechercher un agent…"
-          className="h-[32px] min-w-0 flex-1 rounded-[8px] border border-border bg-surface px-[10px] text-[13px] text-text outline-none"
-        />
-        <select
-          value={agentId}
-          onChange={(e) => setAgentId(e.target.value as Id<"agents">)}
-          className="h-[32px] max-w-[220px] flex-1 rounded-[8px] border border-border bg-surface px-[8px] text-[13px] text-text outline-none"
-        >
-          <option value="">Choisir un agent…</option>
-          {list.map((a) => (
-            <option key={a._id} value={a._id}>{a.prenomRP} {a.nomRP}</option>
-          ))}
-        </select>
-        <select
-          value={rankId}
-          onChange={(e) => setRankId(e.target.value as Id<"academyRanks">)}
-          className="h-[32px] rounded-[8px] border border-border bg-surface px-[8px] text-[13px] text-text outline-none"
-        >
-          {ranks.map((r) => (
-            <option key={r._id} value={r._id}>{r.name}</option>
-          ))}
-        </select>
+    <Modal
+      title="Ajouter un encadrant"
+      icon={<Users className="h-[17px] w-[17px]" />}
+      onClose={onClose}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>Annuler</Button>
+          <Button variant="primary" loading={busy} disabled={!agentId || !rankId} onClick={() => void submit()}>Attribuer le grade</Button>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-[16px]">
+        <label className="flex flex-col gap-[7px]">
+          <span className="text-[11px] font-bold uppercase tracking-[0.07em] text-faint">Agent</span>
+          {agents.length === 0 ? (
+            <div className="rounded-sm border border-dashed border-border px-3 py-[10px] text-[12.5px] text-faint">
+              Aucun agent disponible. Seuls les agents actifs de la station, sans grade d'académie, apparaissent ici.
+            </div>
+          ) : (
+            <AgentPicker
+              roster={agents.map((a) => ({ _id: a._id, prenomRP: a.prenomRP, nomRP: a.nomRP, matricule: a.matricule }))}
+              selected={selected}
+              onChange={(ids) => setSelected(ids.slice(-1))}
+              placeholder="Rechercher un agent de la station…"
+            />
+          )}
+        </label>
+
+        <label className="flex flex-col gap-[7px]">
+          <span className="text-[11px] font-bold uppercase tracking-[0.07em] text-faint">Grade d'académie</span>
+          <select
+            value={rankId}
+            onChange={(e) => setRankId(e.target.value as Id<"academyRanks">)}
+            className="h-10 w-full rounded-sm border border-border bg-surface-2 px-3 text-[13px] outline-none focus:border-accent"
+          >
+            {ranks.map((r) => (
+              <option key={r._id} value={r._id}>{r.name}</option>
+            ))}
+          </select>
+        </label>
       </div>
-      <div className="flex items-center gap-[8px]">
-        <Button
-          variant="primary"
-          disabled={!agentId || !rankId}
-          onClick={() => agentId && rankId && void onPick(agentId, rankId)}
-          className="!py-[6px] !text-[12.5px]"
-        >
-          Attribuer
-        </Button>
-        <Button variant="ghost" onClick={onClose} className="!py-[6px] !text-[12.5px]">Annuler</Button>
-      </div>
-    </div>
+    </Modal>
   );
 }

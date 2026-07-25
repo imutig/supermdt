@@ -3,11 +3,13 @@ import { useMutation, useQuery } from "convex/react";
 import { useNavigate } from "react-router-dom";
 import { ClipboardList, Plus, Clock, Target, PenLine, Radio } from "lucide-react";
 import { api } from "@/lib/api";
+import type { Id } from "convex/_generated/dataModel";
 import { useCan } from "@/hooks/useCan";
 import { useToast } from "@/providers/toast";
 import { EmptyState } from "@/components/common/EmptyState";
 import { SkeletonRows } from "@/components/common/Skeleton";
 import { Button } from "@/components/common/Button";
+import { Modal } from "@/components/common/Modal";
 
 // Section Quiz de l'académie. Deux publics sur la même route : l'instructeur y
 // voit son catalogue, le cadet n'y voit que ce qui le concerne (une session
@@ -37,23 +39,9 @@ function VueCadet() {
 
 function Catalogue() {
   const quizzes = useQuery(api.quiz.list);
-  const create = useMutation(api.quiz.create);
   const navigate = useNavigate();
-  const toast = useToast();
   const { can } = useCan();
   const [creating, setCreating] = useState(false);
-  const [title, setTitle] = useState("");
-
-  async function submit() {
-    const clean = title.trim();
-    if (!clean) return;
-    const id = await toast.guard(create({ title: clean }), "Création impossible");
-    if (id) {
-      setCreating(false);
-      setTitle("");
-      navigate(`/lspa/quiz/${id}`);
-    }
-  }
 
   return (
     <div className="p-[22px_26px]" style={{ animation: "mdtFade .2s ease" }}>
@@ -64,7 +52,7 @@ function Catalogue() {
             Les épreuves de la promotion. Un quiz se prépare ici, puis se fait passer en ouvrant une session.
           </div>
         </div>
-        {can("lspa.quiz.create") && !creating && (
+        {can("lspa.quiz.create") && (
           <Button variant="primary" onClick={() => setCreating(true)}>
             <Plus className="h-[15px] w-[15px]" />
             Nouveau quiz
@@ -72,20 +60,7 @@ function Catalogue() {
         )}
       </div>
 
-      {creating && (
-        <div className="mb-[14px] flex items-center gap-[9px] rounded-card border border-border bg-surface p-[13px_15px]">
-          <input
-            autoFocus
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") void submit(); if (e.key === "Escape") setCreating(false); }}
-            placeholder="Titre du quiz (ex. Code pénal · module 1)"
-            className="h-[36px] min-w-0 flex-1 rounded-[8px] border border-border bg-surface-2 px-[11px] text-[13.5px] text-text outline-none focus:border-accent"
-          />
-          <Button variant="primary" onClick={() => void submit()} disabled={!title.trim()}>Créer</Button>
-          <Button variant="ghost" onClick={() => { setCreating(false); setTitle(""); }}>Annuler</Button>
-        </div>
-      )}
+      {creating && <CreateQuizModal onClose={() => setCreating(false)} onCreated={(id) => navigate(`/lspa/quiz/${id}`)} />}
 
       {quizzes === undefined ? (
         <div className="rounded-card border border-border bg-surface p-4"><SkeletonRows rows={4} /></div>
@@ -140,6 +115,68 @@ function Catalogue() {
 
 function Meta({ icon, children }: { icon: React.ReactNode; children: React.ReactNode }) {
   return <span className="flex items-center gap-[5px]">{icon}{children}</span>;
+}
+
+// Création d'un quiz : titre et description, le reste (barème, temps, questions)
+// se règle ensuite sur la page dédiée. Passe par une modale, jamais par un champ
+// greffé sur la liste.
+function CreateQuizModal({ onClose, onCreated }: { onClose: () => void; onCreated: (id: Id<"quizzes">) => void }) {
+  const create = useMutation(api.quiz.create);
+  const toast = useToast();
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function submit(e?: React.SyntheticEvent) {
+    e?.preventDefault();
+    const clean = title.trim();
+    if (!clean) return;
+    setBusy(true);
+    const id = await toast.guard(create({ title: clean, description: description.trim() || undefined }), "Création impossible");
+    setBusy(false);
+    if (id) { onClose(); onCreated(id); }
+  }
+
+  return (
+    <Modal
+      title="Nouveau quiz"
+      icon={<ClipboardList className="h-[17px] w-[17px]" />}
+      onClose={onClose}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>Annuler</Button>
+          <Button variant="primary" loading={busy} disabled={!title.trim()} onClick={() => void submit()}>Créer le quiz</Button>
+        </>
+      }
+    >
+      <form onSubmit={submit} className="flex flex-col gap-[14px]">
+        <label className="flex flex-col gap-[6px]">
+          <span className="text-[11px] font-bold uppercase tracking-[0.07em] text-faint">Titre</span>
+          <input
+            autoFocus
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="Code pénal · module 1"
+            className="h-10 w-full rounded-sm border border-border bg-surface-2 px-3 text-[13.5px] outline-none focus:border-accent"
+          />
+        </label>
+        <label className="flex flex-col gap-[6px]">
+          <span className="text-[11px] font-bold uppercase tracking-[0.07em] text-faint">Description</span>
+          <textarea
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            rows={2}
+            placeholder="Facultative. Résumé de l'épreuve."
+            className="w-full rounded-sm border border-border bg-surface-2 p-3 text-[13px] outline-none focus:border-accent"
+          />
+        </label>
+        <div className="text-[11.5px] text-faint">
+          Le barème, le temps et les questions se règlent ensuite sur la page du quiz.
+        </div>
+        <button type="submit" className="hidden" />
+      </form>
+    </Modal>
+  );
 }
 
 const STATUS_LABEL: Record<string, { label: string; color: string }> = {

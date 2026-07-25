@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation } from "convex/react";
-import { Sun, Moon, GraduationCap, Radio, Lock, ArrowRight, ArrowLeft } from "lucide-react";
+import { Sun, Moon, Lock, ArrowRight, ArrowLeft } from "lucide-react";
 import { api } from "@/lib/api";
 import { readableError } from "@/lib/errors";
 import { useApp } from "@/providers/app-state";
@@ -64,7 +64,7 @@ export function PortalEntry({
             </div>
             <div className="grid grid-cols-1 gap-[14px] sm:grid-cols-2">
               <Card
-                icon={<Radio className="h-[24px] w-[24px]" />}
+                logo="/logos/logo-badge.svg"
                 tint="#49A24A"
                 title="MDT · Station 13"
                 subtitle="Mobile Data Terminal"
@@ -75,8 +75,8 @@ export function PortalEntry({
                 onOpen={openMdt}
               />
               <Card
-                icon={<GraduationCap className="h-[24px] w-[24px]" />}
-                tint="#3B82F6"
+                logo="/logos/lspa-badge.svg"
+                tint="#C4A24A"
                 title="Portail LSPA"
                 subtitle="Los Santos Police Academy"
                 lines={["Formation des cadets", "Quiz et évaluations", "Suivi de promotion"]}
@@ -96,9 +96,9 @@ export function PortalEntry({
 }
 
 function Card({
-  icon, tint, title, subtitle, lines, cta, locked, disabled, onOpen,
+  logo, tint, title, subtitle, lines, cta, locked, disabled, onOpen,
 }: {
-  icon: React.ReactNode;
+  logo: string;
   tint: string;
   title: string;
   subtitle: string;
@@ -122,12 +122,7 @@ function Card({
       }}
     >
       <div className="mb-[13px] flex items-center gap-[12px]">
-        <span
-          className="flex h-[46px] w-[46px] flex-shrink-0 items-center justify-center rounded-[13px]"
-          style={{ background: `color-mix(in srgb, ${tint} 16%, transparent)`, color: tint }}
-        >
-          {icon}
-        </span>
+        <img src={logo} alt="" className="h-[48px] w-[48px] flex-shrink-0" style={{ filter: disabled ? "grayscale(1)" : undefined }} />
         <div className="min-w-0">
           <div className="text-[15.5px] font-bold leading-tight">{title}</div>
           <div className="mt-[2px] text-[10.5px] font-semibold uppercase tracking-[0.1em] text-faint">{subtitle}</div>
