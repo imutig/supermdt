@@ -16,11 +16,12 @@ import { PageBoundary } from "@/components/shell/PageBoundary";
 type Item = { to: string; label: string; icon: LucideIcon; perm?: string };
 
 const ITEMS: Item[] = [
-  { to: "/lspa", label: "Accueil", icon: Home },
+  { to: "/lspa", label: "Accueil", icon: Home, perm: "lspa.view" },
   { to: "/lspa/effectif", label: "Effectif", icon: Users, perm: "lspa.effectif.view" },
   { to: "/lspa/promotions", label: "Promotions", icon: GraduationCap, perm: "lspa.effectif.view" },
-  { to: "/lspa/quiz", label: "Quiz", icon: ClipboardList },
-  { to: "/lspa/fto", label: "Formation terrain", icon: Compass, perm: "fto.view" },
+  { to: "/lspa/quiz", label: "Quiz", icon: ClipboardList, perm: "lspa.view" },
+  // Formation terrain : ouverte à tout agent (les référents y accèdent).
+  { to: "/lspa/fto", label: "Formation terrain", icon: Compass },
   { to: "/lspa/historique", label: "Historique", icon: History, perm: "lspa.session.manage" },
   // Même administration que le MDT (validation des comptes, invitations,
   // permissions…), accessible ici pour l'encadrement de l'académie.

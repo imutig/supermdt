@@ -31,6 +31,7 @@ export function FtoSheet() {
 
   if (data === undefined) return <LoadingScreen label="Chargement de la fiche…" />;
   if (data === null) return <div className="p-[26px]"><EmptyState title="Fiche introuvable" action={<Button onClick={() => navigate("/lspa/fto")}>Retour</Button>} /></div>;
+  if ("denied" in data) return <div className="p-[26px]"><EmptyState title="Accès restreint" message="Seuls le tuteur référent et l'encadrement de l'académie peuvent consulter cette fiche." action={<Button onClick={() => navigate("/lspa/fto")}>Retour</Button>} /></div>;
 
   const edit = data.canEdit;
   const scale = data.items.filter((i) => i.kind === "SCALE") as Item[];
@@ -141,7 +142,8 @@ function groupBy<T>(arr: T[], key: (x: T) => string): Record<string, T[]> {
   return out;
 }
 
-function Header({ agentId, data }: { agentId: Id<"agents">; data: NonNullable<ReturnType<typeof useQuery<typeof api.fto.sheet>>> }) {
+type SheetData = Exclude<NonNullable<ReturnType<typeof useQuery<typeof api.fto.sheet>>>, { denied: true }>;
+function Header({ agentId, data }: { agentId: Id<"agents">; data: SheetData }) {
   const [editTutor, setEditTutor] = useState(false);
   const a = data.agent;
   return (

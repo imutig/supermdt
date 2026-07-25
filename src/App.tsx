@@ -51,6 +51,7 @@ import { LspaQuiz } from "@/lspa/LspaQuiz";
 const QuizEditor = lazy(() => import("@/lspa/QuizEditor").then((m) => ({ default: m.QuizEditor })));
 const SessionScreen = lazy(() => import("@/lspa/session/SessionScreen").then((m) => ({ default: m.SessionScreen })));
 import { usePortals } from "@/hooks/usePortals";
+import { useCan } from "@/hooks/useCan";
 import { Splash } from "@/auth/Splash";
 
 export default function App() {
@@ -96,6 +97,15 @@ function PortalSwitch({ canMdt }: { canMdt: boolean }) {
   );
 }
 
+// Accueil du portail académie : le tableau de bord pour les membres de
+// l'académie, sinon on redirige vers la formation terrain (seule page utile aux
+// agents extérieurs à la Police Academy).
+function LspaHome() {
+  const { can, ready } = useCan();
+  if (!ready) return <Splash />;
+  return can("lspa.view") ? <LspaDashboard /> : <Navigate to="/lspa/fto" replace />;
+}
+
 function Gated() {
   const me = useMe();
   const location = useLocation();
@@ -135,15 +145,16 @@ function Gated() {
           écran qu'à l'entrée du site : le choix reste mémorisé. */}
       <Route path="/portail" element={<PortalSwitch canMdt={canMdt} />} />
 
-      {/* Portail de l'académie */}
-      <Route path="/lspa" element={<RequirePerm perm="lspa.view"><LspaShell /></RequirePerm>}>
-        <Route index element={<LspaDashboard />} />
+      {/* Portail de l'académie. Ouvert à tout agent : ceux qui ne sont pas de la
+          Police Academy n'y voient que la formation terrain (Officiers 1). */}
+      <Route path="/lspa" element={<LspaShell />}>
+        <Route index element={<LspaHome />} />
         <Route path="effectif" element={<RequirePerm perm="lspa.effectif.view"><LspaEffectif /></RequirePerm>} />
         <Route path="promotions" element={<RequirePerm perm="lspa.effectif.view"><LspaPromotions /></RequirePerm>} />
         <Route path="promotions/:id" element={<RequirePerm perm="lspa.effectif.view"><LspaPromotion /></RequirePerm>} />
-        <Route path="fto" element={<RequirePerm perm="fto.view"><LspaFto /></RequirePerm>} />
-        <Route path="fto/:id" element={<RequirePerm perm="fto.view"><FtoSheet /></RequirePerm>} />
-        <Route path="quiz" element={<LspaQuiz />} />
+        <Route path="fto" element={<LspaFto />} />
+        <Route path="fto/:id" element={<FtoSheet />} />
+        <Route path="quiz" element={<RequirePerm perm="lspa.view"><LspaQuiz /></RequirePerm>} />
         <Route path="quiz/:id" element={<RequirePerm perm="lspa.quiz.view"><QuizEditor /></RequirePerm>} />
         <Route path="historique" element={<RequirePerm perm="lspa.session.manage"><LspaHistory /></RequirePerm>} />
         <Route path="session/:id" element={<SessionScreen />} />

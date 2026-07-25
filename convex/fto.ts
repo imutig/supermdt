@@ -20,15 +20,7 @@ async function sheetDoc(ctx: QueryCtx | MutationCtx, agentId: Id<"agents">) {
   return await ctx.db.query("ftoSheets").withIndex("by_agent", (q) => q.eq("agentId", agentId)).unique();
 }
 
-// Qui peut voir : le tuteur de la fiche, ou un détenteur de fto.view (académie,
-// supervision, command staff selon les permissions attribuées).
-async function assertView(ctx: QueryCtx | MutationCtx, viewer: Doc<"agents">, agentId: Id<"agents">) {
-  if (viewer.isOwner) return;
-  const sheet = await sheetDoc(ctx, agentId);
-  if (sheet?.tutorId && sheet.tutorId === viewer._id) return;
-  if (await can(ctx, viewer, "fto.view")) return;
-  throw new Error("Vous n'avez pas accès à cette fiche FTO.");
-}
+// Qui peut modifier : le tuteur de la fiche, ou un détenteur de fto.edit.
 async function assertEdit(ctx: MutationCtx, viewer: Doc<"agents">, agentId: Id<"agents">) {
   if (viewer.isOwner) return;
   const sheet = await sheetDoc(ctx, agentId);
@@ -42,10 +34,13 @@ async function assertEdit(ctx: MutationCtx, viewer: Doc<"agents">, agentId: Id<"
 export const listOffi1 = query({
   args: {},
   handler: async (ctx) => {
+    // Ouvert à tout agent : la liste des Officiers 1 est visible de tous. Seul
+    // l'accès à une fiche est restreint (référent ou fto.view), signalé par
+    // `canOpen` sur chaque ligne.
     const viewer = await requireAgent(ctx);
-    await requirePermission(ctx, viewer, "fto.view");
     const grade = await entryGrade(ctx);
     if (!grade) return [];
+    const hasFtoView = viewer.isOwner || (await can(ctx, viewer, "fto.view"));
     const items = (await ctx.db.query("ftoItems").withIndex("by_position").collect()).filter((i) => i.active !== false);
     const totalItems = items.length;
 
@@ -56,6 +51,7 @@ export const listOffi1 = query({
     for (const a of agents) {
       const sheet = await sheetDoc(ctx, a._id);
       const tutor = sheet?.tutorId ? await ctx.db.get(sheet.tutorId) : null;
+      const canOpen = hasFtoView || sheet?.tutorId === viewer._id;
       const entries = await ctx.db.query("ftoEntries").withIndex("by_agent", (q) => q.eq("agentId", a._id)).collect();
       const byItem = new Map(entries.map((e) => [e.itemId as string, e]));
       let filled = 0;
@@ -72,6 +68,7 @@ export const listOffi1 = query({
         matricule: a.matricule ?? null,
         avatarUrl: a.avatarUrl ?? null,
         tutorName: tutor ? `${tutor.prenomRP} ${tutor.nomRP}` : null,
+        canOpen,
         progress: totalItems > 0 ? Math.round((filled / totalItems) * 100) : 0,
       });
     }
@@ -85,10 +82,13 @@ export const sheet = query({
   args: { agentId: v.id("agents") },
   handler: async (ctx, { agentId }) => {
     const viewer = await requireAgent(ctx);
-    await assertView(ctx, viewer, agentId);
     const agent = await ctx.db.get(agentId);
     if (!agent) return null;
     const doc = await sheetDoc(ctx, agentId);
+    // Accès : référent ou fto.view. Sinon on renvoie une fiche verrouillée
+    // plutôt que d'erreur (l'agent a pu arriver là depuis la liste).
+    const allowed = viewer.isOwner || doc?.tutorId === viewer._id || (await can(ctx, viewer, "fto.view"));
+    if (!allowed) return { denied: true as const };
     const tutor = doc?.tutorId ? await ctx.db.get(doc.tutorId) : null;
 
     const items = (await ctx.db.query("ftoItems").withIndex("by_position").collect()).filter((i) => i.active !== false);

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { useNavigate } from "react-router-dom";
-import { ShieldCheck, ChevronRight, Settings, Plus, Trash2, ChevronUp, ChevronDown, ArrowLeft, Star, ListChecks, SplitSquareHorizontal } from "lucide-react";
+import { ShieldCheck, ChevronRight, Settings, Plus, Trash2, ChevronUp, ChevronDown, ArrowLeft, Star, ListChecks, SplitSquareHorizontal, Lock } from "lucide-react";
 import { api } from "@/lib/api";
 import type { Id } from "convex/_generated/dataModel";
 import { useCan } from "@/hooks/useCan";
@@ -38,7 +38,13 @@ export function LspaFto() {
       ) : (
         <div className="overflow-hidden rounded-card border border-border bg-surface">
           {list.map((o) => (
-            <button key={o._id} onClick={() => navigate(`/lspa/fto/${o._id}`)} className="flex w-full items-center gap-[13px] border-b border-border px-[16px] py-[12px] text-left last:border-b-0 hover:bg-surface-2">
+            <button
+              key={o._id}
+              disabled={!o.canOpen}
+              onClick={() => navigate(`/lspa/fto/${o._id}`)}
+              title={o.canOpen ? undefined : "Réservé au tuteur référent et à l'encadrement"}
+              className="flex w-full items-center gap-[13px] border-b border-border px-[16px] py-[12px] text-left last:border-b-0 enabled:hover:bg-surface-2 disabled:cursor-default disabled:opacity-60"
+            >
               <span className="flex h-[34px] w-[34px] flex-shrink-0 items-center justify-center rounded-full bg-surface-2 text-accent"><ShieldCheck className="h-[16px] w-[16px]" /></span>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-[7px] text-[14px] font-semibold">
@@ -47,11 +53,17 @@ export function LspaFto() {
                 </div>
                 <div className="text-[11.5px] text-muted">{o.tutorName ? `Tuteur : ${o.tutorName}` : "Sans tuteur"}</div>
               </div>
-              <div className="flex w-[130px] flex-shrink-0 items-center gap-[8px]">
-                <div className="h-[5px] flex-1 overflow-hidden rounded-full bg-surface-2"><div className="h-full rounded-full bg-accent" style={{ width: `${o.progress}%` }} /></div>
-                <span className="font-data text-[11.5px] text-muted">{o.progress}%</span>
-              </div>
-              <ChevronRight className="h-[16px] w-[16px] flex-shrink-0 text-faint" />
+              {o.canOpen ? (
+                <>
+                  <div className="flex w-[130px] flex-shrink-0 items-center gap-[8px]">
+                    <div className="h-[5px] flex-1 overflow-hidden rounded-full bg-surface-2"><div className="h-full rounded-full bg-accent" style={{ width: `${o.progress}%` }} /></div>
+                    <span className="font-data text-[11.5px] text-muted">{o.progress}%</span>
+                  </div>
+                  <ChevronRight className="h-[16px] w-[16px] flex-shrink-0 text-faint" />
+                </>
+              ) : (
+                <Lock className="h-[15px] w-[15px] flex-shrink-0 text-faint" />
+              )}
             </button>
           ))}
         </div>
