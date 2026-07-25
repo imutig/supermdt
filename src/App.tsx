@@ -42,6 +42,7 @@ import { PortalProvider, usePortal } from "@/portal/portal-context";
 import { LspaShell } from "@/lspa/LspaShell";
 import { LspaDashboard } from "@/lspa/LspaDashboard";
 import { LspaEffectif } from "@/lspa/LspaEffectif";
+import { LspaProfil } from "@/lspa/LspaProfil";
 import { LspaQuiz } from "@/lspa/LspaQuiz";
 const QuizEditor = lazy(() => import("@/lspa/QuizEditor").then((m) => ({ default: m.QuizEditor })));
 const SessionScreen = lazy(() => import("@/lspa/session/SessionScreen").then((m) => ({ default: m.SessionScreen })));
@@ -135,8 +136,9 @@ function Gated() {
         <Route path="quiz" element={<LspaQuiz />} />
         <Route path="quiz/:id" element={<RequirePerm perm="lspa.quiz.view"><QuizEditor /></RequirePerm>} />
         <Route path="session/:id" element={<SessionScreen />} />
-        {/* Profil et administration partagés avec le MDT, servis dans le portail. */}
-        <Route path="profil" element={<Profil />} />
+        {/* Profil propre à l'académie (identité + préférences, sans le contenu
+            opérationnel du MDT). L'administration, elle, est bien la même. */}
+        <Route path="profil" element={<LspaProfil />} />
         <Route path="admin" element={<RequirePerm perm="effectif.validate"><Admin /></RequirePerm>} />
         <Route path="*" element={<Navigate to="/lspa" replace />} />
       </Route>
