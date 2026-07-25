@@ -1,4 +1,4 @@
-import { lazy } from "react";
+import { lazyReload } from "@/lib/lazyReload";
 import { Routes, Route, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { Authenticated, Unauthenticated, AuthLoading } from "convex/react";
 import { AppStateProvider, useApp } from "@/providers/app-state";
@@ -14,7 +14,7 @@ import { Organigramme } from "@/pages/Organigramme";
 import { Admin } from "@/pages/Admin";
 import { Protocoles } from "@/pages/Protocoles";
 import { Ressources } from "@/pages/Ressources";
-const Carte = lazy(() => import("@/pages/Carte").then((m) => ({ default: m.Carte })));
+const Carte = lazyReload(() => import("@/pages/Carte").then((m) => ({ default: m.Carte })));
 import { Calendrier } from "@/pages/Calendrier";
 import { Plaintes } from "@/pages/Plaintes";
 import { Armes } from "@/pages/Armes";
@@ -27,11 +27,11 @@ import { Services } from "@/pages/Services";
 import { CodePenal } from "@/pages/CodePenal";
 import { MandatsPage } from "@/pages/MandatsPage";
 import { Rapports } from "@/pages/Rapports";
-const RapportEditor = lazy(() => import("@/pages/RapportEditor").then((m) => ({ default: m.RapportEditor })));
+const RapportEditor = lazyReload(() => import("@/pages/RapportEditor").then((m) => ({ default: m.RapportEditor })));
 import { Contraventions } from "@/pages/Contraventions";
 import { Archive } from "@/pages/Archive";
-const Configuration = lazy(() => import("@/pages/Configuration").then((m) => ({ default: m.Configuration })));
-const Statistiques = lazy(() => import("@/pages/Statistiques").then((m) => ({ default: m.Statistiques })));
+const Configuration = lazyReload(() => import("@/pages/Configuration").then((m) => ({ default: m.Configuration })));
+const Statistiques = lazyReload(() => import("@/pages/Statistiques").then((m) => ({ default: m.Statistiques })));
 import { Profil } from "@/pages/Profil";
 import { LoginPage } from "@/auth/LoginPage";
 import { Onboarding } from "@/auth/Onboarding";
@@ -41,15 +41,16 @@ import { PortalEntry } from "@/portal/PortalEntry";
 import { PortalProvider, usePortal } from "@/portal/portal-context";
 import { LspaShell } from "@/lspa/LspaShell";
 import { LspaDashboard } from "@/lspa/LspaDashboard";
+import { LspaCadetHome } from "@/lspa/LspaCadetHome";
 import { LspaEffectif } from "@/lspa/LspaEffectif";
 import { LspaProfil } from "@/lspa/LspaProfil";
 import { LspaHistory } from "@/lspa/LspaHistory";
 import { LspaPromotions, LspaPromotion } from "@/lspa/LspaPromotions";
 import { LspaFto } from "@/lspa/LspaFto";
-const FtoSheet = lazy(() => import("@/lspa/FtoSheet").then((m) => ({ default: m.FtoSheet })));
+import { FtoSheet } from "@/lspa/FtoSheet";
 import { LspaQuiz } from "@/lspa/LspaQuiz";
-const QuizEditor = lazy(() => import("@/lspa/QuizEditor").then((m) => ({ default: m.QuizEditor })));
-const SessionScreen = lazy(() => import("@/lspa/session/SessionScreen").then((m) => ({ default: m.SessionScreen })));
+const QuizEditor = lazyReload(() => import("@/lspa/QuizEditor").then((m) => ({ default: m.QuizEditor })));
+const SessionScreen = lazyReload(() => import("@/lspa/session/SessionScreen").then((m) => ({ default: m.SessionScreen })));
 import { usePortals } from "@/hooks/usePortals";
 import { useCan } from "@/hooks/useCan";
 import { Splash } from "@/auth/Splash";
@@ -97,13 +98,15 @@ function PortalSwitch({ canMdt }: { canMdt: boolean }) {
   );
 }
 
-// Accueil du portail académie : le tableau de bord pour les membres de
-// l'académie, sinon on redirige vers la formation terrain (seule page utile aux
-// agents extérieurs à la Police Academy).
+// Accueil du portail académie : tableau de bord de l'encadrement, accueil
+// personnel pour les cadets, ou redirection vers la formation terrain pour les
+// agents extérieurs à la Police Academy.
 function LspaHome() {
   const { can, ready } = useCan();
-  if (!ready) return <Splash />;
-  return can("lspa.view") ? <LspaDashboard /> : <Navigate to="/lspa/fto" replace />;
+  const me = useMe();
+  if (!ready || me === undefined) return <Splash />;
+  if (!can("lspa.view")) return <Navigate to="/lspa/fto" replace />;
+  return me?.grade?.academyOnly ? <LspaCadetHome /> : <LspaDashboard />;
 }
 
 function Gated() {
