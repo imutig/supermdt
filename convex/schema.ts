@@ -170,7 +170,7 @@ export default defineSchema({
   quizzes: defineTable({
     title: v.string(),
     description: v.optional(v.string()),
-    passPercent: v.number(), // seuil de réussite, en % du total
+    passPercent: v.optional(v.number()), // seuil de réussite en % ; absent = pas de seuil (score seul)
     durationSeconds: v.optional(v.number()), // temps global ; absent = illimité
     shuffleQuestions: v.optional(v.boolean()),
     status: v.union(v.literal("DRAFT"), v.literal("PUBLISHED"), v.literal("ARCHIVED")),

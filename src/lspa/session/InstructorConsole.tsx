@@ -3,7 +3,7 @@ import { useMutation, useQuery } from "convex/react";
 import { useNavigate } from "react-router-dom";
 import {
   ArrowLeft, Play, Square, Radio, Users, CheckCircle2, Hourglass, Trophy,
-  PenLine, Send, Loader2,
+  PenLine, Send, Loader2, ChevronRight,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import type { Id } from "convex/_generated/dataModel";
@@ -14,6 +14,7 @@ import { EmptyState } from "@/components/common/EmptyState";
 import { Button } from "@/components/common/Button";
 import { RichTextEditor } from "@/components/common/RichTextEditor";
 import { useCountdownLabel } from "./Countdown";
+import { CopyReview } from "./ResultView";
 
 // Console de l'instructeur : salle d'attente, suivi en direct, puis correction
 // et publication. Une seule route, l'état de la session décide de l'affichage.
@@ -27,6 +28,7 @@ export function InstructorConsole({ sessionId }: { sessionId: Id<"quizSessions">
   const toast = useToast();
   const { can } = useCan();
   const [grading, setGrading] = useState(false);
+  const [viewParticipant, setViewParticipant] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const time = useCountdownLabel(data?.session.endsAt ?? null);
@@ -38,6 +40,10 @@ export function InstructorConsole({ sessionId }: { sessionId: Id<"quizSessions">
 
   const { session, participants, totalQuestions, totalPoints } = data;
   const pendingGrading = participants.filter((p) => p.needsGrading && session.status !== "LOBBY").length;
+  // La copie d'un cadet se consulte une fois l'épreuve terminée.
+  const canOpenCopies = session.status === "CLOSED" || session.status === "PUBLISHED";
+
+  if (viewParticipant) return <ParticipantReview participantId={viewParticipant as Id<"quizParticipants">} onBack={() => setViewParticipant(null)} />;
 
   async function run<T>(p: Promise<T>, msg: string, ok?: string) {
     setBusy(true);
@@ -50,7 +56,7 @@ export function InstructorConsole({ sessionId }: { sessionId: Id<"quizSessions">
   if (grading) return <GradingBoard sessionId={sessionId} onBack={() => setGrading(false)} />;
 
   return (
-    <div className="mx-auto max-w-[1100px] p-[22px_28px]" style={{ animation: "mdtFade .2s ease" }}>
+    <div className="mx-auto w-full max-w-[1200px] p-[22px_28px]" style={{ animation: "mdtFade .2s ease" }}>
       <button onClick={() => navigate(`/lspa/quiz/${session.quizId}`)} className="mb-[14px] flex items-center gap-[6px] text-[12.5px] font-semibold text-muted hover:text-text">
         <ArrowLeft className="h-[14px] w-[14px]" /> Retour au quiz
       </button>
@@ -124,7 +130,14 @@ export function InstructorConsole({ sessionId }: { sessionId: Id<"quizSessions">
             <Users className="h-[13px] w-[13px]" /> Participants
           </div>
           {participants.map((p) => (
-            <ParticipantRow key={p._id} p={p} total={totalQuestions} status={session.status} showScore={session.status !== "LOBBY"} />
+            <ParticipantRow
+              key={p._id}
+              p={p}
+              total={totalQuestions}
+              status={session.status}
+              showScore={session.status !== "LOBBY"}
+              onOpen={canOpenCopies ? () => setViewParticipant(p._id) : undefined}
+            />
           ))}
         </div>
       )}
@@ -133,16 +146,22 @@ export function InstructorConsole({ sessionId }: { sessionId: Id<"quizSessions">
 }
 
 function ParticipantRow({
-  p, total, status, showScore,
+  p, total, status, showScore, onOpen,
 }: {
   p: { name: string; joinedAt: number; submittedAt: number | null; answeredCount: number; score: number; needsGrading: boolean };
   total: number;
   status: string;
   showScore: boolean;
+  onOpen?: () => void;
 }) {
   const pct = total > 0 ? Math.round((p.answeredCount / total) * 100) : 0;
   return (
-    <div className="flex items-center gap-[12px] border-b border-border px-[16px] py-[11px] last:border-b-0">
+    <button
+      type="button"
+      onClick={onOpen}
+      disabled={!onOpen}
+      className="flex w-full items-center gap-[12px] border-b border-border px-[16px] py-[11px] text-left last:border-b-0 enabled:hover:bg-surface-2 disabled:cursor-default"
+    >
       <span className="flex h-[30px] w-[30px] flex-shrink-0 items-center justify-center rounded-full bg-surface-2 text-[11px] font-bold text-muted">
         {p.name.split(" ").map((x) => x[0]).slice(0, 2).join("")}
       </span>
@@ -160,15 +179,25 @@ function ParticipantRow({
           </div>
         )}
         {status === "LOBBY" && <div className="text-[11.5px] text-faint">Prêt</div>}
+        {onOpen && status !== "RUNNING" && status !== "LOBBY" && <div className="text-[11.5px] text-faint">Voir la copie</div>}
       </div>
       {showScore && (
         <div className="flex flex-shrink-0 items-center gap-[8px]">
           {p.needsGrading && <span title="À corriger" className="flex items-center gap-[4px] text-[11px] font-semibold text-warning"><PenLine className="h-[12px] w-[12px]" /> à corriger</span>}
           <span className="flex items-center gap-[5px] font-data text-[14px] font-bold"><Trophy className="h-[13px] w-[13px] text-faint" /> {p.score}</span>
+          {onOpen && <ChevronRight className="h-[15px] w-[15px] text-faint" />}
         </div>
       )}
-    </div>
+    </button>
   );
+}
+
+// Copie détaillée d'un participant, pour l'instructeur.
+function ParticipantReview({ participantId, onBack }: { participantId: Id<"quizParticipants">; onBack: () => void }) {
+  const r = useQuery(api.quizSession.participantResult, { participantId });
+  if (r === undefined) return <LoadingScreen label="Chargement de la copie…" />;
+  if (r === null) return <div className="p-[26px]"><EmptyState title="Copie introuvable" action={<Button onClick={onBack}>Retour</Button>} /></div>;
+  return <CopyReview review={r} onBack={onBack} showCandidate />;
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -215,7 +244,7 @@ function GradingBoard({ sessionId, onBack }: { sessionId: Id<"quizSessions">; on
   // Vue d'une copie ouverte
   if (open) {
     return (
-      <div className="mx-auto max-w-[900px] p-[22px_24px]" style={{ animation: "mdtFade .2s ease" }}>
+      <div className="mx-auto w-full max-w-[1100px] p-[22px_24px]" style={{ animation: "mdtFade .2s ease" }}>
         <button
           onClick={async () => { await release({ participantId: openId as Id<"quizParticipants"> }); setOpenId(null); }}
           className="mb-[14px] flex items-center gap-[6px] text-[12.5px] font-semibold text-muted hover:text-text"
@@ -237,7 +266,7 @@ function GradingBoard({ sessionId, onBack }: { sessionId: Id<"quizSessions">; on
 
   const pending = data.rows.filter((r) => r.needsGrading).length;
   return (
-    <div className="mx-auto max-w-[900px] p-[22px_24px]" style={{ animation: "mdtFade .2s ease" }}>
+    <div className="mx-auto w-full max-w-[1100px] p-[22px_24px]" style={{ animation: "mdtFade .2s ease" }}>
       <button onClick={onBack} className="mb-[14px] flex items-center gap-[6px] text-[12.5px] font-semibold text-muted hover:text-text">
         <ArrowLeft className="h-[14px] w-[14px]" /> Retour à la session
       </button>

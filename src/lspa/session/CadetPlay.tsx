@@ -246,7 +246,7 @@ function Runner({
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-[820px] p-[22px_20px]">
+        <div className="mx-auto w-full max-w-[960px] p-[22px_20px]">
           {reviewing ? (
             <Review
               questions={questions}

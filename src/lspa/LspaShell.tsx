@@ -1,10 +1,11 @@
-import { Suspense, useEffect } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { Home, Users, ClipboardList, History, ShieldCheck, ArrowLeftRight, Sun, Moon } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useApp } from "@/providers/app-state";
 import { useCan } from "@/hooks/useCan";
 import { usePortals } from "@/hooks/usePortals";
+import { usePrefs } from "@/hooks/usePrefs";
 import { LoadingScreen } from "@/components/common/Loader";
 import { ProfileMenu } from "@/components/shell/ProfileMenu";
 import { PageBoundary } from "@/components/shell/PageBoundary";
@@ -74,31 +75,7 @@ export function LspaShell() {
       </div>
 
       <div className="flex min-h-0 flex-1">
-        <nav className="flex w-[196px] flex-shrink-0 flex-col gap-[2px] border-r border-border bg-surface p-[12px_10px]">
-          <div className="px-3 pb-[5px] pt-[3px] text-[9.5px] font-bold uppercase tracking-[0.11em] text-faint">
-            Académie
-          </div>
-          {items.map((i) => (
-            <NavLink
-              key={i.to}
-              to={i.to}
-              end={i.to === "/lspa"}
-              className="flex h-[38px] flex-shrink-0 items-center gap-[11px] rounded-sm px-[10px] text-[13px] font-medium hover:bg-surface-2"
-              style={({ isActive }) =>
-                isActive
-                  ? { background: "var(--accent-soft)", color: "var(--accent)", fontWeight: 600 }
-                  : { color: "var(--muted)" }
-              }
-            >
-              {({ isActive }) => (
-                <>
-                  <i.icon className="h-5 w-5 flex-shrink-0" strokeWidth={2} style={{ color: isActive ? "var(--accent)" : "var(--faint)" }} />
-                  {i.label}
-                </>
-              )}
-            </NavLink>
-          ))}
-        </nav>
+        <LspaNav items={items} />
 
         <main className="min-w-0 flex-1 overflow-y-auto">
           <div key={routeKey} className="mdt-page flex min-h-full flex-col">
@@ -111,5 +88,89 @@ export function LspaShell() {
         </main>
       </div>
     </div>
+  );
+}
+
+// Rail de navigation de l'académie. Respecte les mêmes préférences que le MDT :
+// réduction à ses icônes (auto sur tablette) et déploiement au survol.
+function LspaNav({ items }: { items: Item[] }) {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { sidebarCollapsible, sidebarHoverExpand } = usePrefs();
+  const [narrow, setNarrow] = useState(() => typeof window !== "undefined" && window.matchMedia("(max-width: 1023px)").matches);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 1023px)");
+    const onChange = () => setNarrow(mq.matches);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+  const compact = sidebarCollapsible || narrow;
+  const isActive = (to: string) => (to === "/lspa" ? location.pathname === "/lspa" : location.pathname.startsWith(to));
+
+  if (compact) {
+    return (
+      <div className="relative w-[58px] flex-shrink-0">
+        <div
+          className={`group absolute inset-y-0 left-0 z-40 flex w-[58px] flex-col gap-[2px] overflow-y-auto overflow-x-hidden border-r border-border bg-surface p-[10px_9px] transition-[width] duration-200 ${
+            sidebarHoverExpand ? "hover:w-[210px] hover:shadow-[10px_0_40px_var(--shadow)]" : ""
+          }`}
+        >
+          <div className={`h-0 max-w-full overflow-hidden whitespace-nowrap px-[6px] text-[9.5px] font-bold uppercase tracking-[0.11em] text-faint opacity-0 transition-all duration-200 ${sidebarHoverExpand ? "group-hover:h-[16px] group-hover:opacity-100" : ""}`}>
+            Académie
+          </div>
+          {items.map((i) => {
+            const active = isActive(i.to);
+            return (
+              <button
+                key={i.to}
+                onClick={() => navigate(i.to)}
+                title={i.label}
+                aria-label={i.label}
+                className={`flex h-[38px] w-full flex-shrink-0 items-center justify-center rounded-sm hover:bg-surface-2 ${
+                  sidebarHoverExpand ? "group-hover:justify-start group-hover:gap-[11px] group-hover:px-[8px]" : ""
+                }`}
+                style={active ? { background: "var(--accent-soft)" } : undefined}
+              >
+                <i.icon className="h-5 w-5 flex-shrink-0" strokeWidth={2} style={{ color: active ? "var(--accent)" : "var(--faint)" }} />
+                {sidebarHoverExpand && (
+                  <span
+                    className="max-w-0 overflow-hidden whitespace-nowrap text-[13px] opacity-0 transition-all duration-200 group-hover:max-w-[150px] group-hover:opacity-100"
+                    style={active ? { color: "var(--accent)", fontWeight: 600 } : { color: "var(--muted)", fontWeight: 500 }}
+                  >
+                    {i.label}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <nav className="flex w-[196px] flex-shrink-0 flex-col gap-[2px] border-r border-border bg-surface p-[12px_10px]">
+      <div className="px-3 pb-[5px] pt-[3px] text-[9.5px] font-bold uppercase tracking-[0.11em] text-faint">
+        Académie
+      </div>
+      {items.map((i) => (
+        <NavLink
+          key={i.to}
+          to={i.to}
+          end={i.to === "/lspa"}
+          className="flex h-[38px] flex-shrink-0 items-center gap-[11px] rounded-sm px-[10px] text-[13px] font-medium hover:bg-surface-2"
+          style={({ isActive: a }) =>
+            a ? { background: "var(--accent-soft)", color: "var(--accent)", fontWeight: 600 } : { color: "var(--muted)" }
+          }
+        >
+          {({ isActive: a }) => (
+            <>
+              <i.icon className="h-5 w-5 flex-shrink-0" strokeWidth={2} style={{ color: a ? "var(--accent)" : "var(--faint)" }} />
+              {i.label}
+            </>
+          )}
+        </NavLink>
+      ))}
+    </nav>
   );
 }

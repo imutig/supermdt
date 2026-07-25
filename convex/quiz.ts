@@ -56,7 +56,7 @@ export const list = query({
           title: q.title,
           description: q.description ?? null,
           status: q.status,
-          passPercent: q.passPercent,
+          passPercent: q.passPercent ?? null,
           durationSeconds: q.durationSeconds ?? null,
           questionCount: agg.count,
           totalPoints: agg.points,
@@ -100,7 +100,7 @@ export const get = query({
         _id: quiz._id,
         title: quiz.title,
         description: quiz.description ?? null,
-        passPercent: quiz.passPercent,
+        passPercent: quiz.passPercent ?? null,
         durationSeconds: quiz.durationSeconds ?? null,
         shuffleQuestions: quiz.shuffleQuestions ?? false,
         status: quiz.status,
@@ -145,7 +145,8 @@ export const create = mutation({
     const quizId = await ctx.db.insert("quizzes", {
       title: clean,
       description: description?.trim() || undefined,
-      passPercent: clampPercent(passPercent ?? 70),
+      // Seuil de réussite facultatif : absent = on affiche le score sans verdict.
+      passPercent: passPercent !== undefined ? clampPercent(passPercent) : undefined,
       durationSeconds: positiveOrUndefined(durationSeconds),
       status: "DRAFT",
       createdBy: agent._id,
@@ -166,7 +167,8 @@ export const update = mutation({
     quizId: v.id("quizzes"),
     title: v.optional(v.string()),
     description: v.optional(v.string()),
-    passPercent: v.optional(v.number()),
+    // number = fixe le seuil ; null = retire le seuil ; absent = inchangé.
+    passPercent: v.optional(v.union(v.number(), v.null())),
     durationSeconds: v.optional(v.number()),
     shuffleQuestions: v.optional(v.boolean()),
     status: v.optional(v.union(v.literal("DRAFT"), v.literal("PUBLISHED"), v.literal("ARCHIVED"))),
@@ -190,7 +192,7 @@ export const update = mutation({
     await ctx.db.patch(quizId, {
       ...(patch.title !== undefined ? { title: patch.title.trim() || quiz.title } : {}),
       ...(patch.description !== undefined ? { description: patch.description.trim() || undefined } : {}),
-      ...(patch.passPercent !== undefined ? { passPercent: clampPercent(patch.passPercent) } : {}),
+      ...(patch.passPercent !== undefined ? { passPercent: patch.passPercent === null ? undefined : clampPercent(patch.passPercent) } : {}),
       ...(patch.durationSeconds !== undefined ? { durationSeconds: positiveOrUndefined(patch.durationSeconds) } : {}),
       ...(patch.shuffleQuestions !== undefined ? { shuffleQuestions: patch.shuffleQuestions } : {}),
       ...(patch.status !== undefined ? { status: patch.status } : {}),

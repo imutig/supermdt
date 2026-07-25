@@ -76,7 +76,8 @@ function VueCadet() {
               <h2 className="mb-[9px] text-[11px] font-bold uppercase tracking-[0.09em] text-faint">Mes résultats</h2>
               <div className="flex flex-col gap-[8px]">
                 {data.results.map((r) => {
-                  const tint = r.passed ? "var(--accent)" : "var(--danger)";
+                  // passed peut être null : quiz sans seuil de réussite.
+                  const tint = r.passed === null ? "var(--accent)" : r.passed ? "var(--accent)" : "var(--danger)";
                   return (
                     <button
                       key={r.sessionId}
@@ -84,13 +85,15 @@ function VueCadet() {
                       className="mdt-press flex items-center gap-[12px] rounded-card border border-border bg-surface p-[13px_16px] text-left hover:border-border-strong"
                     >
                       <span className="flex h-[32px] w-[32px] flex-shrink-0 items-center justify-center rounded-full" style={{ background: `color-mix(in srgb, ${tint} 14%, transparent)`, color: tint }}>
-                        {r.passed ? <Award className="h-[16px] w-[16px]" /> : <XCircle className="h-[16px] w-[16px]" />}
+                        {r.passed === false ? <XCircle className="h-[16px] w-[16px]" /> : <Award className="h-[16px] w-[16px]" />}
                       </span>
                       <div className="min-w-0 flex-1">
                         <div className="truncate text-[13.5px] font-semibold">{r.title}</div>
                         <div className="text-[12px] text-muted">{r.score} / {r.maxPoints} points</div>
                       </div>
-                      <span className="flex-shrink-0 text-[12.5px] font-bold" style={{ color: tint }}>{r.passed ? "Réussi" : "Non validé"}</span>
+                      <span className="flex-shrink-0 text-[12.5px] font-bold" style={{ color: tint }}>
+                        {r.passed === null ? `${r.score}/${r.maxPoints}` : r.passed ? "Réussi" : "Non validé"}
+                      </span>
                     </button>
                   );
                 })}
@@ -157,7 +160,7 @@ function Catalogue() {
                 <Meta icon={<ClipboardList className="h-[12px] w-[12px]" />}>
                   {q.questionCount} question{q.questionCount > 1 ? "s" : ""} · {q.totalPoints} pt{q.totalPoints > 1 ? "s" : ""}
                 </Meta>
-                <Meta icon={<Target className="h-[12px] w-[12px]" />}>{q.passPercent} % pour valider</Meta>
+                <Meta icon={<Target className="h-[12px] w-[12px]" />}>{q.passPercent !== null ? `${q.passPercent} % pour valider` : "Sans seuil"}</Meta>
                 {q.durationSeconds && (
                   <Meta icon={<Clock className="h-[12px] w-[12px]" />}>{Math.round(q.durationSeconds / 60)} min</Meta>
                 )}

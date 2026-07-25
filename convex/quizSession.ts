@@ -522,7 +522,10 @@ export const forMe = query({
         const total = p.autoScore + (p.manualScore ?? 0);
         const maxPoints = (await ctx.db.query("quizQuestions").withIndex("by_quiz", (q) => q.eq("quizId", s.quizId)).collect())
           .reduce((sum, q) => sum + q.points, 0);
-        const passed = maxPoints > 0 && (total / maxPoints) * 100 >= (quiz?.passPercent ?? 100);
+        // Sans seuil de réussite, pas de verdict : passed reste null.
+        const passed = typeof quiz?.passPercent === "number"
+          ? maxPoints > 0 && (total / maxPoints) * 100 >= quiz.passPercent
+          : null;
         results.push({
           sessionId: s._id,
           title: s.title,
@@ -715,8 +718,69 @@ export const submit = mutation({
   },
 });
 
-// Copie corrigée d'un cadet, une fois les résultats publiés : score, réussite,
-// et le détail question par question avec les bonnes réponses et l'explication.
+// Construit la copie corrigée d'une participation : score, verdict de réussite
+// (null s'il n'y a pas de seuil) et le détail question par question. Partagé par
+// la vue du cadet et celle de l'instructeur.
+async function buildCopyReview(ctx: QueryCtx, session: Doc<"quizSessions">, participant: Doc<"quizParticipants">) {
+  const quiz = await ctx.db.get(session.quizId);
+  const questions = (await ctx.db
+    .query("quizQuestions")
+    .withIndex("by_quiz", (q) => q.eq("quizId", session.quizId))
+    .collect())
+    .sort((a, b) => a.position - b.position);
+  const choices = await ctx.db
+    .query("quizChoices")
+    .withIndex("by_quiz", (q) => q.eq("quizId", session.quizId))
+    .collect();
+  const choicesByQ = new Map<string, Doc<"quizChoices">[]>();
+  for (const c of choices) {
+    const arr = choicesByQ.get(c.questionId as string) ?? [];
+    arr.push(c);
+    choicesByQ.set(c.questionId as string, arr);
+  }
+  const answers = await ctx.db
+    .query("quizAnswers")
+    .withIndex("by_participant", (q) => q.eq("participantId", participant._id))
+    .collect();
+  const byQ = new Map(answers.map((a) => [a.questionId as string, a]));
+
+  const total = participant.autoScore + (participant.manualScore ?? 0);
+  const maxPoints = questions.reduce((s, q) => s + q.points, 0);
+  const passed = typeof quiz?.passPercent === "number"
+    ? maxPoints > 0 && (total / maxPoints) * 100 >= quiz.passPercent
+    : null;
+
+  return {
+    title: session.title,
+    candidate: participant.name,
+    score: total,
+    maxPoints,
+    passPercent: quiz?.passPercent ?? null,
+    passed,
+    questions: questions.map((q) => {
+      const a = byQ.get(q._id as string);
+      const myChoices = new Set((a?.choiceIds ?? []).map((c) => c as string));
+      return {
+        _id: q._id as string,
+        kind: q.kind,
+        prompt: q.prompt,
+        mediaUrls: q.mediaUrls ?? [],
+        points: q.points,
+        manual: isManualQuestion(q),
+        awarded: typeof a?.awarded === "number" ? a.awarded : null,
+        comment: a?.comment ?? null,
+        explanation: q.explanation ?? null,
+        myText: a?.text ?? null,
+        expectedAnswer: isManualQuestion(q) ? q.expectedAnswer ?? null : null,
+        choices: (choicesByQ.get(q._id as string) ?? [])
+          .sort((x, y) => x.position - y.position)
+          .map((c) => ({ label: c.label, correct: c.correct, picked: myChoices.has(c._id as string) })),
+      };
+    }),
+  };
+}
+
+// Copie corrigée d'un cadet, une fois les résultats publiés.
 export const myResult = query({
   args: { sessionId: v.id("quizSessions") },
   handler: async (ctx, { sessionId }) => {
@@ -729,59 +793,21 @@ export const myResult = query({
       .withIndex("by_session_agent", (q) => q.eq("sessionId", sessionId).eq("agentId", agent._id))
       .unique();
     if (!participant) return null;
+    return await buildCopyReview(ctx, session, participant);
+  },
+});
 
-    const quiz = await ctx.db.get(session.quizId);
-    const questions = (await ctx.db
-      .query("quizQuestions")
-      .withIndex("by_quiz", (q) => q.eq("quizId", session.quizId))
-      .collect())
-      .sort((a, b) => a.position - b.position);
-    const choices = await ctx.db
-      .query("quizChoices")
-      .withIndex("by_quiz", (q) => q.eq("quizId", session.quizId))
-      .collect();
-    const choicesByQ = new Map<string, Doc<"quizChoices">[]>();
-    for (const c of choices) {
-      const arr = choicesByQ.get(c.questionId as string) ?? [];
-      arr.push(c);
-      choicesByQ.set(c.questionId as string, arr);
-    }
-    const answers = await ctx.db
-      .query("quizAnswers")
-      .withIndex("by_participant", (q) => q.eq("participantId", participant._id))
-      .collect();
-    const byQ = new Map(answers.map((a) => [a.questionId as string, a]));
-
-    const total = participant.autoScore + (participant.manualScore ?? 0);
-    const maxPoints = questions.reduce((s, q) => s + q.points, 0);
-    const passed = maxPoints > 0 && (total / maxPoints) * 100 >= (quiz?.passPercent ?? 100);
-
-    return {
-      title: session.title,
-      score: total,
-      maxPoints,
-      passPercent: quiz?.passPercent ?? 0,
-      passed,
-      questions: questions.map((q) => {
-        const a = byQ.get(q._id as string);
-        const myChoices = new Set((a?.choiceIds ?? []).map((c) => c as string));
-        return {
-          _id: q._id as string,
-          kind: q.kind,
-          prompt: q.prompt,
-          mediaUrls: q.mediaUrls ?? [],
-          points: q.points,
-          manual: isManualQuestion(q),
-          awarded: typeof a?.awarded === "number" ? a.awarded : null,
-          comment: a?.comment ?? null,
-          explanation: q.explanation ?? null,
-          myText: a?.text ?? null,
-          expectedAnswer: isManualQuestion(q) ? q.expectedAnswer ?? null : null,
-          choices: (choicesByQ.get(q._id as string) ?? [])
-            .sort((x, y) => x.position - y.position)
-            .map((c) => ({ label: c.label, correct: c.correct, picked: myChoices.has(c._id as string) })),
-        };
-      }),
-    };
+// Copie corrigée d'un participant, vue par l'instructeur : accessible dès que la
+// session est terminée (pas seulement publiée), pour revoir le détail d'un cadet.
+export const participantResult = query({
+  args: { participantId: v.id("quizParticipants") },
+  handler: async (ctx, { participantId }) => {
+    const agent = await requireAgent(ctx);
+    await requirePermission(ctx, agent, "lspa.session.manage");
+    const participant = await ctx.db.get(participantId);
+    if (!participant) return null;
+    const session = await ctx.db.get(participant.sessionId);
+    if (!session) return null;
+    return await buildCopyReview(ctx, session, participant);
   },
 });

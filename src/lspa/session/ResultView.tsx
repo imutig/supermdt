@@ -1,5 +1,5 @@
 import { useQuery } from "convex/react";
-import { ArrowLeft, CheckCircle2, XCircle, Circle, Award, PenLine } from "lucide-react";
+import { ArrowLeft, CheckCircle2, XCircle, Circle, Award, PenLine, ClipboardCheck } from "lucide-react";
 import { api } from "@/lib/api";
 import type { Id } from "convex/_generated/dataModel";
 import { LoadingScreen } from "@/components/common/Loader";
@@ -7,11 +7,32 @@ import { EmptyState } from "@/components/common/EmptyState";
 import { Button } from "@/components/common/Button";
 import { RichTextEditor } from "@/components/common/RichTextEditor";
 
-// Copie corrigée vue par le cadet, après publication : score, réussite, puis le
-// détail question par question avec les bonnes réponses et l'explication.
+type Review = {
+  title: string;
+  candidate: string;
+  score: number;
+  maxPoints: number;
+  passPercent: number | null;
+  passed: boolean | null;
+  questions: {
+    _id: string;
+    kind: "SINGLE" | "MULTI" | "TEXT";
+    prompt: string;
+    mediaUrls: string[];
+    points: number;
+    manual: boolean;
+    awarded: number | null;
+    comment: string | null;
+    explanation: string | null;
+    myText: string | null;
+    expectedAnswer: string | null;
+    choices: { label: string; correct: boolean; picked: boolean }[];
+  }[];
+};
+
+// Copie corrigée d'un cadet, une fois les résultats publiés (vue du cadet).
 export function ResultView({ sessionId, onBack }: { sessionId: Id<"quizSessions">; onBack: () => void }) {
   const r = useQuery(api.quizSession.myResult, { sessionId });
-
   if (r === undefined) return <LoadingScreen label="Chargement du résultat…" />;
   if (r === null) {
     return (
@@ -20,9 +41,17 @@ export function ResultView({ sessionId, onBack }: { sessionId: Id<"quizSessions"
       </div>
     );
   }
+  return <CopyReview review={r} onBack={onBack} showCandidate={false} />;
+}
 
+// Rendu partagé d'une copie corrigée. `showCandidate` affiche le nom du cadet
+// (côté instructeur) ; côté cadet c'est sa propre copie, inutile de le répéter.
+export function CopyReview({ review, onBack, showCandidate }: { review: Review; onBack: () => void; showCandidate: boolean }) {
+  const r = review;
   const pct = r.maxPoints > 0 ? Math.round((r.score / r.maxPoints) * 100) : 0;
-  const tint = r.passed ? "var(--accent)" : "var(--danger)";
+  // Sans seuil de réussite, en-tête neutre (score seul, pas de verdict).
+  const verdict = r.passed === null ? null : r.passed;
+  const tint = verdict === null ? "var(--accent)" : verdict ? "var(--accent)" : "var(--danger)";
 
   return (
     <div className="mx-auto w-full max-w-[1120px] p-[22px_28px]" style={{ animation: "mdtFade .2s ease" }}>
@@ -32,15 +61,15 @@ export function ResultView({ sessionId, onBack }: { sessionId: Id<"quizSessions"
 
       <div className="mb-[20px] flex items-center gap-[18px] rounded-card border p-[20px_22px]" style={{ borderColor: `color-mix(in srgb, ${tint} 40%, var(--border))`, background: `color-mix(in srgb, ${tint} 6%, var(--surface))` }}>
         <span className="flex h-[58px] w-[58px] flex-shrink-0 items-center justify-center rounded-full" style={{ background: `color-mix(in srgb, ${tint} 15%, transparent)`, color: tint }}>
-          {r.passed ? <Award className="h-[28px] w-[28px]" /> : <XCircle className="h-[28px] w-[28px]" />}
+          {verdict === null ? <ClipboardCheck className="h-[28px] w-[28px]" /> : verdict ? <Award className="h-[28px] w-[28px]" /> : <XCircle className="h-[28px] w-[28px]" />}
         </span>
         <div className="min-w-0 flex-1">
-          <div className="text-[12px] font-bold uppercase tracking-[0.1em] text-faint">{r.title}</div>
+          <div className="text-[12px] font-bold uppercase tracking-[0.1em] text-faint">{r.title}{showCandidate ? ` · ${r.candidate}` : ""}</div>
           <div className="mt-[3px] text-[22px] font-bold" style={{ color: tint }}>
-            {r.passed ? "Réussi" : "Non validé"}
+            {verdict === null ? `${r.score} / ${r.maxPoints}` : verdict ? "Réussi" : "Non validé"}
           </div>
           <div className="mt-[2px] text-[13px] text-muted">
-            {r.score} / {r.maxPoints} points · {pct}% (seuil {r.passPercent}%)
+            {r.score} / {r.maxPoints} points · {pct}%{r.passPercent !== null ? ` (seuil ${r.passPercent}%)` : " · sans seuil de réussite"}
           </div>
         </div>
       </div>
@@ -64,7 +93,7 @@ export function ResultView({ sessionId, onBack }: { sessionId: Id<"quizSessions"
 
             {(q.kind === "TEXT" || q.myText) && (
               <div className="ml-[37px] mt-[6px]">
-                <div className="text-[11px] font-bold uppercase tracking-[0.07em] text-faint">Votre réponse</div>
+                <div className="text-[11px] font-bold uppercase tracking-[0.07em] text-faint">{showCandidate ? "Réponse" : "Votre réponse"}</div>
                 <div className="mt-[3px] whitespace-pre-wrap rounded-sm border border-border bg-surface-2 p-[9px_11px] text-[13px]">{q.myText || <span className="italic text-faint">Sans réponse</span>}</div>
               </div>
             )}
@@ -112,7 +141,7 @@ function ChoiceLine({ label, correct, picked }: { label: string; correct: boolea
     <li className="flex items-center gap-[8px] text-[13px]" style={{ color: tint }}>
       <Icon className="h-[14px] w-[14px] flex-shrink-0" />
       <span style={{ fontWeight: correct || picked ? 600 : 400 }}>{label}</span>
-      {picked && <span className="text-[10.5px] font-semibold uppercase tracking-[0.06em] text-faint">votre choix</span>}
+      {picked && <span className="text-[10.5px] font-semibold uppercase tracking-[0.06em] text-faint">choix</span>}
     </li>
   );
 }
