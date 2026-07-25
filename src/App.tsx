@@ -1,5 +1,5 @@
 import { lazy } from "react";
-import { Routes, Route, Navigate, useLocation } from "react-router-dom";
+import { Routes, Route, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { Authenticated, Unauthenticated, AuthLoading } from "convex/react";
 import { AppStateProvider, useApp } from "@/providers/app-state";
 import { useMe } from "@/hooks/useMe";
@@ -37,7 +37,8 @@ import { LoginPage } from "@/auth/LoginPage";
 import { Onboarding } from "@/auth/Onboarding";
 import { PendingScreen } from "@/auth/PendingScreen";
 import { ChangePasswordScreen } from "@/auth/ChangePasswordScreen";
-import { PortalChoice } from "@/portal/PortalChoice";
+import { PortalEntry } from "@/portal/PortalEntry";
+import { PortalProvider, usePortal } from "@/portal/portal-context";
 import { LspaShell } from "@/lspa/LspaShell";
 import { LspaDashboard } from "@/lspa/LspaDashboard";
 import { LspaEffectif } from "@/lspa/LspaEffectif";
@@ -49,6 +50,21 @@ import { Splash } from "@/auth/Splash";
 export default function App() {
   return (
     <AppStateProvider>
+      <PortalProvider>
+        <Root />
+      </PortalProvider>
+    </AppStateProvider>
+  );
+}
+
+// Le choix du portail précède la connexion : c'est le premier écran du site.
+// Tant qu'aucune surface n'est retenue, on n'affiche ni le MDT ni la LSPA.
+function Root() {
+  const { portal, ready } = usePortal();
+  if (!ready) return <Splash />;
+  if (!portal) return <PortalEntry />;
+  return (
+    <>
       <AuthLoading>
         <Splash />
       </AuthLoading>
@@ -58,7 +74,19 @@ export default function App() {
       <Authenticated>
         <Gated />
       </Authenticated>
-    </AppStateProvider>
+    </>
+  );
+}
+
+// Écran de bascule, une fois connecté. Il réutilise l'écran d'entrée et se
+// contente d'y ajouter la navigation vers la surface retenue.
+function PortalSwitch({ canMdt }: { canMdt: boolean }) {
+  const navigate = useNavigate();
+  return (
+    <PortalEntry
+      mdtDenied={!canMdt}
+      onChosen={(p) => navigate(p === "lspa" ? "/lspa" : "/", { replace: true })}
+    />
   );
 }
 
@@ -66,6 +94,7 @@ function Gated() {
   const me = useMe();
   const location = useLocation();
   const { canMdt, ready: portalsReady } = usePortals();
+  const { portal } = usePortal();
   const { entryPending, endEntry } = useApp();
   if (me === undefined) return <Splash />;
   if (me === null) return <Onboarding />;
@@ -80,6 +109,9 @@ function Gated() {
   // son portail, plutôt que de lui refuser page après page.
   const inLspa = location.pathname.startsWith("/lspa") || location.pathname === "/portail";
   if (portalsReady && !canMdt && !inLspa) return <Navigate to="/lspa" replace />;
+  // Le portail retenu à l'entrée fixe la surface : on ne bascule que par
+  // l'écran de choix, jamais par une URL laissée dans l'historique.
+  if (portal === "lspa" && !inLspa) return <Navigate to="/lspa" replace />;
 
   return (
     <>
@@ -91,8 +123,9 @@ function Gated() {
         />
       )}
     <Routes>
-      {/* Aiguillage entre les deux surfaces, hors de toute enveloppe. */}
-      <Route path="/portail" element={<PortalChoice />} />
+      {/* Bascule entre les deux surfaces, hors de toute enveloppe. C'est le même
+          écran qu'à l'entrée du site : le choix reste mémorisé. */}
+      <Route path="/portail" element={<PortalSwitch canMdt={canMdt} />} />
 
       {/* Portail de l'académie */}
       <Route path="/lspa" element={<RequirePerm perm="lspa.view"><LspaShell /></RequirePerm>}>

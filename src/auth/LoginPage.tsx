@@ -1,15 +1,18 @@
 import { useState } from "react";
 import { useAuthActions } from "@convex-dev/auth/react";
-import { useNavigate } from "react-router-dom";
+import { ArrowLeft } from "lucide-react";
 import { AuthShell } from "./AuthShell";
+import { readableError } from "@/lib/errors";
 import { useApp } from "@/providers/app-state";
+import { usePortal } from "@/portal/portal-context";
 
 const ID_RE = /^[a-zà-öø-ÿ'-]{2,}\.[a-zà-öø-ÿ'-]{2,}$/i;
 
 export function LoginPage() {
   const { signIn } = useAuthActions();
   const { requestEntry } = useApp();
-  const navigate = useNavigate();
+  const { portal, clear } = usePortal();
+  const isLspa = portal === "lspa";
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [id, setId] = useState("");
   const [pw, setPw] = useState("");
@@ -35,14 +38,15 @@ export function LoginPage() {
     try {
       const login = id.trim().toLowerCase();
       await signIn("password", { email: login, password: pw, name: login, flow: isLogin ? "signIn" : "signUp" });
-      // Connexion réussie -> transition d'entrée, puis choix du portail.
-      if (isLogin) { requestEntry(); navigate("/portail", { replace: true }); }
+      // Connexion réussie -> transition d'entrée. La surface à ouvrir a déjà
+      // été choisie avant la connexion, il n'y a rien à décider ici.
+      if (isLogin) requestEntry();
     } catch (e) {
       // Convex enrobe ses erreurs ; on extrait le message lisible quand il y en
       // a un. Sans cela, une panne de configuration serveur se présentait comme
       // un simple conflit d'identifiant, ce qui envoie chercher au mauvais endroit.
       const raw = e instanceof Error ? e.message : "";
-      const clean = raw.replace(/^\[.*?\]\s*/, "").split("\n")[0].trim();
+      const clean = readableError(e, "");
       const known = /InvalidAccountId|already exists|Invalid password|InvalidSecret/i.test(raw);
       setErr(
         known || !clean
@@ -59,7 +63,18 @@ export function LoginPage() {
     `flex-1 rounded-[8px] py-[9px] text-[13px] font-semibold transition-colors ${active ? "bg-accent text-accent-contrast" : "text-muted hover:text-text"}`;
 
   return (
-    <AuthShell>
+    <AuthShell
+      subtitle={isLspa ? "Los Santos Police Academy" : "Mobile Data Terminal"}
+      footer={
+        <button
+          onClick={clear}
+          className="mt-[16px] flex w-full items-center justify-center gap-[6px] border-none bg-transparent text-[12.5px] font-semibold text-muted hover:text-text"
+        >
+          <ArrowLeft className="h-[14px] w-[14px]" />
+          Changer d'accès
+        </button>
+      }
+    >
       {/* Onglets */}
       <div className="mx-4 mt-4 flex gap-[3px] rounded-[11px] border border-border bg-surface-2 p-[5px]">
         <button onClick={() => { setMode("login"); setErr(null); }} className={tab(isLogin)}>Se connecter</button>
@@ -69,10 +84,12 @@ export function LoginPage() {
       <form onSubmit={submit} className="px-[26px] pb-[26px] pt-[22px]">
         <div className="mb-[18px]">
           <h2 className="m-0 text-[18px] font-bold text-text">
-            {isLogin ? "Connexion au terminal" : "Créer un compte"}
+            {isLogin ? (isLspa ? "Connexion à l'académie" : "Connexion au terminal") : "Créer un compte"}
           </h2>
           <div className="mt-1 text-[12.5px] text-muted">
-            {isLogin ? "Accédez au MDT de la Station 13." : "Ouvrez votre accès au MDT."}
+            {isLogin
+              ? isLspa ? "Accédez au portail de la Police Academy." : "Accédez au MDT de la Station 13."
+              : isLspa ? "Ouvrez votre accès à l'académie." : "Ouvrez votre accès au MDT."}
           </div>
         </div>
 

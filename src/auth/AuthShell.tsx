@@ -3,7 +3,17 @@ import { Sun, Moon } from "lucide-react";
 import { useApp } from "@/providers/app-state";
 
 // Cadre commun des écrans d'accès (Station 13) : marque + carte + pied de page.
-export function AuthShell({ children, maxWidth = 400 }: { children: ReactNode; maxWidth?: number }) {
+export function AuthShell({
+  children,
+  maxWidth = 400,
+  subtitle = "Mobile Data Terminal",
+  footer,
+}: {
+  children: ReactNode;
+  maxWidth?: number;
+  subtitle?: string;
+  footer?: ReactNode;
+}) {
   const { mode, toggleMode } = useApp();
   return (
     <div className="relative flex h-full items-center justify-center overflow-y-auto bg-bg p-6">
@@ -22,7 +32,7 @@ export function AuthShell({ children, maxWidth = 400 }: { children: ReactNode; m
               LSPD · Station 13
             </div>
             <div className="mt-[7px] text-[10.5px] font-bold uppercase tracking-[0.2em] text-accent">
-              Mobile Data Terminal
+              {subtitle}
             </div>
           </div>
         </div>
@@ -32,6 +42,7 @@ export function AuthShell({ children, maxWidth = 400 }: { children: ReactNode; m
         >
           {children}
         </div>
+        {footer}
         <div className="mt-[18px] text-center text-[11px] tracking-[0.03em] text-faint">
           Accès réservé au personnel assermenté · Lucky Thirteen · Newton Street
         </div>

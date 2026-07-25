@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import { CheckCircle2, AlertTriangle, Info, XCircle, X } from "lucide-react";
+import { readableError } from "@/lib/errors";
 
 type ToastKind = "success" | "error" | "info" | "warning";
 interface Toast {
@@ -63,10 +64,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         try {
           return await p;
         } catch (e) {
-          const raw = e instanceof Error ? e.message : String(e);
-          // Convex enrobe les erreurs ; on extrait le message lisible.
-          const clean = raw.replace(/^\[.*?\]\s*/, "").split("\n")[0];
-          push(errPrefix ? `${errPrefix} : ${clean}` : clean, "error");
+          const clean = readableError(e, errPrefix ?? "Action impossible.");
+          push(errPrefix && clean !== errPrefix ? `${errPrefix} : ${clean}` : clean, "error");
           return undefined;
         }
       },

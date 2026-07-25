@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { GraduationCap, Users, Plus, X } from "lucide-react";
 import { api } from "@/lib/api";
+import { readableError } from "@/lib/errors";
 import type { Id } from "convex/_generated/dataModel";
 import { useCan } from "@/hooks/useCan";
 import { fmtBadge } from "@/components/common/AgentTag";
@@ -37,7 +38,7 @@ export function LspaEffectif() {
     try {
       await setRank({ agentId, rankId });
     } catch (e) {
-      setErr(e instanceof Error ? e.message.replace(/^\[.*?\]\s*/, "").split("\n")[0] : "Action impossible.");
+      setErr(readableError(e));
     }
   }
 
