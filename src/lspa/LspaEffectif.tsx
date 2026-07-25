@@ -1,7 +1,6 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery } from "convex/react";
-import { GraduationCap, Users, Plus, X, ChevronRight } from "lucide-react";
+import { GraduationCap, Users, Plus, X, ChevronRight, ClipboardList } from "lucide-react";
 import { api } from "@/lib/api";
 import { readableError } from "@/lib/errors";
 import type { Id } from "convex/_generated/dataModel";
@@ -12,6 +11,8 @@ import { SkeletonRows } from "@/components/common/Skeleton";
 import { Button } from "@/components/common/Button";
 import { Modal } from "@/components/common/Modal";
 import { AgentPicker } from "@/components/common/AgentPicker";
+import { CadetSheetPanel } from "./CadetSheetPanel";
+import { SheetConfigModal } from "./SheetConfig";
 
 // Effectif de l'académie. Deux populations distinctes : la promotion en cours
 // (les cadets) et l'encadrement. Un encadrant garde son grade LSPD ; le grade
@@ -31,10 +32,11 @@ type Rank = { _id: Id<"academyRanks">; name: string; abbrev: string; color?: str
 export function LspaEffectif() {
   const data = useQuery(api.lspa.effectif);
   const setRank = useMutation(api.lspa.setAcademyRank);
-  const navigate = useNavigate();
   const { can } = useCan();
   const manage = can("lspa.rank.manage");
   const [adding, setAdding] = useState(false);
+  const [sheetFor, setSheetFor] = useState<Id<"agents"> | null>(null);
+  const [configuring, setConfiguring] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   async function apply(agentId: Id<"agents">, rankId?: Id<"academyRanks">) {
@@ -48,11 +50,16 @@ export function LspaEffectif() {
 
   return (
     <div className="p-[22px_26px]" style={{ animation: "mdtFade .2s ease" }}>
-      <div className="mb-[18px]">
-        <h1 className="m-0 text-[21px] font-bold tracking-tight">Effectif de l'académie</h1>
-        <div className="mt-[3px] text-[13px] text-muted">
-          La promotion en formation et son encadrement.
+      <div className="mb-[18px] flex items-end gap-3">
+        <div className="flex-1">
+          <h1 className="m-0 text-[21px] font-bold tracking-tight">Effectif de l'académie</h1>
+          <div className="mt-[3px] text-[13px] text-muted">
+            La promotion en formation et son encadrement.
+          </div>
         </div>
+        {can("effectif.validate") && (
+          <Button onClick={() => setConfiguring(true)}><ClipboardList className="h-[15px] w-[15px]" /> Fiche de notation</Button>
+        )}
       </div>
 
       {err && (
@@ -78,7 +85,10 @@ export function LspaEffectif() {
             ) : (
               <div className="flex flex-col">
                 {data.cadets.map((c) => (
-                  <Row key={c._id} p={c as Person} hideBadge onOpen={() => navigate(`/lspa/cadet/${c._id}`)}>
+                  <Row key={c._id} p={c as Person} hideBadge onOpen={() => setSheetFor(c._id)}>
+                    {(c as Person & { group?: string | null }).group && (
+                      <span className="rounded-[5px] px-[7px] py-[2px] text-[11px] font-bold" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>Groupe {(c as Person & { group?: string | null }).group}</span>
+                    )}
                     <span className="text-[12px] text-faint">
                       {c.dateEntree ? `Entré le ${new Date(c.dateEntree).toLocaleDateString("fr-FR")}` : "Date d'entrée inconnue"}
                     </span>
@@ -149,6 +159,8 @@ export function LspaEffectif() {
           }}
         />
       )}
+      {sheetFor && <CadetSheetPanel agentId={sheetFor} onClose={() => setSheetFor(null)} />}
+      {configuring && <SheetConfigModal onClose={() => setConfiguring(false)} />}
     </div>
   );
 }

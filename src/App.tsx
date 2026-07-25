@@ -44,7 +44,6 @@ import { LspaDashboard } from "@/lspa/LspaDashboard";
 import { LspaEffectif } from "@/lspa/LspaEffectif";
 import { LspaProfil } from "@/lspa/LspaProfil";
 import { LspaHistory } from "@/lspa/LspaHistory";
-import { LspaCadet } from "@/lspa/LspaCadet";
 import { LspaPromotions, LspaPromotion } from "@/lspa/LspaPromotions";
 import { LspaQuiz } from "@/lspa/LspaQuiz";
 const QuizEditor = lazy(() => import("@/lspa/QuizEditor").then((m) => ({ default: m.QuizEditor })));
@@ -138,7 +137,6 @@ function Gated() {
       <Route path="/lspa" element={<RequirePerm perm="lspa.view"><LspaShell /></RequirePerm>}>
         <Route index element={<LspaDashboard />} />
         <Route path="effectif" element={<RequirePerm perm="lspa.effectif.view"><LspaEffectif /></RequirePerm>} />
-        <Route path="cadet/:id" element={<RequirePerm perm="lspa.effectif.view"><LspaCadet /></RequirePerm>} />
         <Route path="promotions" element={<RequirePerm perm="lspa.effectif.view"><LspaPromotions /></RequirePerm>} />
         <Route path="promotions/:id" element={<RequirePerm perm="lspa.effectif.view"><LspaPromotion /></RequirePerm>} />
         <Route path="quiz" element={<LspaQuiz />} />

@@ -13,6 +13,7 @@ import { SkeletonRows } from "@/components/common/Skeleton";
 import { Button } from "@/components/common/Button";
 import { Modal } from "@/components/common/Modal";
 import { AgentPicker } from "@/components/common/AgentPicker";
+import { CadetSheetPanel } from "./CadetSheetPanel";
 
 const MEMBER_STATUS: Record<string, { label: string; color: string }> = {
   ACTIVE: { label: "En formation", color: "var(--accent)" },
@@ -96,16 +97,40 @@ export function LspaPromotion() {
   const setStatus = useMutation(api.promotions.setMemberStatus);
   const navigate = useNavigate();
   const toast = useToast();
+  const setGroup = useMutation(api.promotions.setGroup);
   const { can } = useCan();
   const manage = can("effectif.validate");
   const [adding, setAdding] = useState(false);
   const [grading, setGrading] = useState<{ memberId: string; name: string } | null>(null);
   const [showInvites, setShowInvites] = useState(false);
   const [showStats, setShowStats] = useState(false);
+  const [sheetFor, setSheetFor] = useState<Id<"agents"> | null>(null);
+  const [byGroup, setByGroup] = useState(false);
 
   if (data === undefined) return <div className="p-[22px_26px]"><SkeletonRows rows={5} /></div>;
   if (data === null) return <div className="p-[26px]"><EmptyState title="Promotion introuvable" action={<Button onClick={() => navigate("/lspa/promotions")}>Retour</Button>} /></div>;
   const { promo, members } = data;
+
+  // Classement par note. Les écartés restent en bas. Le major est le premier de
+  // chaque groupe (mode groupe) ou de la promo (mode total).
+  const scoreOf = (m: typeof members[number]) => (m.status === "REJECTED" ? -1 : m.eliminated ? 0 : m.score ?? -1);
+  const sorted = [...members].sort((a, b) => scoreOf(b) - scoreOf(a));
+  const groupsPresent = Array.from(new Set(members.map((m) => m.group).filter(Boolean))) as string[];
+  const useGroups = byGroup && groupsPresent.length > 0;
+  // memberId -> true si major de son classement.
+  const majors = new Set<string>();
+  if (useGroups) {
+    for (const g of groupsPresent) {
+      const top = sorted.find((m) => m.group === g && m.status !== "REJECTED" && m.score !== null);
+      if (top) majors.add(top.memberId);
+    }
+  } else {
+    const top = sorted.find((m) => m.status !== "REJECTED" && m.score !== null);
+    if (top) majors.add(top.memberId);
+  }
+  const ordered = useGroups
+    ? [...sorted].sort((a, b) => (a.group ?? "~").localeCompare(b.group ?? "~"))
+    : sorted;
 
   return (
     <div className="mx-auto w-full max-w-[1000px] p-[22px_26px]" style={{ animation: "mdtFade .2s ease" }}>
@@ -132,40 +157,72 @@ export function LspaPromotion() {
       {members.length === 0 ? (
         <div className="rounded-card border border-border bg-surface"><EmptyState title="Aucun cadet" message="Ajoutez des cadets ou distribuez un code d'accès rattaché à cette promotion." /></div>
       ) : (
-        <div className="overflow-hidden rounded-card border border-border bg-surface">
-          {members.map((m) => {
-            const st = MEMBER_STATUS[m.status];
-            return (
-              <div key={m.memberId} className="flex items-center gap-[12px] border-b border-border px-[16px] py-[11px] last:border-b-0">
-                <button onClick={() => navigate(`/lspa/cadet/${m.agentId}`)} className="flex min-w-0 flex-1 items-center gap-[11px] text-left hover:opacity-80">
-                  <span className="flex h-[32px] w-[32px] flex-shrink-0 items-center justify-center rounded-full bg-surface-2 text-[11px] font-bold text-muted">
-                    {m.name.split(" ").map((x) => x[0]).slice(0, 2).join("")}
-                  </span>
-                  <span className="truncate text-[13.5px] font-semibold">{m.name}</span>
-                </button>
-                <span className="flex-shrink-0 rounded-[6px] px-[8px] py-[3px] text-[11px] font-semibold" style={{ background: `color-mix(in srgb, ${st.color} 13%, transparent)`, color: st.color }}>{st.label}</span>
-                {manage && m.status !== "GRADUATED" && (
-                  <div className="flex flex-shrink-0 items-center gap-[6px]">
-                    {m.status === "ACTIVE" ? (
-                      <>
-                        <Button onClick={() => setGrading({ memberId: m.memberId, name: m.name })} className="!py-[5px] !text-[12px]"><CheckCircle2 className="h-[13px] w-[13px]" /> Diplômer</Button>
-                        <button onClick={() => void toast.guard(setStatus({ memberId: m.memberId as Id<"promotionMembers">, status: "REJECTED" }), "Action impossible")} title="Écarter" className="flex h-[28px] w-[28px] items-center justify-center rounded-[7px] border border-border bg-surface-2 text-faint hover:text-danger"><Ban className="h-[13px] w-[13px]" /></button>
-                      </>
-                    ) : (
-                      <button onClick={() => void toast.guard(setStatus({ memberId: m.memberId as Id<"promotionMembers">, status: "ACTIVE" }), "Action impossible")} title="Réintégrer" className="flex items-center gap-[5px] rounded-[7px] border border-border bg-surface-2 px-[9px] py-[6px] text-[12px] font-semibold text-muted hover:text-accent"><RotateCcw className="h-[13px] w-[13px]" /> Réintégrer</button>
+        <>
+          {groupsPresent.length > 0 && (
+            <div className="mb-[10px] flex items-center gap-[7px]">
+              <span className="text-[11.5px] text-muted">Classement :</span>
+              <button onClick={() => setByGroup(false)} className="rounded-[7px] px-[10px] py-[5px] text-[12px] font-semibold" style={!byGroup ? { background: "var(--accent)", color: "#fff" } : { background: "var(--surface-2)", color: "var(--muted)" }}>Au total</button>
+              <button onClick={() => setByGroup(true)} className="rounded-[7px] px-[10px] py-[5px] text-[12px] font-semibold" style={byGroup ? { background: "var(--accent)", color: "#fff" } : { background: "var(--surface-2)", color: "var(--muted)" }}>Par groupe</button>
+            </div>
+          )}
+          <div className="overflow-hidden rounded-card border border-border bg-surface">
+            {ordered.map((m, idx) => {
+              const st = MEMBER_STATUS[m.status];
+              const showGroupHeader = useGroups && (idx === 0 || ordered[idx - 1].group !== m.group);
+              return (
+                <div key={m.memberId}>
+                  {showGroupHeader && (
+                    <div className="border-b border-border bg-surface-2 px-[16px] py-[6px] text-[10.5px] font-bold uppercase tracking-[0.09em] text-faint">
+                      {m.group ? `Groupe ${m.group}` : "Sans groupe"}
+                    </div>
+                  )}
+                  <div className="flex items-center gap-[11px] border-b border-border px-[16px] py-[11px] last:border-b-0">
+                    <button onClick={() => setSheetFor(m.agentId)} className="flex min-w-0 flex-1 items-center gap-[11px] text-left hover:opacity-80">
+                      <span className="flex h-[32px] w-[32px] flex-shrink-0 items-center justify-center rounded-full bg-surface-2 text-[11px] font-bold text-muted">
+                        {m.name.split(" ").map((x) => x[0]).slice(0, 2).join("")}
+                      </span>
+                      <span className="truncate text-[13.5px] font-semibold">{m.name}</span>
+                      {majors.has(m.memberId) && <span className="rounded-[5px] px-[6px] py-[2px] text-[10px] font-bold uppercase text-accent" style={{ background: "var(--accent-soft)" }}>Major</span>}
+                    </button>
+                    <span className="flex-shrink-0 font-data text-[13px] font-bold" style={{ color: m.eliminated ? "var(--danger)" : "var(--text)" }}>{m.eliminated ? "Élim." : m.score ?? "-"}</span>
+                    {manage && m.status !== "GRADUATED" ? (
+                      <select
+                        value={m.group ?? ""}
+                        onChange={(e) => void toast.guard(setGroup({ memberId: m.memberId as Id<"promotionMembers">, group: e.target.value }), "Action impossible")}
+                        className="h-[28px] flex-shrink-0 rounded-[7px] border border-border bg-surface-2 px-[6px] text-[12px] outline-none"
+                        title="Groupe"
+                      >
+                        <option value="">—</option>
+                        <option value="A">A</option>
+                        <option value="B">B</option>
+                      </select>
+                    ) : m.group ? <span className="text-[12px] text-muted">Gr. {m.group}</span> : null}
+                    <span className="flex-shrink-0 rounded-[6px] px-[8px] py-[3px] text-[11px] font-semibold" style={{ background: `color-mix(in srgb, ${st.color} 13%, transparent)`, color: st.color }}>{st.label}</span>
+                    {manage && m.status !== "GRADUATED" && (
+                      <div className="flex flex-shrink-0 items-center gap-[6px]">
+                        {m.status === "ACTIVE" ? (
+                          <>
+                            <Button onClick={() => setGrading({ memberId: m.memberId, name: m.name })} className="!py-[5px] !text-[12px]"><CheckCircle2 className="h-[13px] w-[13px]" /> Diplômer</Button>
+                            <button onClick={() => void toast.guard(setStatus({ memberId: m.memberId as Id<"promotionMembers">, status: "REJECTED" }), "Action impossible")} title="Écarter" className="flex h-[28px] w-[28px] items-center justify-center rounded-[7px] border border-border bg-surface-2 text-faint hover:text-danger"><Ban className="h-[13px] w-[13px]" /></button>
+                          </>
+                        ) : (
+                          <button onClick={() => void toast.guard(setStatus({ memberId: m.memberId as Id<"promotionMembers">, status: "ACTIVE" }), "Action impossible")} title="Réintégrer" className="flex items-center gap-[5px] rounded-[7px] border border-border bg-surface-2 px-[9px] py-[6px] text-[12px] font-semibold text-muted hover:text-accent"><RotateCcw className="h-[13px] w-[13px]" /> Réintégrer</button>
+                        )}
+                      </div>
                     )}
                   </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
+                </div>
+              );
+            })}
+          </div>
+        </>
       )}
 
       {adding && <AddCadetModal promotionId={promotionId} onClose={() => setAdding(false)} />}
       {grading && <GraduateModal memberId={grading.memberId as Id<"promotionMembers">} name={grading.name} onClose={() => setGrading(null)} />}
       {showInvites && <InvitesModal promotionId={promotionId} invites={data.invites} onClose={() => setShowInvites(false)} canManage={manage} />}
       {showStats && <StatsModal promotionId={promotionId} onClose={() => setShowStats(false)} />}
+      {sheetFor && <CadetSheetPanel agentId={sheetFor} onClose={() => setSheetFor(null)} />}
     </div>
   );
 }

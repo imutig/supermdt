@@ -176,6 +176,7 @@ export default defineSchema({
     promotionId: v.id("promotions"),
     agentId: v.id("agents"),
     status: v.union(v.literal("ACTIVE"), v.literal("REJECTED"), v.literal("GRADUATED")),
+    group: v.optional(v.string()), // Groupe A / B pendant la Police Academy
     joinedAt: v.number(),
     decidedAt: v.optional(v.number()),
     decidedBy: v.optional(v.id("agents")),
@@ -183,6 +184,61 @@ export default defineSchema({
     .index("by_promotion", ["promotionId"])
     .index("by_agent", ["agentId"])
     .index("by_promotion_agent", ["promotionId", "agentId"]),
+
+  // Fiche de notation des cadets : modèle configurable (une ligne par critère).
+  // Tout est réglable par les instructeurs : sections, barèmes, paliers de temps,
+  // catégories de quiz notées.
+  gradingItems: defineTable({
+    section: v.string(), // regroupement d'affichage (Tir, Conduite, Comportement…)
+    label: v.string(),
+    // MANUAL : l'instructeur saisit les points · TIME : il saisit un temps, les
+    // points se calculent · QUIZ_CATEGORY : points auto d'après les quiz.
+    kind: v.union(v.literal("MANUAL"), v.literal("TIME"), v.literal("QUIZ_CATEGORY")),
+    maxPoints: v.number(),
+    position: v.number(),
+    active: v.boolean(),
+    allowEliminate: v.optional(v.boolean()), // MANUAL : propose l'élimination (ex. otage touché)
+    // TIME : paliers ordonnés. maxSeconds absent = dernier palier (au-delà).
+    timeBrackets: v.optional(v.array(v.object({
+      maxSeconds: v.optional(v.number()),
+      points: v.number(),
+      eliminate: v.optional(v.boolean()),
+    }))),
+    categoryId: v.optional(v.id("quizCategories")), // QUIZ_CATEGORY
+  }).index("by_position", ["position"]),
+
+  // Valeurs saisies pour un cadet, un critère. Remplissage concurrent : chaque
+  // critère est un document indépendant.
+  gradingEntries: defineTable({
+    agentId: v.id("agents"),
+    itemId: v.id("gradingItems"),
+    points: v.optional(v.number()), // MANUAL
+    seconds: v.optional(v.number()), // TIME
+    eliminated: v.optional(v.boolean()),
+    updatedBy: v.id("agents"),
+    updatedAt: v.number(),
+  })
+    .index("by_agent", ["agentId"])
+    .index("by_agent_item", ["agentId", "itemId"]),
+
+  // Notes libres des instructeurs sur un cadet : chacun ajoute les siennes, elles
+  // s'affichent en direct pour tous, signées de leur auteur.
+  cadetNotes: defineTable({
+    agentId: v.id("agents"),
+    authorId: v.id("agents"),
+    authorName: v.string(),
+    text: v.string(),
+    at: v.number(),
+  }).index("by_agent", ["agentId"]),
+
+  // Conclusion du recrutement : un texte partagé par cadet, rempli par tous.
+  cadetConclusions: defineTable({
+    agentId: v.id("agents"),
+    text: v.string(),
+    updatedBy: v.id("agents"),
+    updatedByName: v.string(),
+    updatedAt: v.number(),
+  }).index("by_agent", ["agentId"]),
 
   academyRankPermissions: defineTable({
     rankId: v.id("academyRanks"),

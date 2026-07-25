@@ -3,6 +3,7 @@ import { mutation, query } from "./_generated/server";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { requireAgent, requirePermission } from "./rbac";
 import { writeAudit } from "./lib/audit";
+import { totalScoreFor } from "./grading";
 
 // Promotions de la Police Academy : cohortes de cadets, de l'admission à la
 // diplomation. Consultation sous lspa.effectif.view ; décisions (rejet,
@@ -62,17 +63,23 @@ export const get = query({
       .query("promotionMembers")
       .withIndex("by_promotion", (q) => q.eq("promotionId", promotionId))
       .collect();
+    // Modèle de fiche chargé une fois pour noter tous les cadets (classement).
+    const items = (await ctx.db.query("gradingItems").withIndex("by_position").collect()).filter((i) => i.active !== false);
     const rows = [];
     for (const m of members) {
       const a = await ctx.db.get(m.agentId);
       if (!a) continue;
+      const score = await totalScoreFor(ctx, m.agentId, items);
       rows.push({
         memberId: m._id,
         agentId: a._id,
         name: `${a.prenomRP} ${a.nomRP}`,
         avatarUrl: a.avatarUrl ?? null,
         status: m.status,
+        group: m.group ?? null,
         joinedAt: m.joinedAt,
+        score: score.hasScore ? score.total : null,
+        eliminated: score.eliminated,
       });
     }
     // Codes d'invitation rattachés à cette promo.
@@ -156,6 +163,16 @@ export const setMemberStatus = mutation({
       resourceType: "agent",
       resourceId: m.agentId,
     });
+  },
+});
+
+// Affecte un cadet à un groupe (A / B) au sein de la promo. Chaîne vide = aucun.
+export const setGroup = mutation({
+  args: { memberId: v.id("promotionMembers"), group: v.string() },
+  handler: async (ctx, { memberId, group }) => {
+    const agent = await requireAgent(ctx);
+    await requirePermission(ctx, agent, "effectif.validate");
+    await ctx.db.patch(memberId, { group: group.trim() || undefined });
   },
 });
 
