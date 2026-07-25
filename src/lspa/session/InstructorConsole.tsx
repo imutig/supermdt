@@ -186,47 +186,101 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-// Tableau de correction : une copie à la fois, réponses libres + repère attendu.
+type GradeRow = {
+  participantId: string;
+  name: string;
+  needsGrading: boolean;
+  score: number;
+  claimedBy: string | null;
+  claimedByMe: boolean;
+  answers: { questionId: string; prompt: string; points: number; expectedAnswer: string | null; text: string; awarded: number | null; comment: string }[];
+};
+
+// Correction : liste des copies (plusieurs correcteurs en parallèle), chacune
+// réservée le temps d'être notée. On ouvre une copie, on la corrige, elle se
+// libère. Les copies prises par un autre s'affichent occupées.
 function GradingBoard({ sessionId, onBack }: { sessionId: Id<"quizSessions">; onBack: () => void }) {
   const data = useQuery(api.quizSession.gradingQueue, { sessionId });
   const grade = useMutation(api.quizSession.gradeParticipant);
+  const claim = useMutation(api.quizSession.claimGrading);
+  const release = useMutation(api.quizSession.releaseGrading);
   const toast = useToast();
-  const [idx, setIdx] = useState(0);
+  const [openId, setOpenId] = useState<string | null>(null);
 
   if (data === undefined) return <LoadingScreen label="Chargement des copies…" />;
   if (data === null) return <div className="p-[26px]"><EmptyState title="Rien à corriger" action={<Button onClick={onBack}>Retour</Button>} /></div>;
 
-  const toGrade = data.rows.filter((r) => r.needsGrading);
-  if (toGrade.length === 0) {
+  const open = openId ? data.rows.find((r) => r.participantId === openId) : null;
+
+  // Vue d'une copie ouverte
+  if (open) {
     return (
-      <div className="mx-auto max-w-[900px] p-[26px]">
-        <EmptyState title="Correction terminée" message="Toutes les copies sont notées. Vous pouvez publier les résultats." action={<Button variant="primary" onClick={onBack}>Retour à la session</Button>} />
+      <div className="mx-auto max-w-[900px] p-[22px_24px]" style={{ animation: "mdtFade .2s ease" }}>
+        <button
+          onClick={async () => { await release({ participantId: openId as Id<"quizParticipants"> }); setOpenId(null); }}
+          className="mb-[14px] flex items-center gap-[6px] text-[12.5px] font-semibold text-muted hover:text-text"
+        >
+          <ArrowLeft className="h-[14px] w-[14px]" /> Liste des copies
+        </button>
+        <h1 className="m-0 mb-[14px] text-[19px] font-bold">Correction · {open.name}</h1>
+        <GradeForm
+          key={open.participantId}
+          row={open}
+          onSave={async (awards) => {
+            const r = await toast.guard(grade({ participantId: open.participantId as Id<"quizParticipants">, awards }), "Enregistrement impossible");
+            if (r !== undefined) { toast.success("Copie notée."); setOpenId(null); }
+          }}
+        />
       </div>
     );
   }
 
-  const row = toGrade[Math.min(idx, toGrade.length - 1)];
+  const pending = data.rows.filter((r) => r.needsGrading).length;
   return (
     <div className="mx-auto max-w-[900px] p-[22px_24px]" style={{ animation: "mdtFade .2s ease" }}>
       <button onClick={onBack} className="mb-[14px] flex items-center gap-[6px] text-[12.5px] font-semibold text-muted hover:text-text">
         <ArrowLeft className="h-[14px] w-[14px]" /> Retour à la session
       </button>
       <div className="mb-[14px] flex items-center gap-[10px]">
-        <h1 className="m-0 flex-1 text-[19px] font-bold">Correction · {row.name}</h1>
-        <span className="font-data text-[12.5px] text-faint">{Math.min(idx + 1, toGrade.length)} / {toGrade.length}</span>
+        <h1 className="m-0 flex-1 text-[19px] font-bold">Correction des copies</h1>
+        <span className="font-data text-[12.5px] text-faint">{pending} à corriger</span>
       </div>
-      <GradeForm
-        key={row.participantId}
-        row={row}
-        onSave={async (awards) => {
-          const r = await toast.guard(grade({ participantId: row.participantId as Id<"quizParticipants">, awards }), "Enregistrement impossible");
-          if (r !== undefined) {
-            toast.success("Copie notée.");
-            if (idx < toGrade.length - 1) setIdx(idx); // la liste se resserre : on reste sur la même position
-            else onBack();
-          }
-        }}
-      />
+      {pending === 0 && (
+        <div className="mb-[14px] rounded-card border p-[13px_16px] text-[13px] font-semibold" style={{ borderColor: "color-mix(in srgb, var(--accent) 40%, var(--border))", background: "var(--accent-soft)", color: "var(--accent)" }}>
+          Toutes les copies sont notées. Vous pouvez publier les résultats.
+        </div>
+      )}
+      <div className="overflow-hidden rounded-card border border-border bg-surface">
+        {data.rows.map((r) => {
+          const busyElsewhere = !!r.claimedBy;
+          return (
+            <button
+              key={r.participantId}
+              disabled={busyElsewhere}
+              onClick={async () => {
+                const ok = await toast.guard(claim({ participantId: r.participantId as Id<"quizParticipants"> }), "Copie indisponible");
+                if (ok !== undefined) setOpenId(r.participantId);
+              }}
+              className="flex w-full items-center gap-[12px] border-b border-border px-[16px] py-[12px] text-left last:border-b-0 hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-70"
+            >
+              <span className="flex h-[30px] w-[30px] flex-shrink-0 items-center justify-center rounded-full bg-surface-2 text-[11px] font-bold text-muted">
+                {r.name.split(" ").map((x) => x[0]).slice(0, 2).join("")}
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-[13.5px] font-semibold">{r.name}</div>
+                <div className="mt-[1px] text-[11.5px] text-muted">
+                  {r.claimedBy ? <span className="text-warning">En cours de correction par {r.claimedBy}</span>
+                    : r.claimedByMe ? "Réservée par vous"
+                    : r.needsGrading ? "À corriger" : `Corrigée · ${r.score} pt${r.score > 1 ? "s" : ""}`}
+                </div>
+              </div>
+              {r.needsGrading
+                ? <span className="flex-shrink-0 rounded-[7px] px-[9px] py-[4px] text-[11px] font-bold uppercase tracking-[0.06em] text-warning" style={{ background: "color-mix(in srgb, var(--warning) 14%, transparent)" }}>{busyElsewhere ? "Occupée" : "À corriger"}</span>
+                : <span className="flex flex-shrink-0 items-center gap-[4px] text-[11.5px] font-semibold text-accent"><CheckCircle2 className="h-[13px] w-[13px]" /> Corrigée</span>}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -234,11 +288,7 @@ function GradingBoard({ sessionId, onBack }: { sessionId: Id<"quizSessions">; on
 function GradeForm({
   row, onSave,
 }: {
-  row: {
-    participantId: string;
-    name: string;
-    answers: { questionId: string; prompt: string; points: number; expectedAnswer: string | null; text: string; awarded: number | null; comment: string }[];
-  };
+  row: GradeRow;
   onSave: (awards: { questionId: Id<"quizQuestions">; awarded: number; comment?: string }[]) => void | Promise<void>;
 }) {
   const [state, setState] = useState(() =>

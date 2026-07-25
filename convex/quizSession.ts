@@ -308,7 +308,74 @@ export const supervise = query({
   },
 });
 
+// Historique : toutes les sessions passées d'un coup d'oeil, pour rouvrir une
+// copie, reprendre une correction ou revoir des résultats.
+export const history = query({
+  args: {},
+  handler: async (ctx) => {
+    const agent = await requireAgent(ctx);
+    await requirePermission(ctx, agent, "lspa.session.manage");
+    const sessions = await ctx.db.query("quizSessions").collect();
+    const counts = new Map<string, { total: number; pending: number }>();
+    for (const p of await ctx.db.query("quizParticipants").collect()) {
+      const c = counts.get(p.sessionId as string) ?? { total: 0, pending: 0 };
+      c.total += 1;
+      if (p.needsGrading) c.pending += 1;
+      counts.set(p.sessionId as string, c);
+    }
+    return sessions
+      .map((s) => {
+        const c = counts.get(s._id as string) ?? { total: 0, pending: 0 };
+        return {
+          _id: s._id,
+          title: s.title,
+          status: s.status,
+          openedAt: s.openedAt,
+          closedAt: s.closedAt ?? null,
+          publishedAt: s.publishedAt ?? null,
+          participants: c.total,
+          pendingGrading: s.status === "CLOSED" ? c.pending : 0,
+        };
+      })
+      .sort((a, b) => b.openedAt - a.openedAt);
+  },
+});
+
 // ---------- Correction manuelle ----------
+
+// Durée de validité d'une réservation de copie sans nouvelle activité.
+const GRADING_LOCK_MS = 3 * 60 * 1000;
+
+// Réserve une copie pour la corriger. Échoue si un autre correcteur l'a prise
+// il y a moins de trois minutes ; au-delà, le verrou est considéré abandonné.
+export const claimGrading = mutation({
+  args: { participantId: v.id("quizParticipants") },
+  handler: async (ctx, { participantId }) => {
+    const agent = await requireAgent(ctx);
+    await requirePermission(ctx, agent, "lspa.grade");
+    const p = await ctx.db.get(participantId);
+    if (!p) throw new Error("Copie introuvable.");
+    const held = p.gradingBy && p.gradingAt && Date.now() - p.gradingAt < GRADING_LOCK_MS;
+    if (held && p.gradingBy !== agent._id) {
+      throw new Error(`Copie en cours de correction par ${p.gradingByName ?? "un autre correcteur"}.`);
+    }
+    await ctx.db.patch(participantId, {
+      gradingBy: agent._id,
+      gradingByName: `${agent.prenomRP} ${agent.nomRP}`,
+      gradingAt: Date.now(),
+    });
+  },
+});
+
+export const releaseGrading = mutation({
+  args: { participantId: v.id("quizParticipants") },
+  handler: async (ctx, { participantId }) => {
+    const agent = await requireAgent(ctx);
+    const p = await ctx.db.get(participantId);
+    if (!p || p.gradingBy !== agent._id) return;
+    await ctx.db.patch(participantId, { gradingBy: undefined, gradingByName: undefined, gradingAt: undefined });
+  },
+});
 
 // Copies à corriger + réponses libres avec le repère de correction.
 export const gradingQueue = query({
@@ -338,10 +405,15 @@ export const gradingQueue = query({
         .withIndex("by_participant", (q) => q.eq("participantId", p._id))
         .collect();
       const byQ = new Map(answers.map((a) => [a.questionId as string, a]));
+      const lockFresh = Boolean(p.gradingBy && p.gradingAt && Date.now() - p.gradingAt < GRADING_LOCK_MS);
       rows.push({
         participantId: p._id,
         name: p.name,
         needsGrading: p.needsGrading,
+        score: p.autoScore + (p.manualScore ?? 0),
+        // Verrou de correction : qui l'a réservée, et est-ce moi.
+        claimedBy: lockFresh && p.gradingBy !== agent._id ? p.gradingByName ?? "un correcteur" : null,
+        claimedByMe: lockFresh && p.gradingBy === agent._id,
         answers: manualQ.map((q) => {
           const a = byQ.get(q._id as string);
           return {
@@ -407,7 +479,8 @@ export const gradeParticipant = mutation({
     const fresh = await ctx.db.get(participantId);
     if (fresh) {
       await recomputeParticipant(ctx, fresh);
-      await ctx.db.patch(participantId, { gradedAt: Date.now() });
+      // Corrigée : on libère la réservation pour les autres correcteurs.
+      await ctx.db.patch(participantId, { gradedAt: Date.now(), gradingBy: undefined, gradingByName: undefined, gradingAt: undefined });
     }
   },
 });

@@ -76,7 +76,7 @@ export function LspaEffectif() {
             ) : (
               <div className="flex flex-col">
                 {data.cadets.map((c) => (
-                  <Row key={c._id} p={c as Person}>
+                  <Row key={c._id} p={c as Person} hideBadge>
                     <span className="text-[12px] text-faint">
                       {c.dateEntree ? `Entré le ${new Date(c.dateEntree).toLocaleDateString("fr-FR")}` : "Date d'entrée inconnue"}
                     </span>
@@ -173,7 +173,8 @@ function Section({
   );
 }
 
-function Row({ p, children }: { p: Person; children?: React.ReactNode }) {
+function Row({ p, hideBadge, children }: { p: Person; hideBadge?: boolean; children?: React.ReactNode }) {
+  const badge = !hideBadge ? fmtBadge(p.matricule) : null;
   return (
     <div className="flex items-center gap-[11px] border-b border-border px-[15px] py-[10px] last:border-b-0">
       <Avatar p={p} />
@@ -183,7 +184,7 @@ function Row({ p, children }: { p: Person; children?: React.ReactNode }) {
           {p.onDuty && <span className="h-[6px] w-[6px] flex-shrink-0 rounded-full bg-accent" title="En service" />}
         </div>
         <div className="mt-[1px] flex items-center gap-[7px] text-[11.5px] text-muted">
-          {fmtBadge(p.matricule) && <span className="font-data text-accent">{fmtBadge(p.matricule)}</span>}
+          {badge && <span className="font-data text-accent">{badge}</span>}
           <span>{p.grade ?? "Sans grade"}</span>
         </div>
       </div>

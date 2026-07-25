@@ -12,7 +12,7 @@ export const options = query({
     const divisions = await ctx.db.query("divisions").collect();
     const qualifications = (await ctx.db.query("qualifications").withIndex("by_position").collect()).filter((q) => q.active);
     return {
-      grades: grades.map((g) => ({ _id: g._id, name: g.name, position: g.position, corps: g.corps, external: g.external ?? false })),
+      grades: grades.map((g) => ({ _id: g._id, name: g.name, position: g.position, corps: g.corps, external: g.external ?? false, academyOnly: g.academyOnly ?? false })),
       divisions: divisions.map((d) => ({ _id: d._id, name: d.name, tier: d.tier })),
       qualifications: qualifications.map((q) => ({ _id: q._id, code: q.code, name: q.name, kind: q.kind, color: q.color ?? null })),
     };

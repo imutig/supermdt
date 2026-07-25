@@ -116,7 +116,7 @@ function ValidationTab() {
         <EmptyState compact title="Aucune inscription en attente" message="Les nouvelles demandes de compte apparaîtront ici." />
       ) : (
         pending.map((a) => (
-          <ValidationRow key={a._id} agent={a} grades={opts.grades} divisions={opts.divisions} />
+          <ValidationRow key={a._id} agent={a} grades={opts.grades} />
         ))
       )}
     </div>
@@ -126,35 +126,37 @@ function ValidationTab() {
 function ValidationRow({
   agent,
   grades,
-  divisions,
 }: {
   agent: { _id: Id<"agents">; nomRP: string; prenomRP: string; login: string };
-  grades: { _id: Id<"grades">; name: string; corps: string }[];
-  divisions: { _id: Id<"divisions">; name: string; tier: string }[];
+  grades: { _id: Id<"grades">; name: string; corps: string; academyOnly?: boolean }[];
 }) {
   const validate = useMutation(api.agents.validate);
   const reject = useMutation(api.agents.reject);
   const [gradeId, setGradeId] = useState("");
-  const [divs, setDivs] = useState<string[]>([]);
   const [matricule, setMatricule] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const effectiveGrade = gradeId || grades[0]?._id || "";
+  // Un cadet n'a pas de numéro de badge : le champ disparaît pour ce grade.
+  const isCadet = grades.find((g) => g._id === effectiveGrade)?.academyOnly === true;
 
   async function doValidate() {
     setErr(null);
-    const m = parseInt(matricule);
-    if (!m || m < 1 || m > 99999) {
-      setErr("Numéro de badge (5 chiffres) requis.");
-      return;
+    let m: number | undefined;
+    if (!isCadet) {
+      m = parseInt(matricule);
+      if (!m || m < 1 || m > 99999) {
+        setErr("Numéro de badge (5 chiffres) requis.");
+        return;
+      }
     }
     setBusy(true);
     try {
       await validate({
         agentId: agent._id,
         gradeId: effectiveGrade as Id<"grades">,
-        divisionIds: divs as Id<"divisions">[],
+        divisionIds: [],
         matricule: m,
       });
     } catch (e) {
@@ -192,37 +194,20 @@ function ValidationRow({
             ))}
           </select>
         </label>
-        <label className="block">
-          <span className="mb-[5px] block text-[10px] font-bold uppercase tracking-[0.08em] text-faint">N° de badge</span>
-          <input
-            value={matricule}
-            onChange={(e) => setMatricule(e.target.value.replace(/[^0-9]/g, "").slice(0, 5))}
-            placeholder="5 chiffres"
-            className="h-9 w-[100px] rounded-sm border border-border bg-surface-2 px-2 text-center font-data text-[13px] text-text outline-none focus:border-accent"
-          />
-        </label>
-        <div>
-          <span className="mb-[5px] block text-[10px] font-bold uppercase tracking-[0.08em] text-faint">Divisions</span>
-          <div className="flex flex-wrap gap-[6px]">
-            {divisions.map((d) => {
-              const on = divs.includes(d._id);
-              return (
-                <button
-                  key={d._id}
-                  onClick={() => setDivs((v) => (on ? v.filter((x) => x !== d._id) : [...v, d._id]))}
-                  className="rounded-[6px] border px-[9px] py-[6px] text-[11.5px] font-semibold"
-                  style={
-                    on
-                      ? { background: "var(--accent-soft)", borderColor: "var(--accent)", color: "var(--accent)" }
-                      : { background: "var(--surface-2)", borderColor: "var(--border)", color: "var(--muted)" }
-                  }
-                >
-                  {d.name}
-                </button>
-              );
-            })}
-          </div>
-        </div>
+        {!isCadet && (
+          <label className="block">
+            <span className="mb-[5px] block text-[10px] font-bold uppercase tracking-[0.08em] text-faint">N° de badge</span>
+            <input
+              value={matricule}
+              onChange={(e) => setMatricule(e.target.value.replace(/[^0-9]/g, "").slice(0, 5))}
+              placeholder="5 chiffres"
+              className="h-9 w-[100px] rounded-sm border border-border bg-surface-2 px-2 text-center font-data text-[13px] text-text outline-none focus:border-accent"
+            />
+          </label>
+        )}
+        {isCadet && (
+          <div className="self-end pb-[7px] text-[11.5px] text-faint">Cadet : numéro de badge attribué à l'assermentation.</div>
+        )}
         <div className="flex-1" />
         <div className="flex gap-2">
           <button

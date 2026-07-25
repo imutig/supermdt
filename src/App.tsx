@@ -43,6 +43,7 @@ import { LspaShell } from "@/lspa/LspaShell";
 import { LspaDashboard } from "@/lspa/LspaDashboard";
 import { LspaEffectif } from "@/lspa/LspaEffectif";
 import { LspaProfil } from "@/lspa/LspaProfil";
+import { LspaHistory } from "@/lspa/LspaHistory";
 import { LspaQuiz } from "@/lspa/LspaQuiz";
 const QuizEditor = lazy(() => import("@/lspa/QuizEditor").then((m) => ({ default: m.QuizEditor })));
 const SessionScreen = lazy(() => import("@/lspa/session/SessionScreen").then((m) => ({ default: m.SessionScreen })));
@@ -135,6 +136,7 @@ function Gated() {
         <Route path="effectif" element={<RequirePerm perm="lspa.effectif.view"><LspaEffectif /></RequirePerm>} />
         <Route path="quiz" element={<LspaQuiz />} />
         <Route path="quiz/:id" element={<RequirePerm perm="lspa.quiz.view"><QuizEditor /></RequirePerm>} />
+        <Route path="historique" element={<RequirePerm perm="lspa.session.manage"><LspaHistory /></RequirePerm>} />
         <Route path="session/:id" element={<SessionScreen />} />
         {/* Profil propre à l'académie (identité + préférences, sans le contenu
             opérationnel du MDT). L'administration, elle, est bien la même. */}

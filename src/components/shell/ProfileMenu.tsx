@@ -34,7 +34,9 @@ export function ProfileMenu() {
   const prenom = me?.agent.prenomRP ?? "";
   const nom = me?.agent.nomRP ?? "";
   const displayName = me ? `${prenom.charAt(0)}. ${nom}`.trim() : "…";
-  const matricule = fmtMatricule(me?.agent.matricule) ?? "#-";
+  // Un cadet n'a pas de numéro de badge tant qu'il n'est pas assermenté.
+  const isCadet = me?.grade?.academyOnly === true;
+  const matricule = isCadet ? null : fmtMatricule(me?.agent.matricule);
   const gradeName = me?.agent.isOwner ? "Owner" : (me?.grade?.name ?? "-");
   const initials = `${prenom.charAt(0)}${nom.charAt(0)}`.toUpperCase() || "??";
   const avatar = me?.agent.avatarUrl ?? null;
@@ -44,7 +46,7 @@ export function ProfileMenu() {
       <button onClick={() => setOpen((o) => !o)} className="mdt-press flex items-center gap-[10px]">
         <div className="text-right leading-[1.15]">
           <div className="text-[13px] font-semibold">{displayName}</div>
-          <div className="text-[11px] text-muted"><span className="font-data">{matricule}</span> · {gradeName}</div>
+          <div className="text-[11px] text-muted">{matricule && <span className="font-data">{matricule} · </span>}{gradeName}</div>
         </div>
         <Avatar url={avatar} initials={initials} size={34} />
         <ChevronDown className="h-[14px] w-[14px] text-faint" />
@@ -56,7 +58,7 @@ export function ProfileMenu() {
             <Avatar url={avatar} initials={initials} size={40} />
             <div className="min-w-0">
               <div className="truncate text-[13px] font-bold">{prenom} {nom}</div>
-              <div className="text-[11.5px] text-muted"><span className="font-data text-accent">{matricule}</span> · {gradeName}</div>
+              <div className="text-[11.5px] text-muted">{matricule && <span className="font-data text-accent">{matricule} · </span>}{gradeName}</div>
             </div>
           </div>
           <MenuItem icon={User} label="Mon profil" onClick={() => { navigate(inLspa ? "/lspa/profil" : "/profil"); setOpen(false); }} />

@@ -240,6 +240,12 @@ export default defineSchema({
     manualScore: v.optional(v.number()), // points ajoutés à la correction
     needsGrading: v.boolean(), // reste au moins une réponse libre non corrigée
     gradedAt: v.optional(v.number()),
+    // Verrou souple de correction : quand un instructeur ouvre une copie, il la
+    // « réserve » le temps de la noter. Plusieurs correcteurs peuvent ainsi
+    // travailler en parallèle sans se marcher dessus. Le verrou expire seul.
+    gradingBy: v.optional(v.id("agents")),
+    gradingByName: v.optional(v.string()),
+    gradingAt: v.optional(v.number()),
   })
     .index("by_session", ["sessionId"])
     .index("by_session_agent", ["sessionId", "agentId"])

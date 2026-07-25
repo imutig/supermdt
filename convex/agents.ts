@@ -314,7 +314,9 @@ export const validate = mutation({
     agentId: v.id("agents"),
     gradeId: v.id("grades"),
     divisionIds: v.array(v.id("divisions")),
-    matricule: v.number(),
+    // Un cadet n'a pas de numéro de badge : le matricule devient facultatif et
+    // n'est exigé que pour un grade opérationnel.
+    matricule: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const actor = await requireAgent(ctx);
@@ -322,24 +324,37 @@ export const validate = mutation({
     const target = await ctx.db.get(args.agentId);
     if (!target || target.status !== "PENDING") throw new Error("Agent introuvable ou déjà validé.");
 
+    const newGrade = await ctx.db.get(args.gradeId);
+    if (!newGrade) throw new Error("Grade introuvable.");
+    const isCadet = newGrade.academyOnly === true;
+
     // Hiérarchie stricte : on ne peut assigner qu'un grade inférieur au sien (owner exempté).
     if (!actor.isOwner) {
       const actorGrade = actor.gradeId ? await ctx.db.get(actor.gradeId) : null;
-      const newGrade = await ctx.db.get(args.gradeId);
-      if (!actorGrade || !newGrade || newGrade.position >= actorGrade.position) {
+      if (!actorGrade || newGrade.position >= actorGrade.position) {
         throw new Error("Vous ne pouvez assigner qu'un grade strictement inférieur au vôtre.");
       }
     }
-    const dup = await ctx.db
-      .query("agents")
-      .withIndex("by_matricule", (q) => q.eq("matricule", args.matricule))
-      .first();
-    if (dup) throw new Error("Numéro de badge déjà attribué.");
+
+    let matricule: number | undefined;
+    if (isCadet) {
+      matricule = undefined; // le badge sera attribué à l'assermentation
+    } else {
+      if (!args.matricule || args.matricule < 1 || args.matricule > 99999) {
+        throw new Error("Numéro de badge (5 chiffres) requis.");
+      }
+      const dup = await ctx.db
+        .query("agents")
+        .withIndex("by_matricule", (q) => q.eq("matricule", args.matricule!))
+        .first();
+      if (dup) throw new Error("Numéro de badge déjà attribué.");
+      matricule = args.matricule;
+    }
 
     await ctx.db.patch(args.agentId, {
       status: "ACTIVE",
       gradeId: args.gradeId,
-      matricule: args.matricule,
+      matricule,
       dateEntree: Date.now(),
     });
     for (const divId of args.divisionIds) {
@@ -357,13 +372,15 @@ export const validate = mutation({
       resourceType: "agent",
       resourceId: args.agentId,
       resourceLabel: `${target.prenomRP} ${target.nomRP}`,
-      metadata: { matricule: args.matricule },
+      metadata: matricule ? { matricule } : { grade: newGrade.name },
     });
     await notify(ctx, "agent.validate", {
-      title: "Nouvel agent validé",
-      description: `**${target.prenomRP} ${target.nomRP}** rejoint la Station 13.`,
+      title: isCadet ? "Nouveau cadet admis" : "Nouvel agent validé",
+      description: `**${target.prenomRP} ${target.nomRP}** rejoint ${isCadet ? "l'académie" : "la Station 13"}.`,
       color: NOTIFY_COLOR.accent,
-      fields: [{ name: "Numéro de badge", value: String(args.matricule).padStart(5, "0"), inline: true }],
+      fields: matricule
+        ? [{ name: "Numéro de badge", value: String(matricule).padStart(5, "0"), inline: true }]
+        : [{ name: "Grade", value: newGrade.name, inline: true }],
       footer: `Validé par ${actor.prenomRP} ${actor.nomRP}`,
     });
   },

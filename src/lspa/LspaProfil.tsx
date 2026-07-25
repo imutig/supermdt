@@ -20,6 +20,10 @@ export function LspaProfil() {
   const initials = `${a.prenomRP.charAt(0)}${a.nomRP.charAt(0)}`.toUpperCase();
   const gradeName = a.isOwner ? "Owner" : me.grade?.name ?? "Sans grade";
   const rank = me.academyRank;
+  // Un cadet n'a pas de numéro de badge : il n'est assermenté qu'au terme de
+  // sa formation.
+  const isCadet = me.grade?.academyOnly === true;
+  const badge = !isCadet ? fmtMatricule(a.matricule) : null;
 
   return (
     <div className="p-[22px_26px]" style={{ animation: "mdtFade .2s ease" }}>
@@ -33,8 +37,8 @@ export function LspaProfil() {
         <div className="min-w-0 flex-1">
           <h1 className="m-0 text-[22px] font-bold tracking-tight">{a.prenomRP} {a.nomRP}</h1>
           <div className="mt-1 text-[13px] text-muted">
-            {fmtMatricule(a.matricule) && <span className="font-data text-accent">{fmtMatricule(a.matricule)} </span>}
-            · {gradeName} · @{a.login}
+            {badge && <span className="font-data text-accent">{badge} · </span>}
+            {gradeName} · @{a.login}
           </div>
           {rank && (
             <div className="mt-[8px]">
