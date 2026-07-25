@@ -14,7 +14,7 @@ import { RichTextEditor } from "@/components/common/RichTextEditor";
 import { Countdown, useCountdownLabel } from "./Countdown";
 import { ResultView } from "./ResultView";
 
-type PlayQuestion = {
+export type PlayQuestion = {
   _id: string;
   kind: "SINGLE" | "MULTI" | "TEXT";
   prompt: string;
@@ -25,7 +25,7 @@ type PlayQuestion = {
   multiple: boolean;
   choices: { _id: string; label: string; imageUrl: string | null }[];
 };
-type LocalAnswer = { choiceIds: string[]; text: string };
+export type LocalAnswer = { choiceIds: string[]; text: string };
 
 // Expérience du cadet pour une session : salle d'attente, décompte, épreuve à
 // rythme libre avec persistance, puis rendu et résultats une fois publiés.
@@ -285,7 +285,7 @@ function Runner({
   );
 }
 
-function QuestionCard({
+export function QuestionCard({
   q, answer, onChoice, onText, onExpire,
 }: {
   q: PlayQuestion;

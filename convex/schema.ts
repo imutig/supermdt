@@ -167,9 +167,19 @@ export default defineSchema({
   // Un quiz est un modèle réutilisable ; on le fait passer en ouvrant une
   // « session ». Le barème vit sur les questions, le quiz n'en porte que le
   // seuil de réussite et le temps global.
+  // Catégories de quiz, configurables. La fiche du cadet portera une note par
+  // catégorie plutôt qu'une note globale.
+  quizCategories: defineTable({
+    name: v.string(),
+    color: v.optional(v.string()),
+    position: v.number(),
+    active: v.boolean(),
+  }).index("by_position", ["position"]),
+
   quizzes: defineTable({
     title: v.string(),
     description: v.optional(v.string()),
+    categoryId: v.optional(v.id("quizCategories")),
     passPercent: v.optional(v.number()), // seuil de réussite en % ; absent = pas de seuil (score seul)
     durationSeconds: v.optional(v.number()), // temps global ; absent = illimité
     shuffleQuestions: v.optional(v.boolean()),

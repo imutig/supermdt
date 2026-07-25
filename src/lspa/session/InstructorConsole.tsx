@@ -3,7 +3,7 @@ import { useMutation, useQuery } from "convex/react";
 import { useNavigate } from "react-router-dom";
 import {
   ArrowLeft, Play, Square, Radio, Users, CheckCircle2, Hourglass, Trophy,
-  PenLine, Send, Loader2, ChevronRight,
+  PenLine, Send, Loader2, ChevronRight, BarChart3,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import type { Id } from "convex/_generated/dataModel";
@@ -12,7 +12,7 @@ import { useToast } from "@/providers/toast";
 import { LoadingScreen } from "@/components/common/Loader";
 import { EmptyState } from "@/components/common/EmptyState";
 import { Button } from "@/components/common/Button";
-import { RichTextEditor } from "@/components/common/RichTextEditor";
+import { RichTextEditor, richTextToPlain } from "@/components/common/RichTextEditor";
 import { useCountdownLabel } from "./Countdown";
 import { CopyReview } from "./ResultView";
 
@@ -141,6 +141,39 @@ export function InstructorConsole({ sessionId }: { sessionId: Id<"quizSessions">
           ))}
         </div>
       )}
+
+      {canOpenCopies && participants.length > 0 && <ItemStatsSection sessionId={sessionId} />}
+    </div>
+  );
+}
+
+// Taux de réussite par question : repère ce que la promotion a mal compris.
+function ItemStatsSection({ sessionId }: { sessionId: Id<"quizSessions"> }) {
+  const stats = useQuery(api.quizSession.itemStats, { sessionId });
+  if (stats === undefined || stats === null || stats.questions.length === 0) return null;
+  return (
+    <div className="mt-[18px] overflow-hidden rounded-card border border-border bg-surface">
+      <div className="flex items-center gap-[9px] border-b border-border px-[16px] py-[10px] text-[11px] font-bold uppercase tracking-[0.09em] text-faint">
+        <BarChart3 className="h-[13px] w-[13px]" /> Réussite par question
+      </div>
+      {stats.questions.map((q, idx) => {
+        const tint = q.successRate >= 70 ? "var(--accent)" : q.successRate >= 40 ? "var(--warning)" : "var(--danger)";
+        return (
+          <div key={q._id} className="flex items-center gap-[12px] border-b border-border px-[16px] py-[11px] last:border-b-0">
+            <span className="flex h-[26px] w-[26px] flex-shrink-0 items-center justify-center rounded-[8px] bg-surface-2 font-data text-[12px] font-bold text-muted">{idx + 1}</span>
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-[13px] font-medium">{richTextToPlain(q.prompt) || "Question"}</div>
+              <div className="mt-[4px] flex items-center gap-[10px]">
+                <div className="h-[5px] max-w-[220px] flex-1 overflow-hidden rounded-full bg-surface-2">
+                  <div className="h-full rounded-full" style={{ width: `${q.successRate}%`, background: tint }} />
+                </div>
+                <span className="font-data text-[11.5px] text-muted">{q.fullCredit}/{stats.totalParticipants} · moy. {q.avgAwarded}/{q.points}</span>
+              </div>
+            </div>
+            <span className="flex-shrink-0 font-data text-[15px] font-bold" style={{ color: tint }}>{q.successRate}%</span>
+          </div>
+        );
+      })}
     </div>
   );
 }

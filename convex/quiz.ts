@@ -47,15 +47,18 @@ export const list = query({
         openSessions.set(s.quizId as string, (openSessions.get(s.quizId as string) ?? 0) + 1);
       }
     }
+    const catById = new Map((await ctx.db.query("quizCategories").collect()).map((c) => [c._id as string, c]));
 
     return quizzes
       .map((q) => {
         const agg = byQuiz.get(q._id as string) ?? { count: 0, points: 0, manual: false };
+        const cat = q.categoryId ? catById.get(q.categoryId as string) : null;
         return {
           _id: q._id,
           title: q.title,
           description: q.description ?? null,
           status: q.status,
+          category: cat ? { _id: cat._id, name: cat.name, color: cat.color ?? null } : null,
           passPercent: q.passPercent ?? null,
           durationSeconds: q.durationSeconds ?? null,
           questionCount: agg.count,
@@ -66,6 +69,49 @@ export const list = query({
         };
       })
       .sort((a, b) => b.updatedAt - a.updatedAt);
+  },
+});
+
+// ---------- Catégories ----------
+
+export const listCategories = query({
+  args: {},
+  handler: async (ctx) => {
+    const agent = await requireAgent(ctx);
+    await requirePermission(ctx, agent, "lspa.quiz.view");
+    return (await ctx.db.query("quizCategories").withIndex("by_position").collect())
+      .filter((c) => c.active !== false)
+      .map((c) => ({ _id: c._id, name: c.name, color: c.color ?? null, position: c.position }));
+  },
+});
+
+export const saveCategory = mutation({
+  args: { categoryId: v.optional(v.id("quizCategories")), name: v.string(), color: v.optional(v.string()) },
+  handler: async (ctx, { categoryId, name, color }) => {
+    const agent = await requireAgent(ctx);
+    await requirePermission(ctx, agent, "lspa.quiz.edit");
+    const clean = name.trim();
+    if (!clean) throw new Error("Le nom de la catégorie est obligatoire.");
+    if (categoryId) {
+      await ctx.db.patch(categoryId, { name: clean, color: color || undefined });
+      return categoryId;
+    }
+    const last = await ctx.db.query("quizCategories").withIndex("by_position").collect();
+    const position = last.reduce((m, c) => Math.max(m, c.position), -1) + 1;
+    return await ctx.db.insert("quizCategories", { name: clean, color: color || undefined, position, active: true });
+  },
+});
+
+export const removeCategory = mutation({
+  args: { categoryId: v.id("quizCategories") },
+  handler: async (ctx, { categoryId }) => {
+    const agent = await requireAgent(ctx);
+    await requirePermission(ctx, agent, "lspa.quiz.edit");
+    // Les quiz rattachés perdent simplement leur catégorie, ils ne sont pas supprimés.
+    for (const q of await ctx.db.query("quizzes").collect()) {
+      if (q.categoryId === categoryId) await ctx.db.patch(q._id, { categoryId: undefined });
+    }
+    await ctx.db.delete(categoryId);
   },
 });
 
@@ -100,6 +146,7 @@ export const get = query({
         _id: quiz._id,
         title: quiz.title,
         description: quiz.description ?? null,
+        categoryId: quiz.categoryId ?? null,
         passPercent: quiz.passPercent ?? null,
         durationSeconds: quiz.durationSeconds ?? null,
         shuffleQuestions: quiz.shuffleQuestions ?? false,
@@ -133,10 +180,11 @@ export const create = mutation({
   args: {
     title: v.string(),
     description: v.optional(v.string()),
+    categoryId: v.optional(v.id("quizCategories")),
     passPercent: v.optional(v.number()),
     durationSeconds: v.optional(v.number()),
   },
-  handler: async (ctx, { title, description, passPercent, durationSeconds }) => {
+  handler: async (ctx, { title, description, categoryId, passPercent, durationSeconds }) => {
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "lspa.quiz.create");
     const clean = title.trim();
@@ -145,6 +193,7 @@ export const create = mutation({
     const quizId = await ctx.db.insert("quizzes", {
       title: clean,
       description: description?.trim() || undefined,
+      categoryId: categoryId ?? undefined,
       // Seuil de réussite facultatif : absent = on affiche le score sans verdict.
       passPercent: passPercent !== undefined ? clampPercent(passPercent) : undefined,
       durationSeconds: positiveOrUndefined(durationSeconds),
@@ -162,11 +211,78 @@ export const create = mutation({
   },
 });
 
+// Duplique un quiz : nouveau brouillon avec toutes les questions et leurs choix.
+// Un modèle éprouvé se réutilise sans tout ressaisir.
+export const duplicate = mutation({
+  args: { quizId: v.id("quizzes") },
+  handler: async (ctx, { quizId }) => {
+    const agent = await requireAgent(ctx);
+    await requirePermission(ctx, agent, "lspa.quiz.create");
+    const src = await ctx.db.get(quizId);
+    if (!src) throw new Error("Quiz introuvable.");
+
+    const copyId = await ctx.db.insert("quizzes", {
+      title: `${src.title} (copie)`,
+      description: src.description,
+      categoryId: src.categoryId,
+      passPercent: src.passPercent,
+      durationSeconds: src.durationSeconds,
+      shuffleQuestions: src.shuffleQuestions,
+      status: "DRAFT", // toujours en brouillon : on relit avant de réutiliser
+      createdBy: agent._id,
+      updatedAt: Date.now(),
+    });
+
+    const questions = await ctx.db
+      .query("quizQuestions")
+      .withIndex("by_quiz", (q) => q.eq("quizId", quizId))
+      .collect();
+    const choices = await ctx.db
+      .query("quizChoices")
+      .withIndex("by_quiz", (q) => q.eq("quizId", quizId))
+      .collect();
+    const choicesByQ = new Map<string, Doc<"quizChoices">[]>();
+    for (const c of choices) {
+      const arr = choicesByQ.get(c.questionId as string) ?? [];
+      arr.push(c);
+      choicesByQ.set(c.questionId as string, arr);
+    }
+
+    for (const q of questions.sort((a, b) => a.position - b.position)) {
+      const newQid = await ctx.db.insert("quizQuestions", {
+        quizId: copyId,
+        position: q.position,
+        kind: q.kind,
+        prompt: q.prompt,
+        mediaUrls: q.mediaUrls,
+        points: q.points,
+        timeLimitSeconds: q.timeLimitSeconds,
+        requireJustification: q.requireJustification,
+        expectedAnswer: q.expectedAnswer,
+        explanation: q.explanation,
+      });
+      for (const c of (choicesByQ.get(q._id as string) ?? []).sort((a, b) => a.position - b.position)) {
+        await ctx.db.insert("quizChoices", {
+          questionId: newQid,
+          quizId: copyId,
+          position: c.position,
+          label: c.label,
+          imageUrl: c.imageUrl,
+          correct: c.correct,
+        });
+      }
+    }
+    return copyId;
+  },
+});
+
 export const update = mutation({
   args: {
     quizId: v.id("quizzes"),
     title: v.optional(v.string()),
     description: v.optional(v.string()),
+    // id = fixe la catégorie ; null = retire ; absent = inchangé.
+    categoryId: v.optional(v.union(v.id("quizCategories"), v.null())),
     // number = fixe le seuil ; null = retire le seuil ; absent = inchangé.
     passPercent: v.optional(v.union(v.number(), v.null())),
     durationSeconds: v.optional(v.number()),
@@ -192,6 +308,7 @@ export const update = mutation({
     await ctx.db.patch(quizId, {
       ...(patch.title !== undefined ? { title: patch.title.trim() || quiz.title } : {}),
       ...(patch.description !== undefined ? { description: patch.description.trim() || undefined } : {}),
+      ...(patch.categoryId !== undefined ? { categoryId: patch.categoryId ?? undefined } : {}),
       ...(patch.passPercent !== undefined ? { passPercent: patch.passPercent === null ? undefined : clampPercent(patch.passPercent) } : {}),
       ...(patch.durationSeconds !== undefined ? { durationSeconds: positiveOrUndefined(patch.durationSeconds) } : {}),
       ...(patch.shuffleQuestions !== undefined ? { shuffleQuestions: patch.shuffleQuestions } : {}),

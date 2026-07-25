@@ -3,7 +3,7 @@ import { useMutation, useQuery } from "convex/react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft, Plus, ChevronUp, ChevronDown, Trash2, Pencil, X, CheckCircle2, Circle,
-  Type, ListChecks, CircleDot, PenLine, Clock, Radio, Play,
+  Type, ListChecks, CircleDot, PenLine, Clock, Radio, Play, Eye, Copy, ChevronRight,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import type { Id } from "convex/_generated/dataModel";
@@ -14,6 +14,8 @@ import { EmptyState } from "@/components/common/EmptyState";
 import { SkeletonRows } from "@/components/common/Skeleton";
 import { RichTextEditor, richTextToPlain } from "@/components/common/RichTextEditor";
 import { ImageGallery } from "@/components/common/ImageGallery";
+import { Modal } from "@/components/common/Modal";
+import { QuestionCard, type PlayQuestion } from "./session/CadetPlay";
 import { StatusChip } from "./LspaQuiz";
 
 type Kind = "SINGLE" | "MULTI" | "TEXT";
@@ -70,11 +72,14 @@ export function QuizEditor() {
   const canEdit = can("lspa.quiz.edit");
   const canManage = can("lspa.session.manage");
   const liveSession = useQuery(api.quizSession.currentForQuiz, canManage ? { quizId } : "skip");
+  const categories = useQuery(api.quiz.listCategories);
   const openSession = useMutation(api.quizSession.open);
+  const duplicate = useMutation(api.quiz.duplicate);
 
   const [draft, setDraft] = useState<QuestionDraft | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [opening, setOpening] = useState(false);
+  const [preview, setPreview] = useState(false);
 
   if (data === undefined) return <div className="p-[22px_26px]"><SkeletonRows rows={5} /></div>;
   if (data === null) {
@@ -95,13 +100,32 @@ export function QuizEditor() {
 
   return (
     <div className="p-[22px_26px]" style={{ animation: "mdtFade .2s ease" }}>
-      <button
-        onClick={() => navigate("/lspa/quiz")}
-        className="mb-[14px] flex items-center gap-[6px] text-[12.5px] font-semibold text-muted hover:text-text"
-      >
-        <ArrowLeft className="h-[14px] w-[14px]" />
-        Tous les quiz
-      </button>
+      <div className="mb-[14px] flex items-center gap-3">
+        <button
+          onClick={() => navigate("/lspa/quiz")}
+          className="flex items-center gap-[6px] text-[12.5px] font-semibold text-muted hover:text-text"
+        >
+          <ArrowLeft className="h-[14px] w-[14px]" />
+          Tous les quiz
+        </button>
+        <div className="flex-1" />
+        {questions.length > 0 && (
+          <Button onClick={() => setPreview(true)} className="!py-[6px] !text-[12.5px]">
+            <Eye className="h-[14px] w-[14px]" /> Aperçu
+          </Button>
+        )}
+        {can("lspa.quiz.create") && (
+          <Button
+            onClick={async () => {
+              const copyId = await toast.guard(duplicate({ quizId }), "Duplication impossible");
+              if (copyId) { toast.success("Quiz dupliqué."); navigate(`/lspa/quiz/${copyId}`); }
+            }}
+            className="!py-[6px] !text-[12.5px]"
+          >
+            <Copy className="h-[14px] w-[14px]" /> Dupliquer
+          </Button>
+        )}
+      </div>
 
       {/* Pilotage d'une session : ouvrir une nouvelle épreuve ou reprendre celle
           en cours. C'est d'ici qu'on lance la promotion sur le quiz. */}
@@ -160,7 +184,19 @@ export function QuizEditor() {
               className="mt-[2px] w-full border-none bg-transparent text-[13px] text-muted outline-none"
             />
           </div>
-          <StatusChip status={quiz.status} />
+          <div className="flex flex-shrink-0 items-center gap-[9px]">
+            <select
+              value={quiz.categoryId ?? ""}
+              disabled={!canEdit}
+              onChange={(e) => void patch({ categoryId: e.target.value || null })}
+              className="h-9 max-w-[200px] rounded-sm border border-border bg-surface-2 px-2 text-[12.5px] text-text outline-none focus:border-accent"
+              title="Catégorie du quiz"
+            >
+              <option value="">Sans catégorie</option>
+              {(categories ?? []).map((c) => <option key={c._id} value={c._id}>{c.name}</option>)}
+            </select>
+            <StatusChip status={quiz.status} />
+          </div>
         </div>
 
         <div className="grid grid-cols-1 gap-[12px] sm:grid-cols-3">
@@ -344,6 +380,7 @@ export function QuizEditor() {
       )}
 
       {draft && <QuestionPanel quizId={quizId} draft={draft} onClose={() => setDraft(null)} />}
+      {preview && <PreviewModal title={quiz.title} questions={questions} onClose={() => setPreview(false)} />}
     </div>
   );
 }
@@ -355,6 +392,66 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
       {children}
       {hint && <span className="text-[11px] text-faint">{hint}</span>}
     </label>
+  );
+}
+
+type EditorQuestion = {
+  _id: string; kind: string; prompt: string; mediaUrls: string[]; points: number;
+  timeLimitSeconds: number | null; requireJustification: boolean;
+  choices: { _id: string; label: string; imageUrl: string | null }[];
+};
+
+// Aperçu instructeur : on parcourt le quiz comme un cadet, sans minuterie, sans
+// enregistrement ni note. Sert à se relire avant de faire passer l'épreuve.
+function PreviewModal({ title, questions, onClose }: { title: string; questions: EditorQuestion[]; onClose: () => void }) {
+  const [i, setI] = useState(0);
+  const [answers, setAnswers] = useState<Record<string, { choiceIds: string[]; text: string }>>({});
+  const q = questions[i];
+  const play: PlayQuestion = {
+    _id: q._id,
+    kind: q.kind as PlayQuestion["kind"],
+    prompt: q.prompt,
+    mediaUrls: q.mediaUrls,
+    points: q.points,
+    timeLimitSeconds: null, // pas de minuterie en aperçu
+    requireJustification: q.requireJustification,
+    multiple: q.kind === "MULTI",
+    choices: q.choices.map((c) => ({ _id: c._id, label: c.label, imageUrl: c.imageUrl })),
+  };
+  const answer = answers[q._id] ?? { choiceIds: [], text: "" };
+
+  function setChoice(cid: string) {
+    setAnswers((prev) => {
+      const cur = prev[q._id] ?? { choiceIds: [], text: "" };
+      const choiceIds = play.multiple
+        ? (cur.choiceIds.includes(cid) ? cur.choiceIds.filter((x) => x !== cid) : [...cur.choiceIds, cid])
+        : (cur.choiceIds[0] === cid ? [] : [cid]);
+      return { ...prev, [q._id]: { ...cur, choiceIds } };
+    });
+  }
+
+  return (
+    <Modal title={`Aperçu · ${title}`} icon={<Eye className="h-[17px] w-[17px]" />} onClose={onClose} width={720}
+      footer={
+        <div className="flex w-full items-center gap-2">
+          <span className="text-[12px] text-faint">Question {i + 1} / {questions.length} · aperçu, rien n'est enregistré</span>
+          <div className="flex-1" />
+          <Button onClick={() => setI(Math.max(0, i - 1))} disabled={i === 0}>Précédent</Button>
+          <Button variant="primary" onClick={() => setI(Math.min(questions.length - 1, i + 1))} disabled={i === questions.length - 1}>
+            Suivant <ChevronRight className="h-[14px] w-[14px]" />
+          </Button>
+        </div>
+      }
+    >
+      <QuestionCard
+        key={q._id}
+        q={play}
+        answer={answer}
+        onChoice={setChoice}
+        onText={(t) => setAnswers((prev) => ({ ...prev, [q._id]: { ...(prev[q._id] ?? { choiceIds: [], text: "" }), text: t } }))}
+        onExpire={() => {}}
+      />
+    </Modal>
   );
 }
 

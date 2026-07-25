@@ -341,6 +341,67 @@ export const history = query({
   },
 });
 
+// Taux de réussite par question sur une session : combien de cadets ont eu tous
+// les points, la note moyenne. Sert à repérer ce qui est mal compris.
+export const itemStats = query({
+  args: { sessionId: v.id("quizSessions") },
+  handler: async (ctx, { sessionId }) => {
+    const agent = await requireAgent(ctx);
+    await requirePermission(ctx, agent, "lspa.session.manage");
+    const session = await ctx.db.get(sessionId);
+    if (!session) return null;
+
+    const questions = (await ctx.db
+      .query("quizQuestions")
+      .withIndex("by_quiz", (q) => q.eq("quizId", session.quizId))
+      .collect())
+      .sort((a, b) => a.position - b.position);
+    const participants = await ctx.db
+      .query("quizParticipants")
+      .withIndex("by_session", (q) => q.eq("sessionId", sessionId))
+      .collect();
+
+    // Réponses par question, tous participants confondus.
+    const answersByQ = new Map<string, { awarded: number | undefined; answered: boolean }[]>();
+    for (const p of participants) {
+      const answers = await ctx.db
+        .query("quizAnswers")
+        .withIndex("by_participant", (q) => q.eq("participantId", p._id))
+        .collect();
+      const byQ = new Map(answers.map((a) => [a.questionId as string, a]));
+      for (const q of questions) {
+        const a = byQ.get(q._id as string);
+        const answered = !!a && ((a.choiceIds && a.choiceIds.length > 0) || (a.text != null && a.text.trim().length > 0));
+        const arr = answersByQ.get(q._id as string) ?? [];
+        arr.push({ awarded: a?.awarded, answered });
+        answersByQ.set(q._id as string, arr);
+      }
+    }
+
+    const totalParticipants = participants.length;
+    return {
+      totalParticipants,
+      questions: questions.map((q) => {
+        const rows = answersByQ.get(q._id as string) ?? [];
+        const full = rows.filter((r) => typeof r.awarded === "number" && r.awarded >= q.points).length;
+        const answered = rows.filter((r) => r.answered).length;
+        const graded = rows.filter((r) => typeof r.awarded === "number");
+        const avg = graded.length ? graded.reduce((s, r) => s + (r.awarded ?? 0), 0) / graded.length : 0;
+        return {
+          _id: q._id,
+          prompt: q.prompt,
+          points: q.points,
+          manual: isManualQuestion(q),
+          answered,
+          fullCredit: full,
+          avgAwarded: Math.round(avg * 100) / 100,
+          successRate: totalParticipants > 0 ? Math.round((full / totalParticipants) * 100) : 0,
+        };
+      }),
+    };
+  },
+});
+
 // ---------- Correction manuelle ----------
 
 // Durée de validité d'une réservation de copie sans nouvelle activité.
