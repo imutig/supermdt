@@ -40,6 +40,7 @@ import { ChangePasswordScreen } from "@/auth/ChangePasswordScreen";
 import { PortalChoice } from "@/portal/PortalChoice";
 import { LspaShell } from "@/lspa/LspaShell";
 import { LspaDashboard } from "@/lspa/LspaDashboard";
+import { LspaEffectif } from "@/lspa/LspaEffectif";
 import { usePortals } from "@/hooks/usePortals";
 import { Splash } from "@/auth/Splash";
 
@@ -94,6 +95,7 @@ function Gated() {
       {/* Portail de l'académie */}
       <Route path="/lspa" element={<RequirePerm perm="lspa.view"><LspaShell /></RequirePerm>}>
         <Route index element={<LspaDashboard />} />
+        <Route path="effectif" element={<RequirePerm perm="lspa.effectif.view"><LspaEffectif /></RequirePerm>} />
       </Route>
 
       <Route element={<AppShell />}>
