@@ -240,6 +240,52 @@ export default defineSchema({
     updatedAt: v.number(),
   }).index("by_agent", ["agentId"]),
 
+  // ---- FTO : formation terrain des Officiers 1 ----
+  // Modèle de fiche FTO, configurable. SCALE = critère noté sur une échelle
+  // (Très Bien … Exécrable) · CHECK_TP = case Théorie + case Pratique ·
+  // CHECK = validation unique.
+  ftoItems: defineTable({
+    section: v.string(),
+    label: v.string(),
+    kind: v.union(v.literal("SCALE"), v.literal("CHECK_TP"), v.literal("CHECK")),
+    position: v.number(),
+    active: v.boolean(),
+  }).index("by_position", ["position"]),
+
+  // En-tête d'une fiche FTO : le tuteur (officier référent) et le début de forma.
+  ftoSheets: defineTable({
+    agentId: v.id("agents"),
+    tutorId: v.optional(v.id("agents")),
+    startAt: v.optional(v.number()),
+  }).index("by_agent", ["agentId"]),
+
+  // Valeurs saisies pour un Officier 1, un critère. Remplissage concurrent.
+  ftoEntries: defineTable({
+    agentId: v.id("agents"),
+    itemId: v.id("ftoItems"),
+    level: v.optional(v.number()), // SCALE : 0 (Exécrable) … 4 (Très Bien)
+    theorie: v.optional(v.boolean()),
+    pratique: v.optional(v.boolean()),
+    checked: v.optional(v.boolean()),
+    updatedBy: v.id("agents"),
+    updatedAt: v.number(),
+  })
+    .index("by_agent", ["agentId"])
+    .index("by_agent_item", ["agentId", "itemId"]),
+
+  // Rapports de patrouille d'un Officier 1 dans le cadre du FTO.
+  ftoPatrols: defineTable({
+    agentId: v.id("agents"),
+    startAt: v.number(),
+    endAt: v.optional(v.number()),
+    lacunes: v.optional(v.string()),
+    progres: v.optional(v.string()),
+    general: v.optional(v.string()),
+    authorId: v.id("agents"),
+    authorName: v.string(),
+    at: v.number(),
+  }).index("by_agent", ["agentId"]),
+
   academyRankPermissions: defineTable({
     rankId: v.id("academyRanks"),
     permissionId: v.id("permissions"),

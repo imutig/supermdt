@@ -533,3 +533,61 @@ export const seedAcademy = internalMutation({
     return report.length ? report.join(", ") + "." : "Déjà en place, rien à faire.";
   },
 });
+
+// Accorde les permissions FTO aux bons porteurs : académie (grades d'académie),
+// supervision et command staff (grades des corps SUPERVISION / ETAT_MAJOR).
+export const seedFto = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const permBySlug = new Map((await ctx.db.query("permissions").collect()).map((p) => [p.slug, p._id]));
+    const view = permBySlug.get("fto.view");
+    const edit = permBySlug.get("fto.edit");
+    const manage = permBySlug.get("fto.manage");
+    if (!view || !edit || !manage) return "Permissions fto.* absentes : lancez d'abord seed:syncPermissions.";
+
+    let n = 0;
+    const grantGrade = async (gradeId: Id<"grades">, permId: Id<"permissions">) => {
+      const has = await ctx.db.query("gradePermissions").withIndex("by_grade_permission", (q) => q.eq("gradeId", gradeId).eq("permissionId", permId)).first();
+      if (!has) { await ctx.db.insert("gradePermissions", { gradeId, permissionId: permId }); n++; }
+    };
+    const grantRank = async (rankId: Id<"academyRanks">, permId: Id<"permissions">) => {
+      const has = await ctx.db.query("academyRankPermissions").withIndex("by_rank_permission", (q) => q.eq("rankId", rankId).eq("permissionId", permId)).first();
+      if (!has) { await ctx.db.insert("academyRankPermissions", { rankId, permissionId: permId }); n++; }
+    };
+
+    for (const g of await ctx.db.query("grades").collect()) {
+      if (g.corps === "SUPERVISION" || g.corps === "ETAT_MAJOR") {
+        await grantGrade(g._id, view); await grantGrade(g._id, edit);
+        if (g.corps === "ETAT_MAJOR") await grantGrade(g._id, manage);
+      }
+    }
+    for (const r of await ctx.db.query("academyRanks").collect()) {
+      await grantRank(r._id, view); await grantRank(r._id, edit);
+      if (r.name.toLowerCase().includes("director")) await grantRank(r._id, manage);
+    }
+    return `${n} permission(s) FTO accordée(s).`;
+  },
+});
+
+// Crée un Officier 1 de test (compte non connectable, juste pour visualiser la
+// fiche FTO). À supprimer ensuite via l'administration si besoin.
+export const seedTestOffi1 = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const grade = (await ctx.db.query("grades").collect())
+      .filter((g) => !g.academyOnly && !g.external)
+      .sort((a, b) => a.position - b.position)[0];
+    if (!grade) return "Aucun grade d'entrée trouvé.";
+    const login = "test.offi";
+    const existing = await ctx.db.query("agents").withIndex("by_login", (q) => q.eq("login", login)).first();
+    if (existing) return "Un Officier 1 de test existe déjà.";
+    let matricule = 90001;
+    while (await ctx.db.query("agents").withIndex("by_matricule", (q) => q.eq("matricule", matricule)).first()) matricule++;
+    const userId = await ctx.db.insert("users", {});
+    await ctx.db.insert("agents", {
+      userId, login, nomRP: "Test", prenomRP: "Officier",
+      matricule, gradeId: grade._id, status: "ACTIVE", isOwner: false, dateEntree: Date.now(),
+    });
+    return `Officier 1 de test créé (badge ${String(matricule).padStart(5, "0")}).`;
+  },
+});

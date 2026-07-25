@@ -76,6 +76,10 @@ export const PERMISSION_SLUGS: { slug: string; domain: string; description: stri
   { slug: "lspa.quiz.delete", domain: "lspa", description: "Supprimer un quiz" },
   { slug: "lspa.session.manage", domain: "lspa", description: "Ouvrir et piloter une session de quiz" },
   { slug: "lspa.grade", domain: "lspa", description: "Corriger et publier les résultats" },
+  // FTO - formation terrain des Officiers 1
+  { slug: "fto.view", domain: "fto", description: "Consulter les fiches FTO des Officiers 1" },
+  { slug: "fto.edit", domain: "fto", description: "Remplir les fiches FTO" },
+  { slug: "fto.manage", domain: "fto", description: "Configurer la fiche FTO et attribuer les tuteurs" },
   // Statistiques
   { slug: "stats.view", domain: "stats", description: "Consulter les statistiques de la station" },
   // Dispatch

@@ -45,6 +45,8 @@ import { LspaEffectif } from "@/lspa/LspaEffectif";
 import { LspaProfil } from "@/lspa/LspaProfil";
 import { LspaHistory } from "@/lspa/LspaHistory";
 import { LspaPromotions, LspaPromotion } from "@/lspa/LspaPromotions";
+import { LspaFto } from "@/lspa/LspaFto";
+const FtoSheet = lazy(() => import("@/lspa/FtoSheet").then((m) => ({ default: m.FtoSheet })));
 import { LspaQuiz } from "@/lspa/LspaQuiz";
 const QuizEditor = lazy(() => import("@/lspa/QuizEditor").then((m) => ({ default: m.QuizEditor })));
 const SessionScreen = lazy(() => import("@/lspa/session/SessionScreen").then((m) => ({ default: m.SessionScreen })));
@@ -139,6 +141,8 @@ function Gated() {
         <Route path="effectif" element={<RequirePerm perm="lspa.effectif.view"><LspaEffectif /></RequirePerm>} />
         <Route path="promotions" element={<RequirePerm perm="lspa.effectif.view"><LspaPromotions /></RequirePerm>} />
         <Route path="promotions/:id" element={<RequirePerm perm="lspa.effectif.view"><LspaPromotion /></RequirePerm>} />
+        <Route path="fto" element={<RequirePerm perm="fto.view"><LspaFto /></RequirePerm>} />
+        <Route path="fto/:id" element={<RequirePerm perm="fto.view"><FtoSheet /></RequirePerm>} />
         <Route path="quiz" element={<LspaQuiz />} />
         <Route path="quiz/:id" element={<RequirePerm perm="lspa.quiz.view"><QuizEditor /></RequirePerm>} />
         <Route path="historique" element={<RequirePerm perm="lspa.session.manage"><LspaHistory /></RequirePerm>} />

@@ -1,6 +1,6 @@
 import { Suspense, useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { Home, Users, GraduationCap, ClipboardList, History, ShieldCheck, ArrowLeftRight, Sun, Moon } from "lucide-react";
+import { Home, Users, GraduationCap, ClipboardList, History, ShieldCheck, Compass, ArrowLeftRight, Sun, Moon } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useApp } from "@/providers/app-state";
 import { useCan } from "@/hooks/useCan";
@@ -20,6 +20,7 @@ const ITEMS: Item[] = [
   { to: "/lspa/effectif", label: "Effectif", icon: Users, perm: "lspa.effectif.view" },
   { to: "/lspa/promotions", label: "Promotions", icon: GraduationCap, perm: "lspa.effectif.view" },
   { to: "/lspa/quiz", label: "Quiz", icon: ClipboardList },
+  { to: "/lspa/fto", label: "Formation terrain", icon: Compass, perm: "fto.view" },
   { to: "/lspa/historique", label: "Historique", icon: History, perm: "lspa.session.manage" },
   // Même administration que le MDT (validation des comptes, invitations,
   // permissions…), accessible ici pour l'encadrement de l'académie.
