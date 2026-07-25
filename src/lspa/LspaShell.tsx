@@ -1,6 +1,6 @@
 import { Suspense, useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { Home, Users, ClipboardList, History, ShieldCheck, ArrowLeftRight, Sun, Moon } from "lucide-react";
+import { Home, Users, GraduationCap, ClipboardList, History, ShieldCheck, ArrowLeftRight, Sun, Moon } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useApp } from "@/providers/app-state";
 import { useCan } from "@/hooks/useCan";
@@ -18,6 +18,7 @@ type Item = { to: string; label: string; icon: LucideIcon; perm?: string };
 const ITEMS: Item[] = [
   { to: "/lspa", label: "Accueil", icon: Home },
   { to: "/lspa/effectif", label: "Effectif", icon: Users, perm: "lspa.effectif.view" },
+  { to: "/lspa/promotions", label: "Promotions", icon: GraduationCap, perm: "lspa.effectif.view" },
   { to: "/lspa/quiz", label: "Quiz", icon: ClipboardList },
   { to: "/lspa/historique", label: "Historique", icon: History, perm: "lspa.session.manage" },
   // Même administration que le MDT (validation des comptes, invitations,

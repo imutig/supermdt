@@ -15,6 +15,8 @@ export const create = mutation({
     type: v.union(v.literal("SINGLE"), v.literal("MULTI")),
     maxUses: v.optional(v.number()),
     expiresInHours: v.optional(v.number()),
+    // Un code rattaché à une promo admet directement ses porteurs comme cadets.
+    promotionId: v.optional(v.id("promotions")),
   },
   handler: async (ctx, args) => {
     const agent = await requireAgent(ctx);
@@ -38,6 +40,7 @@ export const create = mutation({
       expiresAt,
       createdBy: agent._id,
       revoked: false,
+      promotionId: args.promotionId,
     });
     await writeAudit(ctx, agent, {
       action: "invite.create",

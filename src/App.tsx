@@ -45,6 +45,7 @@ import { LspaEffectif } from "@/lspa/LspaEffectif";
 import { LspaProfil } from "@/lspa/LspaProfil";
 import { LspaHistory } from "@/lspa/LspaHistory";
 import { LspaCadet } from "@/lspa/LspaCadet";
+import { LspaPromotions, LspaPromotion } from "@/lspa/LspaPromotions";
 import { LspaQuiz } from "@/lspa/LspaQuiz";
 const QuizEditor = lazy(() => import("@/lspa/QuizEditor").then((m) => ({ default: m.QuizEditor })));
 const SessionScreen = lazy(() => import("@/lspa/session/SessionScreen").then((m) => ({ default: m.SessionScreen })));
@@ -97,7 +98,7 @@ function PortalSwitch({ canMdt }: { canMdt: boolean }) {
 function Gated() {
   const me = useMe();
   const location = useLocation();
-  const { canMdt, ready: portalsReady } = usePortals();
+  const { canMdt, academyBlocked, ready: portalsReady } = usePortals();
   const { portal } = usePortal();
   const { entryPending, endEntry } = useApp();
   if (me === undefined) return <Splash />;
@@ -108,6 +109,8 @@ function Gated() {
   if (status === "INACTIVE" || status === "SUSPENDED") return <PendingScreen suspended />;
   // Mot de passe temporaire : aucun accès au MDT tant qu'il n'est pas remplacé.
   if (me.agent.mustChangePassword) return <ChangePasswordScreen />;
+  // Cadet écarté de sa promo : plus d'accès tant qu'il n'est pas réintégré.
+  if (portalsReady && academyBlocked) return <PendingScreen academy />;
 
   // Un cadet n'a pas accès au MDT : toute route hors académie le renvoie sur
   // son portail, plutôt que de lui refuser page après page.
@@ -136,6 +139,8 @@ function Gated() {
         <Route index element={<LspaDashboard />} />
         <Route path="effectif" element={<RequirePerm perm="lspa.effectif.view"><LspaEffectif /></RequirePerm>} />
         <Route path="cadet/:id" element={<RequirePerm perm="lspa.effectif.view"><LspaCadet /></RequirePerm>} />
+        <Route path="promotions" element={<RequirePerm perm="lspa.effectif.view"><LspaPromotions /></RequirePerm>} />
+        <Route path="promotions/:id" element={<RequirePerm perm="lspa.effectif.view"><LspaPromotion /></RequirePerm>} />
         <Route path="quiz" element={<LspaQuiz />} />
         <Route path="quiz/:id" element={<RequirePerm perm="lspa.quiz.view"><QuizEditor /></RequirePerm>} />
         <Route path="historique" element={<RequirePerm perm="lspa.session.manage"><LspaHistory /></RequirePerm>} />

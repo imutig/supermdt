@@ -125,6 +125,9 @@ export default defineSchema({
     expiresAt: v.optional(v.number()),
     createdBy: v.id("agents"),
     revoked: v.boolean(),
+    // Rattachement à une promo : à l'inscription, le compte devient cadet de
+    // cette promo, actif d'emblée (voir agents.completeRegistration).
+    promotionId: v.optional(v.id("promotions")),
   }).index("by_code", ["code"]),
 
   serviceSessions: defineTable({
@@ -155,6 +158,31 @@ export default defineSchema({
     position: v.number(),
     active: v.boolean(),
   }).index("by_position", ["position"]),
+
+  // Promotions : cohortes de cadets, avec un début et une fin. Un code
+  // d'invitation peut y être rattaché (voir invitations.promotionId).
+  promotions: defineTable({
+    name: v.string(),
+    startAt: v.number(),
+    endAt: v.optional(v.number()),
+    status: v.union(v.literal("OPEN"), v.literal("CLOSED")),
+    createdBy: v.id("agents"),
+  }).index("by_status", ["status"]),
+
+  // Appartenance d'un cadet à une promo. ACTIVE = en formation ; REJECTED =
+  // écarté (le compte reste, mais perd l'accès LSPA tant qu'il n'a aucune
+  // appartenance active) ; GRADUATED = diplômé (passé agent).
+  promotionMembers: defineTable({
+    promotionId: v.id("promotions"),
+    agentId: v.id("agents"),
+    status: v.union(v.literal("ACTIVE"), v.literal("REJECTED"), v.literal("GRADUATED")),
+    joinedAt: v.number(),
+    decidedAt: v.optional(v.number()),
+    decidedBy: v.optional(v.id("agents")),
+  })
+    .index("by_promotion", ["promotionId"])
+    .index("by_agent", ["agentId"])
+    .index("by_promotion_agent", ["promotionId", "agentId"]),
 
   academyRankPermissions: defineTable({
     rankId: v.id("academyRanks"),

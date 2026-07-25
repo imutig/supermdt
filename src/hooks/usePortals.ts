@@ -10,10 +10,14 @@ export function usePortals() {
   const me = useMe();
   const { can, ready } = useCan();
   const academyOnly = me?.grade?.academyOnly === true && !me.agent.isOwner;
+  // Cadet écarté de sa promo : il garde le grade Cadet (et donc lspa.view) mais
+  // perd l'accès tant qu'il n'est pas réintégré. `academyBlocked` vient du serveur.
+  const blocked = me?.academyBlocked === true;
   return {
     ready: ready && me !== undefined && me !== null,
     canMdt: !academyOnly,
-    canLspa: can("lspa.view"),
+    canLspa: can("lspa.view") && !blocked,
     academyOnly,
+    academyBlocked: blocked,
   };
 }

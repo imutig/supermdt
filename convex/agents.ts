@@ -39,6 +39,13 @@ export const me = query({
       .first();
     // Grade d'académie : présent seulement pour les instructeurs et cadres LSPA.
     const academyRank = agent.academyRankId ? await ctx.db.get(agent.academyRankId) : null;
+    // Cadet écarté de sa promo : il a des appartenances mais aucune active, donc
+    // il perd l'accès LSPA jusqu'à réintégration dans une promo.
+    let academyBlocked = false;
+    if (grade?.academyOnly) {
+      const mems = await ctx.db.query("promotionMembers").withIndex("by_agent", (q) => q.eq("agentId", agent._id)).collect();
+      academyBlocked = mems.length > 0 && !mems.some((m) => m.status === "ACTIVE");
+    }
     return {
       agent,
       grade,
@@ -46,6 +53,7 @@ export const me = query({
       divisions,
       onDuty: !!openSession,
       dutySince: openSession?.startedAt,
+      academyBlocked,
     };
   },
 });
@@ -175,27 +183,42 @@ export const completeRegistration = mutation({
     if (invite.usesCount >= invite.maxUses) throw new Error("Invitation épuisée.");
     await ctx.db.patch(invite._id, { usesCount: invite.usesCount + 1 });
 
+    // Code rattaché à une promo : le compte est admis directement comme cadet,
+    // actif d'emblée, et inscrit dans la promo. Sinon, inscription classique en
+    // attente de validation.
+    let promo = invite.promotionId ? await ctx.db.get(invite.promotionId) : null;
+    if (promo && promo.status !== "OPEN") promo = null; // promo close = admission classique
+    const cadetGrade = promo ? (await ctx.db.query("grades").collect()).find((g) => g.academyOnly) ?? null : null;
+    const asCadet = !!promo && !!cadetGrade;
+
     const agentId = await ctx.db.insert("agents", {
       userId,
       login: makeLogin(args.prenomRP, args.nomRP),
       nomRP: args.nomRP,
       prenomRP: args.prenomRP,
-      status: "PENDING",
+      status: asCadet ? "ACTIVE" : "PENDING",
+      gradeId: asCadet ? cadetGrade!._id : undefined,
+      dateEntree: asCadet ? Date.now() : undefined,
       isOwner: false,
     });
     const agent = await ctx.db.get(agentId);
+    if (asCadet) {
+      await ctx.db.insert("promotionMembers", { promotionId: promo!._id, agentId, status: "ACTIVE", joinedAt: Date.now() });
+    }
     await writeAudit(ctx, agent, {
       action: "agent.register",
       resourceType: "agent",
       resourceId: agentId,
       resourceLabel: `${args.prenomRP} ${args.nomRP}`,
-      metadata: { via: "invite", code: args.code },
+      metadata: { via: "invite", code: args.code, ...(asCadet ? { promo: promo!.name } : {}) },
     });
     await notify(ctx, "agent.pending", {
-      title: "Nouvelle inscription en attente",
-      description: `**${args.prenomRP} ${args.nomRP}** attend une validation de l'État-Major.`,
-      color: NOTIFY_COLOR.warning,
-      url: await deepLink(ctx, "/effectif"),
+      title: asCadet ? "Nouveau cadet admis" : "Nouvelle inscription en attente",
+      description: asCadet
+        ? `**${args.prenomRP} ${args.nomRP}** rejoint la promotion **${promo!.name}**.`
+        : `**${args.prenomRP} ${args.nomRP}** attend une validation de l'État-Major.`,
+      color: asCadet ? NOTIFY_COLOR.accent : NOTIFY_COLOR.warning,
+      url: await deepLink(ctx, asCadet ? "/lspa/effectif" : "/effectif"),
     });
     return agentId;
   },
