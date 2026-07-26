@@ -54,7 +54,7 @@ export function dailyEmbed(s: DayStats): EmbedBuilder {
     const medals = ["🥇", "🥈", "🥉", "▪️", "▪️"];
     e.addFields({
       name: "🏅 Présence du jour",
-      value: s.top.map((t, i) => `${medals[i] ?? "▪️"} **${t.name}** — ${fmtDuration(t.minutes)}`).join("\n"),
+      value: s.top.map((t, i) => `${medals[i] ?? "▪️"} **${t.name}** - ${fmtDuration(t.minutes)}`).join("\n"),
     });
   }
   return e;
@@ -134,7 +134,7 @@ export function casierEmbed(c: CasierInfo, query: string): EmbedBuilder {
   ].filter(Boolean).join(" · ");
 
   const e = baseEmbed(c.count > 0 ? BRAND.danger : BRAND.green)
-    .setTitle(`📁 Extrait de casier — ${c.name}`)
+    .setTitle(`📁 Extrait de casier - ${c.name}`)
     .setDescription(identite || "*Identité non renseignée.*")
     .addFields(
       { name: "Antécédents", value: `**${c.count}**`, inline: true },
@@ -148,7 +148,7 @@ export function casierEmbed(c: CasierInfo, query: string): EmbedBuilder {
     // Une ligne par entrée, tronquée à la limite d'un field Discord.
     let body = "";
     for (const r of c.rows) {
-      const line = `\`${date(r.at)}\` **${r.type}** — ${r.charges}
+      const line = `\`${date(r.at)}\` **${r.type}** - ${r.charges}
 ╰ ${money(r.fine)} · ${jail(r.jailSeconds)}
 `;
       if ((body + line).length > 1000) break;

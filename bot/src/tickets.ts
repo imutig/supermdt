@@ -54,7 +54,7 @@ function buildEmbed(e: RichEmbed): EmbedBuilder {
 // Aperçu : garantit un embed non vide (Discord refuse un embed totalement vide).
 function previewEmbed(e: RichEmbed): EmbedBuilder {
   const empty = !e.title && !e.description && !e.authorName && !(e.fields?.length) && !isUrl(e.image) && !isUrl(e.thumbnail);
-  return empty ? buildEmbed({ ...e, description: "*Embed vide — ajoute un titre, une description ou un champ.*" }) : buildEmbed(e);
+  return empty ? buildEmbed({ ...e, description: "*Embed vide - ajoute un titre, une description ou un champ.*" }) : buildEmbed(e);
 }
 
 // Couleurs proposées dans le constructeur.
@@ -174,7 +174,7 @@ function templatesListComponents(templates: TicketTemplate[]) {
 async function renderTemplates(interaction: ButtonInteraction | AnySelectMenuInteraction | ModalSubmitInteraction) {
   const templates = await mdt.ticketTemplateList();
   const embed = baseEmbed(BRAND.info).setTitle("🗂️ Templates de message")
-    .setDescription(templates.length === 0 ? "Aucun template. Crée-en un avec **Nouveau template**." : templates.map((t) => `• **${t.name}** — ${t.pingOwner ? "🔔 ping" : "silencieux"}`).join("\n"));
+    .setDescription(templates.length === 0 ? "Aucun template. Crée-en un avec **Nouveau template**." : templates.map((t) => `• **${t.name}** - ${t.pingOwner ? "🔔 ping" : "silencieux"}`).join("\n"));
   const payload = { embeds: [embed], components: templatesListComponents(templates) };
   if (interaction.isMessageComponent()) await interaction.update(payload);
   else if (interaction.isModalSubmit() && interaction.isFromMessage()) await interaction.update(payload);
@@ -211,7 +211,7 @@ async function renderBuilder(interaction: ButtonInteraction | AnySelectMenuInter
     ? " Placeholders disponibles : `{date}` `{heure}` `{lieu}` `{promo}` `{cadet}` (remplacés à l'envoi de `/annonce`)."
     : "";
   const payload = {
-    content: `🛠️ **Constructeur d'embed** — ${TARGET_LABEL[d.target]}. Édite chaque section, l'aperçu se met à jour en direct.${hint}`,
+    content: `🛠️ **Constructeur d'embed** - ${TARGET_LABEL[d.target]}. Édite chaque section, l'aperçu se met à jour en direct.${hint}`,
     embeds: [preview], components: builderComponents(d),
   };
   if (interaction.isMessageComponent()) await interaction.update(payload);
@@ -239,8 +239,8 @@ function sectionModal(kind: "auteur" | "texte" | "images" | "footer", e: RichEmb
     );
   } else if (kind === "images") {
     m.setTitle("Images").addComponents(
-      ti("thumbnail", "Vignette (petite, en haut à droite) — URL", TextInputStyle.Short, e.thumbnail, false, 500),
-      ti("image", "Grande image (en bas) — URL", TextInputStyle.Short, e.image, false, 500),
+      ti("thumbnail", "Vignette (petite, en haut à droite) - URL", TextInputStyle.Short, e.thumbnail, false, 500),
+      ti("image", "Grande image (en bas) - URL", TextInputStyle.Short, e.image, false, 500),
     );
   } else {
     m.setTitle("Pied de page").addComponents(
@@ -274,7 +274,7 @@ function fieldsComponents(d: Draft) {
 }
 async function renderFields(interaction: ButtonInteraction | AnySelectMenuInteraction | ModalSubmitInteraction, d: Draft) {
   const payload = {
-    content: "🧩 **Champs de l'embed** — ajoute, modifie ou supprime (laisse le nom vide pour supprimer).",
+    content: "🧩 **Champs de l'embed** - ajoute, modifie ou supprime (laisse le nom vide pour supprimer).",
     embeds: [previewEmbed(d.embed)], components: fieldsComponents(d),
   };
   if (interaction.isMessageComponent()) await interaction.update(payload);
@@ -488,7 +488,7 @@ function messageContent(m: { content: string; embeds: { title: string | null; de
   const parts: string[] = [];
   if (m.content) parts.push(m.content);
   for (const e of m.embeds) {
-    const bits = [e.title, e.description].filter(Boolean).join(" — ");
+    const bits = [e.title, e.description].filter(Boolean).join(" - ");
     if (bits) parts.push(`[embed] ${bits}`);
     else parts.push("[embed]");
   }
@@ -823,7 +823,7 @@ export async function startTemplateBuilder(interaction: ChatInputCommandInteract
 export async function renderTemplatesCmd(interaction: ChatInputCommandInteraction) {
   const templates = await mdt.ticketTemplateList();
   const embed = baseEmbed(BRAND.info).setTitle("🗂️ Templates de message")
-    .setDescription(templates.length === 0 ? "Aucun template. Crée-en un avec `/template create` ou via /candidatures." : templates.map((t) => `• **${t.name}** — ${t.pingOwner ? "🔔 ping" : "silencieux"}`).join("\n"));
+    .setDescription(templates.length === 0 ? "Aucun template. Crée-en un avec `/template create` ou via /candidatures." : templates.map((t) => `• **${t.name}** - ${t.pingOwner ? "🔔 ping" : "silencieux"}`).join("\n"));
   await interaction.reply({ embeds: [embed], components: templatesListComponents(templates), flags: EPH });
 }
 

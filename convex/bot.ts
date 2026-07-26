@@ -415,7 +415,7 @@ export const presenceMessageSet = mutation({
 
 // ============ Système de tickets de candidature ============
 
-const DEFAULT_ANNOUNCE = "Présence obligatoire à toutes les personnes ayant le grade de {cadet}. Merci de nous prévenir à l'avance en cas de non-venue ; toute personne absente sans avoir prévenu sera démise de sa fonction d'apprenant.\n*(Prévenez de votre absence dans votre ticket, sinon blacklist automatique — sauf candidat en vacances !)*";
+const DEFAULT_ANNOUNCE = "Présence obligatoire à toutes les personnes ayant le grade de {cadet}. Merci de nous prévenir à l'avance en cas de non-venue ; toute personne absente sans avoir prévenu sera démise de sa fonction d'apprenant.\n*(Prévenez de votre absence dans votre ticket, sinon blacklist automatique - sauf candidat en vacances !)*";
 const DEFAULT_ITEMS = "Une tenue décente\nUne coiffure et une barbe taillées et réglementaires\nDe la nourriture et de la boisson";
 
 // Embed d'annonce par défaut : reprend l'ancien rendu (corps + date/heure/lieu +
@@ -425,7 +425,7 @@ function defaultAnnounceEmbed(cfg: Doc<"ticketConfig"> | null) {
   const items = (cfg?.announceItems ?? DEFAULT_ITEMS).split("\n").map((s) => s.trim()).filter(Boolean).map((s) => `• ${s}`).join("\n");
   return {
     color: "#49a24a",
-    title: "📢 ANNONCE OFFICIELLE — POLICE ACADEMY",
+    title: "📢 ANNONCE OFFICIELLE - POLICE ACADEMY",
     description: cfg?.announceText ?? DEFAULT_ANNOUNCE,
     fields: [
       { name: "📅 Date", value: "{date}", inline: true },
@@ -599,7 +599,7 @@ export const ticketClose = mutation({
     const t = await ctx.db.query("tickets").withIndex("by_channel", (q) => q.eq("channelId", channelId)).first();
     if (!t) return null;
     await ctx.db.patch(t._id, { status: "CLOSED", closeReason: reason, closedBy: by });
-    await logEvent(ctx, t, { type: "close", label: reason ? `Ticket fermé — ${reason}` : "Ticket fermé", by });
+    await logEvent(ctx, t, { type: "close", label: reason ? `Ticket fermé - ${reason}` : "Ticket fermé", by });
     return { ownerId: t.ownerId, ownerName: t.ownerName };
   },
 });

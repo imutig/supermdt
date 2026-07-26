@@ -52,7 +52,7 @@ export function weeklyHoursChart(perDayMinutes: number[]): string {
       datasets: [{ data: hours, backgroundColor: GREEN, borderRadius: 6 }],
     },
     options: {
-      plugins: { legend: { display: false }, title: { display: true, text: "Heures de service — semaine en cours", color: TEXT, font: { size: 14 } } },
+      plugins: { legend: { display: false }, title: { display: true, text: "Heures de service - semaine en cours", color: TEXT, font: { size: 14 } } },
       scales: {
         x: { ticks: { color: TEXT }, grid: { display: false } },
         // QuickChart évalue les chaînes ressemblant à une fonction Chart.js.

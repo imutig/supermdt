@@ -18,23 +18,23 @@ function buttons(rollcallId: string) {
 }
 
 function list(names: string[]): string {
-  return names.length === 0 ? "*—*" : names.map((n) => `• ${n}`).join("\n");
+  return names.length === 0 ? "*-*" : names.map((n) => `• ${n}`).join("\n");
 }
 
 function rollcallEmbed(state: RollcallState): EmbedBuilder {
   const endStamp = `<t:${Math.floor(state.endsAt / 1000)}:t>`;
   const total = state.present.length + state.retard.length + state.absent.length;
   const e = baseEmbed(state.closed ? BRAND.muted : BRAND.green)
-    .setTitle(state.closed ? "📋 Appel de présence — clos" : "📣 Appel de présence")
+    .setTitle(state.closed ? "📋 Appel de présence - clos" : "📣 Appel de présence")
     .setDescription(
       state.closed
         ? `L'appel est terminé. **${total}** réponse${total > 1 ? "s" : ""} enregistrée${total > 1 ? "s" : ""}.`
         : `Indiquez votre présence ci-dessous. Clôture à ${endStamp}.`,
     )
     .addFields(
-      { name: `✅ Présents — ${state.present.length}`, value: list(state.present), inline: true },
-      { name: `⏰ En retard — ${state.retard.length}`, value: list(state.retard), inline: true },
-      { name: `❌ Absents — ${state.absent.length}`, value: list(state.absent), inline: true },
+      { name: `✅ Présents - ${state.present.length}`, value: list(state.present), inline: true },
+      { name: `⏰ En retard - ${state.retard.length}`, value: list(state.retard), inline: true },
+      { name: `❌ Absents - ${state.absent.length}`, value: list(state.absent), inline: true },
     );
   return e;
 }
