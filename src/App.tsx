@@ -46,6 +46,7 @@ import { LspaEffectif } from "@/lspa/LspaEffectif";
 import { LspaProfil } from "@/lspa/LspaProfil";
 import { LspaHistory } from "@/lspa/LspaHistory";
 import { LspaPromotions, LspaPromotion } from "@/lspa/LspaPromotions";
+import { LspaTicketArchives } from "@/lspa/LspaTicketArchives";
 import { LspaFto } from "@/lspa/LspaFto";
 import { FtoSheet } from "@/lspa/FtoSheet";
 import { LspaQuiz } from "@/lspa/LspaQuiz";
@@ -155,6 +156,7 @@ function Gated() {
         <Route path="effectif" element={<RequirePerm perm="lspa.effectif.view"><LspaEffectif /></RequirePerm>} />
         <Route path="promotions" element={<RequirePerm perm="lspa.effectif.view"><LspaPromotions /></RequirePerm>} />
         <Route path="promotions/:id" element={<RequirePerm perm="lspa.effectif.view"><LspaPromotion /></RequirePerm>} />
+        <Route path="candidatures" element={<RequirePerm perm="lspa.effectif.view"><LspaTicketArchives /></RequirePerm>} />
         <Route path="fto" element={<LspaFto />} />
         <Route path="fto/:id" element={<FtoSheet />} />
         <Route path="quiz" element={<RequirePerm perm="lspa.view"><LspaQuiz /></RequirePerm>} />

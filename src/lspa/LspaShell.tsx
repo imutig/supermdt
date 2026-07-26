@@ -1,6 +1,6 @@
 import { Suspense, useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { Home, Users, GraduationCap, ClipboardList, History, ShieldCheck, Compass, ArrowLeftRight, Sun, Moon } from "lucide-react";
+import { Home, Users, GraduationCap, ClipboardList, History, ShieldCheck, Compass, ArrowLeftRight, Sun, Moon, Archive } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useApp } from "@/providers/app-state";
 import { useCan } from "@/hooks/useCan";
@@ -19,6 +19,7 @@ const ITEMS: Item[] = [
   { to: "/lspa", label: "Accueil", icon: Home, perm: "lspa.view" },
   { to: "/lspa/effectif", label: "Effectif", icon: Users, perm: "lspa.effectif.view" },
   { to: "/lspa/promotions", label: "Promotions", icon: GraduationCap, perm: "lspa.effectif.view" },
+  { to: "/lspa/candidatures", label: "Candidatures", icon: Archive, perm: "lspa.effectif.view" },
   { to: "/lspa/quiz", label: "Quiz", icon: ClipboardList, perm: "lspa.view" },
   // Formation terrain : ouverte à tout agent assermenté (les référents y
   // accèdent), mais jamais aux cadets.

@@ -29,7 +29,7 @@ export const list = query({
   handler: async (ctx) => {
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "lspa.effectif.view");
-    const promos = await ctx.db.query("promotions").collect();
+    const promos = (await ctx.db.query("promotions").collect()).filter((p) => !p.deleting);
     const counts = new Map<string, { active: number; total: number }>();
     for (const m of await ctx.db.query("promotionMembers").collect()) {
       const c = counts.get(m.promotionId as string) ?? { active: 0, total: 0 };
@@ -61,7 +61,7 @@ export const summary = query({
     await requirePermission(ctx, agent, "lspa.effectif.view");
     const items = (await ctx.db.query("gradingItems").withIndex("by_position").collect()).filter((i) => i.active !== false);
     const gradingMax = items.reduce((s, i) => s + i.maxPoints, 0);
-    const promos = await ctx.db.query("promotions").collect();
+    const promos = (await ctx.db.query("promotions").collect()).filter((p) => !p.deleting);
 
     const out = [];
     for (const p of promos) {
@@ -138,7 +138,7 @@ export const get = query({
     const order = { ACTIVE: 0, GRADUATED: 1, REJECTED: 2 } as const;
     rows.sort((a, b) => order[a.status] - order[b.status] || a.name.localeCompare(b.name));
     return {
-      promo: { _id: promo._id, name: promo.name, status: promo.status, startAt: promo.startAt, endAt: promo.endAt ?? null },
+      promo: { _id: promo._id, name: promo.name, status: promo.status, startAt: promo.startAt, endAt: promo.endAt ?? null, paDate: promo.paDate ?? null, discordCategoryId: promo.discordCategoryId ?? null },
       members: rows,
       invites,
     };
@@ -146,20 +146,36 @@ export const get = query({
 });
 
 export const create = mutation({
-  args: { name: v.string(), startAt: v.optional(v.number()) },
-  handler: async (ctx, { name, startAt }) => {
+  args: { name: v.string(), startAt: v.optional(v.number()), paDate: v.optional(v.number()) },
+  handler: async (ctx, { name, startAt, paDate }) => {
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "effectif.validate");
     const clean = name.trim();
     if (!clean) throw new Error("Le nom de la promotion est obligatoire.");
+    // Date de PA normalisée à minuit UTC : c'est la clé de rapprochement avec
+    // les annonces Discord (voir promoUpsertByDate).
+    const key = paDate != null ? (() => { const d = new Date(paDate); return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()); })() : undefined;
     const id = await ctx.db.insert("promotions", {
       name: clean,
       startAt: startAt ?? Date.now(),
       status: "OPEN",
       createdBy: agent._id,
+      ...(key != null ? { paDate: key } : {}),
     });
     await writeAudit(ctx, agent, { action: "lspa.promo_create", resourceType: "promotion", resourceId: id, resourceLabel: clean });
     return id;
+  },
+});
+
+// Définit (ou efface) la date de PA d'une promo. Normalisée à minuit UTC, elle
+// sert de clé de rapprochement avec les annonces Discord du même jour.
+export const setPaDate = mutation({
+  args: { promotionId: v.id("promotions"), paDate: v.union(v.number(), v.null()) },
+  handler: async (ctx, { promotionId, paDate }) => {
+    const agent = await requireAgent(ctx);
+    await requirePermission(ctx, agent, "effectif.validate");
+    const key = paDate == null ? undefined : (() => { const d = new Date(paDate); return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()); })();
+    await ctx.db.patch(promotionId, { paDate: key });
   },
 });
 
@@ -169,6 +185,26 @@ export const close = mutation({
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "effectif.validate");
     await ctx.db.patch(promotionId, { status: reopen ? "OPEN" : "CLOSED", endAt: reopen ? undefined : Date.now() });
+  },
+});
+
+// Supprime une promotion. Ses appartenances sont retirées immédiatement. Si une
+// catégorie Discord y est rattachée, la promo est marquée `deleting` : le bot
+// déplace les tickets vers la catégorie classique, supprime la catégorie, puis
+// finalise la suppression (bot.promoFinalizeDeletion). Sans catégorie, on
+// supprime directement.
+export const remove = mutation({
+  args: { promotionId: v.id("promotions") },
+  handler: async (ctx, { promotionId }) => {
+    const agent = await requireAgent(ctx);
+    await requirePermission(ctx, agent, "effectif.validate");
+    const promo = await ctx.db.get(promotionId);
+    if (!promo) return;
+    const members = await ctx.db.query("promotionMembers").withIndex("by_promotion", (q) => q.eq("promotionId", promotionId)).collect();
+    for (const m of members) await ctx.db.delete(m._id);
+    await writeAudit(ctx, agent, { action: "lspa.promo_delete", resourceType: "promotion", resourceId: promotionId, resourceLabel: promo.name });
+    if (promo.discordCategoryId) await ctx.db.patch(promotionId, { deleting: true, status: "CLOSED" });
+    else await ctx.db.delete(promotionId);
   },
 });
 

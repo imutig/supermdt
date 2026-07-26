@@ -77,16 +77,21 @@ export const mdt = {
   ticketConfigGet: () => client.query(anyApi.bot.ticketConfigGet, { secret: env.botSecret }) as Promise<TicketConfig>,
   ticketConfigSet: (patch: Partial<TicketConfig>) => client.mutation(anyApi.bot.ticketConfigSet, { secret: env.botSecret, patch }) as Promise<void>,
   ticketTemplateList: () => client.query(anyApi.bot.ticketTemplateList, { secret: env.botSecret }) as Promise<TicketTemplate[]>,
-  ticketTemplateUpsert: (t: { id?: string; name: string; title: string; description: string; color: string; pingOwner: boolean }) =>
+  ticketTemplateUpsert: (t: { id?: string; name: string; pingOwner: boolean; embed: RichEmbed }) =>
     client.mutation(anyApi.bot.ticketTemplateUpsert, { secret: env.botSecret, ...t }) as Promise<string>,
   ticketTemplateDelete: (id: string) => client.mutation(anyApi.bot.ticketTemplateDelete, { secret: env.botSecret, id }) as Promise<void>,
   ticketTemplateByName: (name: string) => client.query(anyApi.bot.ticketTemplateByName, { secret: env.botSecret, name }) as Promise<TicketTemplate | null>,
   ticketCreate: (t: { channelId: string; ownerId: string; ownerName: string; prenom: string; nom: string; dateNaissance?: string; motivations?: string }) =>
     client.mutation(anyApi.bot.ticketCreate, { secret: env.botSecret, ...t }) as Promise<void>,
   ticketByChannel: (channelId: string) => client.query(anyApi.bot.ticketByChannel, { secret: env.botSecret, channelId }) as Promise<TicketOwner | null>,
-  ticketClose: (channelId: string) => client.mutation(anyApi.bot.ticketClose, { secret: env.botSecret, channelId }) as Promise<void>,
+  ticketClose: (channelId: string, reason?: string, by?: string) => client.mutation(anyApi.bot.ticketClose, { secret: env.botSecret, channelId, reason, by }) as Promise<{ ownerId: string; ownerName: string } | null>,
+  ticketReopen: (channelId: string, by?: string) => client.mutation(anyApi.bot.ticketReopen, { secret: env.botSecret, channelId, by }) as Promise<{ ownerId: string } | null>,
+  ticketLogEvent: (channelId: string, event: { type: string; label: string; by?: string }) => client.mutation(anyApi.bot.ticketLogEvent, { secret: env.botSecret, channelId, event }) as Promise<void>,
+  ticketFull: (channelId: string) => client.query(anyApi.bot.ticketFull, { secret: env.botSecret, channelId }) as Promise<TicketFull | null>,
+  ticketArchiveSave: (channelId: string, channelName: string, messages: ArchiveMessage[]) =>
+    client.mutation(anyApi.bot.ticketArchiveSave, { secret: env.botSecret, channelId, channelName, messages }) as Promise<void>,
   ticketByOwner: (ownerId: string) => client.query(anyApi.bot.ticketByOwner, { secret: env.botSecret, ownerId }) as Promise<{ channelId: string; prenom: string; nom: string; integrationStatus: IntegStatus | null } | null>,
-  ticketSetStatus: (channelId: string, status: IntegStatus) => client.mutation(anyApi.bot.ticketSetStatus, { secret: env.botSecret, channelId, status }) as Promise<{ prenom: string; nom: string } | null>,
+  ticketSetStatus: (channelId: string, status: IntegStatus, by?: string) => client.mutation(anyApi.bot.ticketSetStatus, { secret: env.botSecret, channelId, status, by }) as Promise<{ prenom: string; nom: string } | null>,
   ticketSetPromotion: (channelId: string, promotionId: string) => client.mutation(anyApi.bot.ticketSetPromotion, { secret: env.botSecret, channelId, promotionId }) as Promise<void>,
 
   promoUpsertByDate: (paDate: number, name: string | undefined, paTime: string | undefined, paPlace: string | undefined) =>
@@ -94,19 +99,38 @@ export const mdt = {
   promoSetCategory: (promotionId: string, categoryId: string) => client.mutation(anyApi.bot.promoSetCategory, { secret: env.botSecret, promotionId, categoryId }) as Promise<void>,
   promoGet: (promotionId: string) => client.query(anyApi.bot.promoGet, { secret: env.botSecret, promotionId }) as Promise<{ name: string; discordCategoryId: string | null } | null>,
   promosNeedingCategory: () => client.query(anyApi.bot.promosNeedingCategory, { secret: env.botSecret }) as Promise<{ promotionId: string; name: string }[]>,
+  promosPendingDeletion: () => client.query(anyApi.bot.promosPendingDeletion, { secret: env.botSecret }) as Promise<{ promotionId: string; name: string; discordCategoryId: string | null }[]>,
+  promoFinalizeDeletion: (promotionId: string) => client.mutation(anyApi.bot.promoFinalizeDeletion, { secret: env.botSecret, promotionId }) as Promise<void>,
+};
+
+export type TicketEvent = { at: number; type: string; label: string; by?: string };
+export type ArchiveMessage = { authorId: string; authorName: string; bot?: boolean; content: string; at: number; attachments?: string[] };
+export type TicketFull = {
+  channelId: string; ownerId: string; ownerName: string;
+  prenom: string; nom: string; dateNaissance: string | null; motivations: string | null;
+  status: string; integrationStatus: IntegStatus | null;
+  promotionName: string | null; closeReason: string | null;
+  events: TicketEvent[]; createdAt: number;
 };
 
 export type IntegStatus = "EVALUATING" | "FAILED" | "PASSED" | "PASSED_ABSENT";
+export type EmbedField = { name: string; value: string; inline?: boolean };
+export type RichEmbed = {
+  authorName?: string; authorIcon?: string;
+  title?: string; description?: string; color?: string;
+  thumbnail?: string; image?: string;
+  footer?: string; footerIcon?: string;
+  fields?: EmbedField[];
+};
 export type TicketConfig = {
   categoryId: string | null; panelChannelId: string | null; panelMessageId: string | null;
   candidaturesOpen: boolean;
-  panelTitle: string; panelText: string;
-  openTitle: string; openText: string; openColor: string;
+  panelEmbed: RichEmbed; openEmbed: RichEmbed;
   nomenclature: string; renameNick: boolean;
   promoRoleIds: string[]; cadetRoleId: string | null;
   announceText: string; announceItems: string;
 };
-export type TicketTemplate = { _id: string; name: string; title: string; description: string; color: string; pingOwner: boolean };
+export type TicketTemplate = { _id: string; name: string; pingOwner: boolean; embed: RichEmbed };
 export type TicketOwner = { ownerId: string; ownerName: string; prenom: string; nom: string; status: string; integrationStatus: IntegStatus | null };
 
 export type { OnDutyAgent, DayStats, Overview, BotConfig, WeeklyHours, RollcallState, VehicleInfo, CasierInfo };

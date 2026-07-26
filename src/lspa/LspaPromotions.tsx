@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
-  Plus, Users, ChevronRight, ArrowLeft, GraduationCap, CheckCircle2, Ban, RotateCcw, Ticket, Copy, BarChart3,
+  Plus, Users, ChevronRight, ArrowLeft, GraduationCap, CheckCircle2, Ban, RotateCcw, Ticket, Copy, BarChart3, Trash2, AlertTriangle,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import type { Id } from "convex/_generated/dataModel";
@@ -30,6 +30,7 @@ export function LspaPromotions() {
   const { can } = useCan();
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
+  const [paDate, setPaDate] = useState("");
   const [view, setView] = useState<"list" | "compare">("list");
 
   const open = (promos ?? []).filter((p) => p.status === "OPEN");
@@ -57,15 +58,23 @@ export function LspaPromotions() {
           footer={<>
             <Button variant="ghost" onClick={() => setCreating(false)}>Annuler</Button>
             <Button variant="primary" disabled={!name.trim()} onClick={async () => {
-              const id = await toast.guard(create({ name: name.trim() }), "Création impossible");
-              if (id) { setCreating(false); setName(""); navigate(`/lspa/promotions/${id}`); }
+              const ts = paDate ? new Date(`${paDate}T00:00:00Z`).getTime() : undefined;
+              const id = await toast.guard(create({ name: name.trim(), ...(ts ? { paDate: ts } : {}) }), "Création impossible");
+              if (id) { setCreating(false); setName(""); setPaDate(""); navigate(`/lspa/promotions/${id}`); }
             }}>Créer</Button>
           </>}
         >
-          <label className="flex flex-col gap-[6px]">
-            <span className="text-[11px] font-bold uppercase tracking-[0.07em] text-faint">Nom de la promotion</span>
-            <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex. Promotion Janvier 2026" className="h-10 w-full rounded-sm border border-border bg-surface-2 px-3 text-[13.5px] outline-none focus:border-accent" />
-          </label>
+          <div className="flex flex-col gap-[14px]">
+            <label className="flex flex-col gap-[6px]">
+              <span className="text-[11px] font-bold uppercase tracking-[0.07em] text-faint">Nom de la promotion</span>
+              <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex. Promotion Janvier 2026" className="h-10 w-full rounded-sm border border-border bg-surface-2 px-3 text-[13.5px] outline-none focus:border-accent" />
+            </label>
+            <label className="flex flex-col gap-[6px]">
+              <span className="text-[11px] font-bold uppercase tracking-[0.07em] text-faint">Date de la PA (facultatif)</span>
+              <input type="date" value={paDate} onChange={(e) => setPaDate(e.target.value)} className="h-10 w-full rounded-sm border border-border bg-surface-2 px-3 text-[13.5px] outline-none focus:border-accent" />
+              <span className="text-[11px] text-faint">Sert à relier l'annonce Discord du même jour à cette promotion.</span>
+            </label>
+          </div>
         </Modal>
       )}
 
@@ -171,6 +180,8 @@ export function LspaPromotion() {
   const promotionId = id as Id<"promotions">;
   const data = useQuery(api.promotions.get, { promotionId });
   const close = useMutation(api.promotions.close);
+  const remove = useMutation(api.promotions.remove);
+  const setPaDate = useMutation(api.promotions.setPaDate);
   const setStatus = useMutation(api.promotions.setMemberStatus);
   const navigate = useNavigate();
   const toast = useToast();
@@ -183,6 +194,7 @@ export function LspaPromotion() {
   const [showStats, setShowStats] = useState(false);
   const [sheetFor, setSheetFor] = useState<Id<"agents"> | null>(null);
   const [byGroup, setByGroup] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   if (data === undefined) return <div className="p-[22px_26px]"><SkeletonRows rows={5} /></div>;
   if (data === null) return <div className="p-[26px]"><EmptyState title="Promotion introuvable" action={<Button onClick={() => navigate("/lspa/promotions")}>Retour</Button>} /></div>;
@@ -217,8 +229,19 @@ export function LspaPromotion() {
         <span className="flex h-[42px] w-[42px] flex-shrink-0 items-center justify-center rounded-[12px] bg-surface-2 text-accent"><GraduationCap className="h-[20px] w-[20px]" /></span>
         <div className="min-w-0 flex-1">
           <h1 className="m-0 text-[19px] font-bold">{promo.name}</h1>
-          <div className="mt-[2px] text-[12.5px] text-muted">
-            {members.filter((m) => m.status === "ACTIVE").length} en formation · {members.filter((m) => m.status === "GRADUATED").length} diplômé(s) · {promo.status === "OPEN" ? "ouverte" : "clôturée"}
+          <div className="mt-[2px] flex flex-wrap items-center gap-x-[6px] gap-y-[4px] text-[12.5px] text-muted">
+            <span>{members.filter((m) => m.status === "ACTIVE").length} en formation · {members.filter((m) => m.status === "GRADUATED").length} diplômé(s) · {promo.status === "OPEN" ? "ouverte" : "clôturée"}</span>
+            {manage ? (
+              <label className="flex items-center gap-[5px] text-[11.5px]" title="Date de la PA : relie l'annonce Discord du même jour">
+                <span className="text-faint">· PA le</span>
+                <input
+                  type="date"
+                  value={promo.paDate ? new Date(promo.paDate).toISOString().slice(0, 10) : ""}
+                  onChange={(e) => void toast.guard(setPaDate({ promotionId, paDate: e.target.value ? new Date(`${e.target.value}T00:00:00Z`).getTime() : null }), "Action impossible")}
+                  className="h-[26px] rounded-[6px] border border-border bg-surface-2 px-[6px] text-[12px] outline-none focus:border-accent"
+                />
+              </label>
+            ) : promo.paDate ? <span className="text-faint">· PA le {new Date(promo.paDate).toLocaleDateString("fr-FR", { timeZone: "UTC" })}</span> : null}
           </div>
         </div>
         <Button onClick={() => setShowStats(true)}><BarChart3 className="h-[14px] w-[14px]" /> Statistiques</Button>
@@ -228,8 +251,30 @@ export function LspaPromotion() {
             {promo.status === "OPEN" ? "Clôturer" : "Rouvrir"}
           </Button>
         )}
+        {manage && (
+          <button onClick={() => setConfirmDelete(true)} title="Supprimer la promotion" className="flex h-[34px] w-[34px] items-center justify-center rounded-[9px] border border-border bg-surface-2 text-faint hover:text-danger"><Trash2 className="h-[15px] w-[15px]" /></button>
+        )}
         {manage && promo.status === "OPEN" && <Button variant="primary" onClick={() => setAdding(true)}><Plus className="h-[15px] w-[15px]" /> Ajouter un cadet</Button>}
       </div>
+
+      {confirmDelete && (
+        <Modal title="Supprimer la promotion" icon={<AlertTriangle className="h-[17px] w-[17px]" />} onClose={() => setConfirmDelete(false)} width={460}
+          footer={<>
+            <Button variant="ghost" onClick={() => setConfirmDelete(false)}>Annuler</Button>
+            <Button variant="danger" onClick={async () => {
+              await toast.guard(remove({ promotionId }), "Suppression impossible");
+              setConfirmDelete(false);
+              navigate("/lspa/promotions");
+            }}>Supprimer définitivement</Button>
+          </>}
+        >
+          <div className="flex flex-col gap-[10px] text-[13px] text-muted">
+            <p className="m-0">La promotion <b className="text-text">{promo.name}</b> et ses affectations de cadets seront supprimées. Les cadets gardent leur compte.</p>
+            {promo.discordCategoryId ? <p className="m-0">La catégorie Discord associée sera supprimée par le bot ; les éventuels tickets restants sont renvoyés dans la catégorie des candidatures.</p> : null}
+            <p className="m-0 text-danger">Cette action est irréversible.</p>
+          </div>
+        </Modal>
+      )}
 
       {members.length === 0 ? (
         <div className="rounded-card border border-border bg-surface"><EmptyState title="Aucun cadet" message="Ajoutez des cadets ou distribuez un code d'accès rattaché à cette promotion." /></div>

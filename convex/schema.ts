@@ -2,6 +2,31 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 import { authTables } from "@convex-dev/auth/server";
 
+// Embed Discord riche, réutilisé par le panneau de candidature, le message
+// d'ouverture et les templates : auteur, titre, description, couleur, miniature,
+// grande image, pied, et champs multiples.
+const richEmbed = v.object({
+  authorName: v.optional(v.string()),
+  authorIcon: v.optional(v.string()),
+  title: v.optional(v.string()),
+  description: v.optional(v.string()),
+  color: v.optional(v.string()),
+  thumbnail: v.optional(v.string()),
+  image: v.optional(v.string()),
+  footer: v.optional(v.string()),
+  footerIcon: v.optional(v.string()),
+  fields: v.optional(v.array(v.object({ name: v.string(), value: v.string(), inline: v.optional(v.boolean()) }))),
+});
+
+// Événement dans le journal d'un ticket de candidature : création, changement de
+// statut, présence/absence, fermeture, réouverture. `by` = auteur (pseudo Discord).
+const ticketEvent = v.object({
+  at: v.number(),
+  type: v.string(), // created | status | presence | absence | close | reopen
+  label: v.string(),
+  by: v.optional(v.string()),
+});
+
 // Schéma complet du MDT SAST - miroir de §10 de PROJET-SAST-MDT.md.
 // Convex ajoute d'office _id et _creationTime. authTables = tables de Convex Auth (users, sessions…).
 export default defineSchema({
@@ -173,6 +198,9 @@ export default defineSchema({
     paDate: v.optional(v.number()), // jour de la PA (minuit)
     paTime: v.optional(v.string()),
     paPlace: v.optional(v.string()),
+    // Suppression demandée sur le site : le bot nettoie la catégorie Discord
+    // (déplace les tickets vers la catégorie classique) puis supprime la promo.
+    deleting: v.optional(v.boolean()),
   }).index("by_status", ["status"]),
 
   // Appartenance d'un cadet à une promo. ACTIVE = en formation ; REJECTED =
@@ -1247,10 +1275,12 @@ export default defineSchema({
     panelChannelId: v.optional(v.string()), // salon du panneau « Soumettre ma candidature »
     panelMessageId: v.optional(v.string()),
     candidaturesOpen: v.boolean(), // le bouton de candidature n'agit que si ouvert
-    // Panneau public.
+    // Panneau public + message d'ouverture : embeds riches.
+    panelEmbed: v.optional(richEmbed),
+    openEmbed: v.optional(richEmbed),
+    // Anciens champs à plat (compat, `*Embed` prime).
     panelTitle: v.optional(v.string()),
     panelText: v.optional(v.string()),
-    // Message d'ouverture posté dans le ticket.
     openTitle: v.optional(v.string()),
     openText: v.optional(v.string()),
     openColor: v.optional(v.string()),
@@ -1269,10 +1299,12 @@ export default defineSchema({
   // Modèles de message (embeds) à envoyer dans un ticket.
   ticketTemplates: defineTable({
     name: v.string(),
-    title: v.string(),
-    description: v.string(),
-    color: v.string(), // hex
     pingOwner: v.boolean(), // ping le propriétaire du ticket à l'envoi
+    embed: v.optional(richEmbed),
+    // Champs à plat conservés pour les anciens templates ; `embed` prime.
+    title: v.optional(v.string()),
+    description: v.optional(v.string()),
+    color: v.optional(v.string()),
     createdAt: v.number(),
   }).index("by_name", ["name"]),
 
@@ -1290,7 +1322,42 @@ export default defineSchema({
     integrationStatus: v.optional(v.union(v.literal("EVALUATING"), v.literal("FAILED"), v.literal("PASSED"), v.literal("PASSED_ABSENT"))),
     promotionId: v.optional(v.id("promotions")), // promo rejointe (après « Présent »)
     createdAt: v.number(),
+    // Journal du ticket + raison de fermeture (repris dans l'archive).
+    events: v.optional(v.array(ticketEvent)),
+    closeReason: v.optional(v.string()),
+    closedBy: v.optional(v.string()),
   })
     .index("by_channel", ["channelId"])
     .index("by_owner", ["ownerId"]),
+
+  // Archives des tickets de candidature (Police Academy) : conservées à la
+  // fermeture définitive, consultables sur le portail LSPA. Journal complet +
+  // historique des messages du salon.
+  ticketArchives: defineTable({
+    channelId: v.string(),
+    channelName: v.string(),
+    ownerId: v.string(), // id Discord du candidat
+    ownerName: v.string(),
+    prenom: v.string(),
+    nom: v.string(),
+    dateNaissance: v.optional(v.string()),
+    motivations: v.optional(v.string()),
+    promotionName: v.optional(v.string()),
+    integrationStatus: v.optional(v.string()),
+    finalStatus: v.string(),
+    closeReason: v.optional(v.string()),
+    events: v.array(ticketEvent),
+    messages: v.array(v.object({
+      authorId: v.string(),
+      authorName: v.string(),
+      bot: v.optional(v.boolean()),
+      content: v.string(),
+      at: v.number(),
+      attachments: v.optional(v.array(v.string())),
+    })),
+    createdAt: v.number(),
+    archivedAt: v.number(),
+  })
+    .index("by_owner", ["ownerId"])
+    .index("by_archivedAt", ["archivedAt"]),
 });
