@@ -541,7 +541,7 @@ export const ticketByChannel = query({
   handler: async (ctx, { secret, channelId }) => {
     assertBot(secret);
     const t = await ctx.db.query("tickets").withIndex("by_channel", (q) => q.eq("channelId", channelId)).first();
-    return t ? { ownerId: t.ownerId, ownerName: t.ownerName, prenom: t.prenom, nom: t.nom, status: t.status } : null;
+    return t ? { ownerId: t.ownerId, ownerName: t.ownerName, prenom: t.prenom, nom: t.nom, status: t.status, integrationStatus: t.integrationStatus ?? null } : null;
   },
 });
 

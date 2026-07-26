@@ -277,6 +277,7 @@ async function createTicket(interaction: ModalSubmitInteraction) {
       { name: "Motivations", value: motivations.slice(0, 1024) },
     ).setFooter({ text: "Police Academy · candidature" }).setTimestamp(new Date());
   const controls = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId("tk|manage").setLabel("Statut du candidat").setEmoji("🎓").setStyle(ButtonStyle.Primary),
     new ButtonBuilder().setCustomId("tk|close").setLabel("Fermer le ticket").setEmoji("🔒").setStyle(ButtonStyle.Danger),
   );
   await channel.send({ content: `<@${interaction.user.id}>`, embeds: [embed], components: [controls] });
@@ -455,39 +456,46 @@ async function renameStatus(client: Client, channelId: string, status: IntegStat
   } catch { /* rien */ }
 }
 
-function integrationControls(current: IntegStatus): ActionRowBuilder<ButtonBuilder> {
-  const btn = (s: IntegStatus, label: string, style: ButtonStyle) =>
-    new ButtonBuilder().setCustomId(`tk|st|${s}`).setLabel(label).setEmoji(STATUS_EMOJI[s]).setStyle(current === s ? style : ButtonStyle.Secondary);
-  return new ActionRowBuilder<ButtonBuilder>().addComponents(
-    btn("EVALUATING", "En évaluation", ButtonStyle.Primary),
-    btn("PASSED", "Réussi", ButtonStyle.Success),
-    btn("PASSED_ABSENT", "Réussi-absent", ButtonStyle.Primary),
-    btn("FAILED", "Raté", ButtonStyle.Danger),
+// Panneau de statut, ÉPHÉMÈRE (jamais visible du candidat) : un menu déroulant.
+function statusPanel(current: IntegStatus | null) {
+  const embed = baseEmbed(current ? hexToInt(STATUS_HEX[current]) : BRAND.muted).setTitle("🎓 Statut du candidat")
+    .setDescription(current ? `Statut actuel : ${STATUS_EMOJI[current]} **${STATUS_LABEL[current]}**.` : "Ce candidat n'est pas encore intégré. Choisis un statut pour l'intégrer à la Police Academy.")
+    .addFields({ name: "Légende", value: "🟡 en évaluation · 🟢 réussi · 🟠 réussi mais absent · 🔴 raté" });
+  const select = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+    new StringSelectMenuBuilder().setCustomId("tk|stsel").setPlaceholder("Définir le statut…").addOptions(
+      { label: "En évaluation", value: "EVALUATING", emoji: "🟡", default: current === "EVALUATING" },
+      { label: "Entretien réussi", value: "PASSED", emoji: "🟢", default: current === "PASSED" },
+      { label: "Réussi mais absent", value: "PASSED_ABSENT", emoji: "🟠", default: current === "PASSED_ABSENT" },
+      { label: "Entretien raté", value: "FAILED", emoji: "🔴", default: current === "FAILED" },
+    ),
   );
+  return { embeds: [embed], components: [select] };
+}
+const STATUS_HEX: Record<IntegStatus, string> = { EVALUATING: "#e6c84a", FAILED: "#d94040", PASSED: "#49a24a", PASSED_ABSENT: "#e0a030" };
+
+// Réservé au staff : la config d'un ticket ne doit jamais être manipulable par
+// le candidat.
+function isStaff(interaction: ButtonInteraction | ChatInputCommandInteraction | AnySelectMenuInteraction): boolean {
+  return !!interaction.memberPermissions?.has(PermissionFlagsBits.ManageMessages);
 }
 
-async function integrateCommand(interaction: ChatInputCommandInteraction) {
+// Ouvre le panneau de statut (éphémère) depuis le bouton du ticket ou /integrer.
+async function openStatusPanel(interaction: ButtonInteraction | ChatInputCommandInteraction) {
+  if (!isStaff(interaction)) { await interaction.reply({ content: "Réservé à l'encadrement.", flags: EPH }); return; }
   const channel = interaction.channel;
   if (!channel || channel.type !== ChannelType.GuildText) { await interaction.reply({ content: "À utiliser dans le salon d'un ticket.", flags: EPH }); return; }
   const ticket = await mdt.ticketByChannel(channel.id);
   if (!ticket) { await interaction.reply({ content: "Ce salon n'est pas un ticket de candidature.", flags: EPH }); return; }
-  await mdt.ticketSetStatus(channel.id, "EVALUATING");
-  await renameStatus(interaction.client, channel.id, "EVALUATING");
-  const embed = baseEmbed(0xe6c84a).setTitle("🎓 Candidat intégré à la Police Academy")
-    .setDescription(`**${ticket.prenom} ${ticket.nom}** est intégré et **en cours d'évaluation**. Utilise les boutons pour mettre à jour son statut après l'entretien.`)
-    .addFields({ name: "Légende", value: "🟡 en évaluation · 🟢 réussi · 🟠 réussi mais absent · 🔴 raté" });
-  await interaction.reply({ embeds: [embed], components: [integrationControls("EVALUATING")] });
+  await interaction.reply({ ...statusPanel(ticket.integrationStatus), flags: EPH });
 }
 
-async function setIntegrationStatus(interaction: ButtonInteraction) {
-  const status = interaction.customId.split("|")[2] as IntegStatus;
+async function applyStatusFromSelect(interaction: AnySelectMenuInteraction) {
+  if (!isStaff(interaction)) { await interaction.reply({ content: "Réservé à l'encadrement.", flags: EPH }); return; }
+  const status = interaction.values[0] as IntegStatus;
   if (!interaction.channel || interaction.channel.type !== ChannelType.GuildText) return;
   await mdt.ticketSetStatus(interaction.channel.id, status);
   await renameStatus(interaction.client, interaction.channel.id, status);
-  const embed = baseEmbed(hexToInt(status === "FAILED" ? "#d94040" : status === "PASSED_ABSENT" ? "#e0a030" : status === "PASSED" ? "#49a24a" : "#e6c84a"))
-    .setTitle("🎓 Statut du candidat")
-    .setDescription(`Statut : ${STATUS_EMOJI[status]} **${STATUS_LABEL[status]}** — mis à jour par <@${interaction.user.id}>.`);
-  await interaction.update({ embeds: [embed], components: [integrationControls(status)] });
+  await interaction.update(statusPanel(status));
 }
 
 // Réconciliation : crée les catégories manquantes (promos créées sur le site).
@@ -508,7 +516,7 @@ export async function openAnnounce(interaction: ChatInputCommandInteraction) {
   await interaction.showModal(announceModal());
 }
 export async function integrer(interaction: ChatInputCommandInteraction) {
-  await integrateCommand(interaction);
+  await openStatusPanel(interaction);
 }
 
 // ---------- Routage central des interactions « tk| » ----------
@@ -567,7 +575,7 @@ export async function handleTicketInteraction(interaction: Interaction) {
       if (id === "tk|hub|annoncetxt") { await interaction.showModal(announceTextModal(await mdt.ticketConfigGet())); return; }
       if (id.startsWith("tk|pres|")) { await handlePresence(interaction, true); return; }
       if (id.startsWith("tk|abs|")) { await handlePresence(interaction, false); return; }
-      if (id.startsWith("tk|st|")) { await setIntegrationStatus(interaction); return; }
+      if (id === "tk|manage") { await openStatusPanel(interaction); return; }
       if (id === "tk|tpl|new") { drafts.delete(interaction.user.id); await interaction.showModal(templateModal()); return; }
       if (id === "tk|b|ping") { const d = drafts.get(interaction.user.id); if (d) { d.pingOwner = !d.pingOwner; await renderBuilder(interaction, d); } return; }
       if (id === "tk|b|edit") { const d = drafts.get(interaction.user.id); if (d) await interaction.showModal(templateModal(d)); return; }
@@ -598,6 +606,7 @@ export async function handleTicketInteraction(interaction: Interaction) {
       if (interaction.customId === "tk|cfg|cadetrole") { await mdt.ticketConfigSet({ cadetRoleId: interaction.values[0] ?? null }); await renderRoles(interaction); return; }
     }
     if (interaction.isStringSelectMenu()) {
+      if (interaction.customId === "tk|stsel") { await applyStatusFromSelect(interaction); return; }
       if (interaction.customId === "tk|b|color") { const d = drafts.get(interaction.user.id); if (d) { d.color = interaction.values[0]; await renderBuilder(interaction, d); } return; }
       if (interaction.customId === "tk|tpl|pick") {
         const tpl = (await mdt.ticketTemplateList()).find((t) => t._id === interaction.values[0]);

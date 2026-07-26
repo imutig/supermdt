@@ -107,6 +107,6 @@ export type TicketConfig = {
   announceText: string; announceItems: string;
 };
 export type TicketTemplate = { _id: string; name: string; title: string; description: string; color: string; pingOwner: boolean };
-export type TicketOwner = { ownerId: string; ownerName: string; prenom: string; nom: string; status: string };
+export type TicketOwner = { ownerId: string; ownerName: string; prenom: string; nom: string; status: string; integrationStatus: IntegStatus | null };
 
 export type { OnDutyAgent, DayStats, Overview, BotConfig, WeeklyHours, RollcallState, VehicleInfo, CasierInfo };
