@@ -418,6 +418,25 @@ export const presenceMessageSet = mutation({
 const DEFAULT_ANNOUNCE = "Présence obligatoire à toutes les personnes ayant le grade de {cadet}. Merci de nous prévenir à l'avance en cas de non-venue ; toute personne absente sans avoir prévenu sera démise de sa fonction d'apprenant.\n*(Prévenez de votre absence dans votre ticket, sinon blacklist automatique — sauf candidat en vacances !)*";
 const DEFAULT_ITEMS = "Une tenue décente\nUne coiffure et une barbe taillées et réglementaires\nDe la nourriture et de la boisson";
 
+// Embed d'annonce par défaut : reprend l'ancien rendu (corps + date/heure/lieu +
+// à prévoir + promo) sous forme d'embed riche à placeholders. Reconstruit à
+// partir des anciens champs à plat s'ils existent.
+function defaultAnnounceEmbed(cfg: Doc<"ticketConfig"> | null) {
+  const items = (cfg?.announceItems ?? DEFAULT_ITEMS).split("\n").map((s) => s.trim()).filter(Boolean).map((s) => `• ${s}`).join("\n");
+  return {
+    color: "#49a24a",
+    title: "📢 ANNONCE OFFICIELLE — POLICE ACADEMY",
+    description: cfg?.announceText ?? DEFAULT_ANNOUNCE,
+    fields: [
+      { name: "📅 Date", value: "{date}", inline: true },
+      { name: "🕗 Heure", value: "{heure}", inline: true },
+      { name: "📍 Lieu", value: "{lieu}", inline: true },
+      ...(items ? [{ name: "🎒 Merci de prévoir", value: items }] : []),
+    ],
+    footer: "Promotion : {promo}",
+  };
+}
+
 // Validateur d'embed riche pour les mutations du bot.
 const richEmbedArg = v.object({
   authorName: v.optional(v.string()), authorIcon: v.optional(v.string()),
@@ -446,8 +465,7 @@ function ticketDefaults(cfg: Doc<"ticketConfig"> | null) {
     renameNick: cfg?.renameNick ?? true,
     promoRoleIds: cfg?.promoRoleIds ?? [],
     cadetRoleId: cfg?.cadetRoleId ?? null,
-    announceText: cfg?.announceText ?? DEFAULT_ANNOUNCE,
-    announceItems: cfg?.announceItems ?? DEFAULT_ITEMS,
+    announceEmbed: cfg?.announceEmbed ?? defaultAnnounceEmbed(cfg),
   };
 }
 
@@ -478,6 +496,7 @@ export const ticketConfigSet = mutation({
       renameNick: v.optional(v.boolean()),
       promoRoleIds: v.optional(v.array(v.string())),
       cadetRoleId: v.optional(v.union(v.string(), v.null())),
+      announceEmbed: v.optional(richEmbedArg),
       announceText: v.optional(v.string()),
       announceItems: v.optional(v.string()),
     }),

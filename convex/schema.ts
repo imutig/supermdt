@@ -1290,7 +1290,10 @@ export default defineSchema({
     // Rôles qui voient les catégories de promo (créées par le bot).
     promoRoleIds: v.optional(v.array(v.string())),
     cadetRoleId: v.optional(v.string()), // rôle @Cadet pingué dans l'annonce
-    // Corps configurable de l'annonce officielle (au-dessus des date/heure/lieu).
+    // Annonce officielle : embed riche avec placeholders ({date} {heure} {lieu}
+    // {promo} {cadet}) substitués à l'envoi.
+    announceEmbed: v.optional(richEmbed),
+    // Anciens champs à plat de l'annonce (compat, `announceEmbed` prime).
     announceText: v.optional(v.string()),
     announceItems: v.optional(v.string()), // « à prévoir », une ligne par item
     updatedAt: v.number(),

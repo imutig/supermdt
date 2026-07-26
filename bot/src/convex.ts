@@ -128,7 +128,7 @@ export type TicketConfig = {
   panelEmbed: RichEmbed; openEmbed: RichEmbed;
   nomenclature: string; renameNick: boolean;
   promoRoleIds: string[]; cadetRoleId: string | null;
-  announceText: string; announceItems: string;
+  announceEmbed: RichEmbed;
 };
 export type TicketTemplate = { _id: string; name: string; pingOwner: boolean; embed: RichEmbed };
 export type TicketOwner = { ownerId: string; ownerName: string; prenom: string; nom: string; status: string; integrationStatus: IntegStatus | null };

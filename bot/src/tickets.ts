@@ -73,7 +73,7 @@ const COLORS: { label: string; value: string; emoji: string }[] = [
 // Un brouillon vise soit un template, soit le panneau public, soit le message
 // d'ouverture d'un ticket. `embed` est l'embed riche en cours d'édition.
 type Draft = {
-  target: "template" | "panel" | "openmsg";
+  target: "template" | "panel" | "openmsg" | "announce";
   id?: string;          // id du template édité (target=template)
   name: string;         // nom du template (target=template)
   pingOwner: boolean;   // ping du propriétaire (target=template)
@@ -82,7 +82,7 @@ type Draft = {
 const drafts = new Map<string, Draft>();
 
 const TARGET_LABEL: Record<Draft["target"], string> = {
-  template: "template", panel: "panneau de candidature", openmsg: "message d'ouverture",
+  template: "template", panel: "panneau de candidature", openmsg: "message d'ouverture", announce: "annonce officielle",
 };
 
 // ---------- Panneau central : /candidatures ----------
@@ -207,8 +207,11 @@ function builderComponents(d: Draft) {
 
 async function renderBuilder(interaction: ButtonInteraction | AnySelectMenuInteraction | ModalSubmitInteraction | ChatInputCommandInteraction, d: Draft) {
   const preview = previewEmbed(d.embed);
+  const hint = d.target === "announce"
+    ? " Placeholders disponibles : `{date}` `{heure}` `{lieu}` `{promo}` `{cadet}` (remplacés à l'envoi de `/annonce`)."
+    : "";
   const payload = {
-    content: `🛠️ **Constructeur d'embed** — ${TARGET_LABEL[d.target]}. Édite chaque section, l'aperçu se met à jour en direct.`,
+    content: `🛠️ **Constructeur d'embed** — ${TARGET_LABEL[d.target]}. Édite chaque section, l'aperçu se met à jour en direct.${hint}`,
     embeds: [preview], components: builderComponents(d),
   };
   if (interaction.isMessageComponent()) await interaction.update(payload);
@@ -346,6 +349,10 @@ async function saveDraft(interaction: ButtonInteraction) {
   } else if (d.target === "panel") {
     await mdt.ticketConfigSet({ panelEmbed: d.embed });
     await refreshPanel(interaction);
+    drafts.delete(interaction.user.id);
+    await renderHub(interaction, true);
+  } else if (d.target === "announce") {
+    await mdt.ticketConfigSet({ announceEmbed: d.embed });
     drafts.delete(interaction.user.id);
     await renderHub(interaction, true);
   } else {
@@ -576,26 +583,20 @@ function announceModal(): ModalBuilder {
   );
 }
 
-function announceTextModal(cfg: TicketConfig): ModalBuilder {
-  return new ModalBuilder().setCustomId("tk|m|annoncetxt").setTitle("Texte de l'annonce").addComponents(
-    new ActionRowBuilder<TextInputBuilder>().addComponents(new TextInputBuilder().setCustomId("text").setLabel("Corps de l'annonce ({cadet} = mention)").setStyle(TextInputStyle.Paragraph).setValue(cfg.announceText).setRequired(true).setMaxLength(2000)),
-    new ActionRowBuilder<TextInputBuilder>().addComponents(new TextInputBuilder().setCustomId("items").setLabel("À prévoir (une ligne par élément)").setStyle(TextInputStyle.Paragraph).setValue(cfg.announceItems).setRequired(false).setMaxLength(1000)),
-  );
+// Substitue les placeholders de l'annonce dans tous les textes de l'embed.
+function fillEmbed(e: RichEmbed, vars: Record<string, string>): RichEmbed {
+  const sub = (s: string | undefined) => s?.replace(/\{(date|heure|lieu|promo|cadet)\}/gi, (_, k) => vars[k.toLowerCase()] ?? "");
+  return {
+    ...e,
+    authorName: sub(e.authorName), title: sub(e.title), description: sub(e.description),
+    footer: sub(e.footer),
+    fields: e.fields?.map((f) => ({ ...f, name: sub(f.name) ?? f.name, value: sub(f.value) ?? f.value })),
+  };
 }
 
 function announceEmbed(cfg: TicketConfig, promoName: string, dateStr: string, heure: string, lieu: string): EmbedBuilder {
   const cadet = cfg.cadetRoleId ? `<@&${cfg.cadetRoleId}>` : "**Cadet**";
-  const items = cfg.announceItems.split("\n").map((s) => s.trim()).filter(Boolean).map((s) => `• ${s}`).join("\n");
-  const e = baseEmbed(BRAND.green).setTitle("📢 ANNONCE OFFICIELLE — POLICE ACADEMY")
-    .setDescription(cfg.announceText.replace(/\{cadet\}/gi, cadet))
-    .addFields(
-      { name: "📅 Date", value: dateStr, inline: true },
-      { name: "🕗 Heure", value: heure, inline: true },
-      { name: "📍 Lieu", value: lieu, inline: true },
-    );
-  if (items) e.addFields({ name: "🎒 Merci de prévoir", value: items });
-  e.setFooter({ text: `Promotion : ${promoName}` });
-  return e;
+  return buildEmbed(fillEmbed(cfg.announceEmbed, { date: dateStr, heure, lieu, promo: promoName, cadet }));
 }
 
 function presenceButtons(promotionId: string) {
@@ -865,7 +866,11 @@ export async function handleTicketInteraction(interaction: Interaction) {
       }
       if (id === "tk|hub|nomen") { await interaction.showModal(nomenModal(await mdt.ticketConfigGet())); return; }
       if (id === "tk|hub|roles") { await renderRoles(interaction); return; }
-      if (id === "tk|hub|annoncetxt") { await interaction.showModal(announceTextModal(await mdt.ticketConfigGet())); return; }
+      if (id === "tk|hub|annoncetxt") {
+        const cfg = await mdt.ticketConfigGet();
+        const d: Draft = { target: "announce", name: "", pingOwner: false, embed: structuredClone(cfg.announceEmbed) };
+        drafts.set(interaction.user.id, d); await renderBuilder(interaction, d); return;
+      }
       if (id.startsWith("tk|pres|")) { await handlePresence(interaction, true); return; }
       if (id.startsWith("tk|abs|")) { await handlePresence(interaction, false); return; }
       if (id === "tk|manage") { await openStatusPanel(interaction); return; }
@@ -939,7 +944,6 @@ export async function handleTicketInteraction(interaction: Interaction) {
       if (id === "tk|m|close") { await softCloseTicket(interaction); return; }
       if (id === "tk|m|nomen") { await mdt.ticketConfigSet({ nomenclature: interaction.fields.getTextInputValue("nomen") }); await renderHub(interaction, true); return; }
       if (id === "tk|m|annonce") { await postAnnouncement(interaction); return; }
-      if (id === "tk|m|annoncetxt") { await mdt.ticketConfigSet({ announceText: interaction.fields.getTextInputValue("text"), announceItems: interaction.fields.getTextInputValue("items") }); await renderHub(interaction, true); return; }
 
       // --- Sous-modales du constructeur d'embed ---
       if (id.startsWith("tk|bm|")) { await applySectionModal(interaction, id.split("|")[2]); return; }
