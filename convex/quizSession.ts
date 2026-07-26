@@ -15,18 +15,21 @@ function isManualQuestion(q: Doc<"quizQuestions">): boolean {
   return q.kind === "TEXT" || q.requireJustification === true;
 }
 
-function sameSet(a: string[], b: string[]): boolean {
-  if (a.length !== b.length) return false;
-  const s = new Set(a);
-  return b.every((x) => s.has(x));
-}
 
-// Note d'une réponse fermée, forme pure (testable) : réponse unique = plein
-// tarif si l'unique choix est le bon ; réponses multiples = tout ou rien sur
-// l'ensemble exact des bonnes réponses.
+// Note d'une réponse fermée, forme pure (testable).
+// - Réponse unique : plein tarif si l'unique choix est le bon, sinon zéro.
+// - Réponses multiples : crédit partiel. Chaque bonne réponse cochée rapporte,
+//   chaque mauvaise réponse cochée retranche autant, borné à zéro :
+//   points × max(0, (bonnes cochées - mauvaises cochées) / total des bonnes).
+//   Cocher tout juste = plein tarif ; se tromper autant qu'on a bon = zéro.
 export function scoreClosed(kind: string, points: number, picked: string[], correct: string[]): number {
   if (kind === "SINGLE") return picked.length === 1 && correct.includes(picked[0]) ? points : 0;
-  return sameSet(picked, correct) ? points : 0;
+  if (correct.length === 0) return 0;
+  const correctSet = new Set(correct);
+  const good = picked.filter((p) => correctSet.has(p)).length;
+  const bad = picked.filter((p) => !correctSet.has(p)).length;
+  const fraction = Math.max(0, (good - bad) / correct.length);
+  return Math.round(points * fraction * 100) / 100;
 }
 
 // Points attribués automatiquement à une réponse fermée. Les questions à

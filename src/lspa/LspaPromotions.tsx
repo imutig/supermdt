@@ -30,10 +30,14 @@ export function LspaPromotions() {
   const { can } = useCan();
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
+  const [view, setView] = useState<"list" | "compare">("list");
+
+  const open = (promos ?? []).filter((p) => p.status === "OPEN");
+  const closed = (promos ?? []).filter((p) => p.status !== "OPEN");
 
   return (
     <div className="p-[22px_26px]" style={{ animation: "mdtFade .2s ease" }}>
-      <div className="mb-[18px] flex items-end gap-3">
+      <div className="mb-[16px] flex items-end gap-3">
         <div className="flex-1">
           <h1 className="m-0 text-[21px] font-bold tracking-tight">Promotions</h1>
           <div className="mt-[3px] text-[13px] text-muted">Les cohortes de cadets, de l'admission à la diplomation.</div>
@@ -41,6 +45,11 @@ export function LspaPromotions() {
         {can("effectif.validate") && (
           <Button variant="primary" onClick={() => setCreating(true)}><Plus className="h-[15px] w-[15px]" /> Nouvelle promotion</Button>
         )}
+      </div>
+
+      <div className="mb-[16px] flex items-center gap-[6px]">
+        <button onClick={() => setView("list")} className="rounded-[7px] px-[11px] py-[6px] text-[12.5px] font-semibold" style={view === "list" ? { background: "var(--accent)", color: "#fff" } : { background: "var(--surface-2)", color: "var(--muted)" }}>Liste</button>
+        <button onClick={() => setView("compare")} className="flex items-center gap-[6px] rounded-[7px] px-[11px] py-[6px] text-[12.5px] font-semibold" style={view === "compare" ? { background: "var(--accent)", color: "#fff" } : { background: "var(--surface-2)", color: "var(--muted)" }}><BarChart3 className="h-[13px] w-[13px]" /> Comparaison</button>
       </div>
 
       {creating && (
@@ -60,30 +69,98 @@ export function LspaPromotions() {
         </Modal>
       )}
 
-      {promos === undefined ? (
+      {view === "compare" ? (
+        <CompareView />
+      ) : promos === undefined ? (
         <div className="rounded-card border border-border bg-surface p-4"><SkeletonRows rows={4} /></div>
       ) : promos.length === 0 ? (
         <div className="rounded-card border border-border bg-surface"><EmptyState title="Aucune promotion" message="Créez une promotion pour accueillir une cohorte de cadets." /></div>
       ) : (
-        <div className="overflow-hidden rounded-card border border-border bg-surface">
-          {promos.map((p) => (
-            <button key={p._id} onClick={() => navigate(`/lspa/promotions/${p._id}`)} className="flex w-full items-center gap-[13px] border-b border-border px-[16px] py-[13px] text-left last:border-b-0 hover:bg-surface-2">
-              <span className="flex h-[34px] w-[34px] flex-shrink-0 items-center justify-center rounded-[10px] bg-surface-2 text-accent"><GraduationCap className="h-[16px] w-[16px]" /></span>
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-[14px] font-semibold">{p.name}</div>
-                <div className="mt-[2px] flex items-center gap-[10px] text-[11.5px] text-muted">
-                  <span className="flex items-center gap-[4px]"><Users className="h-[12px] w-[12px]" /> {p.cadets} en formation</span>
-                  <span>Ouverte le {new Date(p.startAt).toLocaleDateString("fr-FR")}</span>
-                </div>
-              </div>
-              <span className="flex-shrink-0 rounded-[7px] px-[9px] py-[4px] text-[11px] font-bold uppercase tracking-[0.06em]" style={{ background: `color-mix(in srgb, ${p.status === "OPEN" ? "var(--accent)" : "var(--muted)"} 13%, transparent)`, color: p.status === "OPEN" ? "var(--accent)" : "var(--muted)" }}>
-                {p.status === "OPEN" ? "Ouverte" : "Clôturée"}
-              </span>
-              <ChevronRight className="h-[16px] w-[16px] flex-shrink-0 text-faint" />
-            </button>
-          ))}
+        <div className="flex flex-col gap-[18px]">
+          <PromoGroup promos={open} onOpen={(id) => navigate(`/lspa/promotions/${id}`)} />
+          {closed.length > 0 && (
+            <div>
+              <h2 className="mb-[9px] text-[11px] font-bold uppercase tracking-[0.09em] text-faint">Archives · promotions clôturées</h2>
+              <PromoGroup promos={closed} onOpen={(id) => navigate(`/lspa/promotions/${id}`)} />
+            </div>
+          )}
         </div>
       )}
+    </div>
+  );
+}
+
+function PromoGroup({ promos, onOpen }: { promos: { _id: string; name: string; status: string; startAt: number; cadets: number }[]; onOpen: (id: string) => void }) {
+  if (promos.length === 0) return <div className="rounded-card border border-dashed border-border bg-surface px-4 py-[16px] text-center text-[12.5px] text-faint">Aucune promotion ouverte.</div>;
+  return (
+    <div className="overflow-hidden rounded-card border border-border bg-surface">
+      {promos.map((p) => (
+        <button key={p._id} onClick={() => onOpen(p._id)} className="flex w-full items-center gap-[13px] border-b border-border px-[16px] py-[13px] text-left last:border-b-0 hover:bg-surface-2">
+          <span className="flex h-[34px] w-[34px] flex-shrink-0 items-center justify-center rounded-[10px] bg-surface-2 text-accent"><GraduationCap className="h-[16px] w-[16px]" /></span>
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-[14px] font-semibold">{p.name}</div>
+            <div className="mt-[2px] flex items-center gap-[10px] text-[11.5px] text-muted">
+              <span className="flex items-center gap-[4px]"><Users className="h-[12px] w-[12px]" /> {p.cadets} en formation</span>
+              <span>Ouverte le {new Date(p.startAt).toLocaleDateString("fr-FR")}</span>
+            </div>
+          </div>
+          <span className="flex-shrink-0 rounded-[7px] px-[9px] py-[4px] text-[11px] font-bold uppercase tracking-[0.06em]" style={{ background: `color-mix(in srgb, ${p.status === "OPEN" ? "var(--accent)" : "var(--muted)"} 13%, transparent)`, color: p.status === "OPEN" ? "var(--accent)" : "var(--muted)" }}>
+            {p.status === "OPEN" ? "Ouverte" : "Clôturée"}
+          </span>
+          <ChevronRight className="h-[16px] w-[16px] flex-shrink-0 text-faint" />
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// Comparaison de toutes les promotions : effectif, issues et niveau côte à côte.
+function CompareView() {
+  const data = useQuery(api.promotions.summary);
+  const navigate = useNavigate();
+  if (data === undefined) return <div className="rounded-card border border-border bg-surface p-4"><SkeletonRows rows={4} /></div>;
+  if (data.promos.length === 0) return <div className="rounded-card border border-border bg-surface"><EmptyState title="Aucune promotion" message="Rien à comparer pour l'instant." /></div>;
+
+  const th = "px-[12px] py-[9px] text-[10.5px] font-bold uppercase tracking-[0.06em] text-faint";
+  const td = "px-[12px] py-[10px] text-[12.5px]";
+  const pctColor = (p: number | null) => p === null ? "var(--muted)" : p >= 70 ? "var(--accent)" : p >= 40 ? "var(--warning)" : "var(--danger)";
+
+  return (
+    <div className="overflow-x-auto rounded-card border border-border bg-surface">
+      <table className="w-full" style={{ borderCollapse: "collapse" }}>
+        <thead>
+          <tr className="border-b border-border">
+            <th className={`${th} text-left`}>Promotion</th>
+            <th className={th}>Effectif</th>
+            <th className={th}>En formation</th>
+            <th className={th}>Diplômés</th>
+            <th className={th}>Écartés</th>
+            <th className={th}>Note moyenne</th>
+            <th className={th}>Moyenne quiz</th>
+          </tr>
+        </thead>
+        <tbody>
+          {data.promos.map((p) => (
+            <tr key={p._id} onClick={() => navigate(`/lspa/promotions/${p._id}`)} className="cursor-pointer border-b border-border last:border-b-0 hover:bg-surface-2">
+              <td className={`${td} text-left`}>
+                <div className="flex items-center gap-[8px]">
+                  <span className="font-semibold">{p.name}</span>
+                  {p.status !== "OPEN" && <span className="rounded-[5px] bg-surface-2 px-[6px] py-px text-[10px] font-bold uppercase text-faint">archivée</span>}
+                </div>
+                <div className="text-[11px] text-faint">{new Date(p.startAt).toLocaleDateString("fr-FR")}{p.endAt ? ` – ${new Date(p.endAt).toLocaleDateString("fr-FR")}` : ""}</div>
+              </td>
+              <td className={`${td} text-center font-data`}>{p.total}</td>
+              <td className={`${td} text-center font-data`}>{p.active}</td>
+              <td className={`${td} text-center font-data font-bold text-accent`}>{p.graduated}</td>
+              <td className={`${td} text-center font-data`} style={{ color: p.rejected > 0 ? "var(--danger)" : "var(--muted)" }}>{p.rejected}</td>
+              <td className={`${td} text-center`}>
+                {p.noteMoyenne !== null ? <span className="font-data font-bold" style={{ color: pctColor(p.notePct) }}>{p.noteMoyenne}{data.gradingMax > 0 ? <span className="text-faint">/{data.gradingMax}</span> : null}</span> : <span className="text-faint">-</span>}
+              </td>
+              <td className={`${td} text-center`}>{p.quizAvg !== null ? <span className="font-data font-bold" style={{ color: pctColor(p.quizAvg) }}>{p.quizAvg}%</span> : <span className="text-faint">-</span>}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

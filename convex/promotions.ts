@@ -51,6 +51,51 @@ export const list = query({
   },
 });
 
+// Vue de comparaison : chiffres clés de toutes les promotions côte à côte
+// (effectif, diplômés, écartés, note moyenne, moyenne quiz). Sert à comparer les
+// promos et à consulter les archives (celles qui sont clôturées).
+export const summary = query({
+  args: {},
+  handler: async (ctx) => {
+    const agent = await requireAgent(ctx);
+    await requirePermission(ctx, agent, "lspa.effectif.view");
+    const items = (await ctx.db.query("gradingItems").withIndex("by_position").collect()).filter((i) => i.active !== false);
+    const gradingMax = items.reduce((s, i) => s + i.maxPoints, 0);
+    const promos = await ctx.db.query("promotions").collect();
+
+    const out = [];
+    for (const p of promos) {
+      const members = await ctx.db.query("promotionMembers").withIndex("by_promotion", (q) => q.eq("promotionId", p._id)).collect();
+      let active = 0, graduated = 0, rejected = 0, eliminated = 0;
+      let gradSum = 0, gradCount = 0, quizGot = 0, quizMax = 0;
+      for (const m of members) {
+        if (m.status === "ACTIVE") active++;
+        else if (m.status === "GRADUATED") graduated++;
+        else if (m.status === "REJECTED") { rejected++; continue; }
+        const sc = await totalScoreFor(ctx, m.agentId, items);
+        if (sc.hasScore) { gradSum += sc.total; gradCount++; }
+        if (sc.eliminated) eliminated++;
+        const parts = await ctx.db.query("quizParticipants").withIndex("by_agent", (q) => q.eq("agentId", m.agentId)).collect();
+        for (const part of parts) {
+          const s = await ctx.db.get(part.sessionId);
+          if (!s || s.status !== "PUBLISHED") continue;
+          const max = (await ctx.db.query("quizQuestions").withIndex("by_quiz", (q) => q.eq("quizId", s.quizId)).collect()).reduce((a, q) => a + q.points, 0);
+          quizGot += part.autoScore + (part.manualScore ?? 0);
+          quizMax += max;
+        }
+      }
+      out.push({
+        _id: p._id, name: p.name, status: p.status, startAt: p.startAt, endAt: p.endAt ?? null,
+        total: members.length, active, graduated, rejected, eliminated,
+        noteMoyenne: gradCount ? Math.round((gradSum / gradCount) * 10) / 10 : null,
+        notePct: gradCount && gradingMax ? Math.round((gradSum / gradCount / gradingMax) * 100) : null,
+        quizAvg: quizMax ? Math.round((quizGot / quizMax) * 100) : null,
+      });
+    }
+    return { gradingMax, promos: out.sort((a, b) => b.startAt - a.startAt) };
+  },
+});
+
 export const get = query({
   args: { promotionId: v.id("promotions") },
   handler: async (ctx, { promotionId }) => {
