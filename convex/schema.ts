@@ -166,7 +166,13 @@ export default defineSchema({
     startAt: v.number(),
     endAt: v.optional(v.number()),
     status: v.union(v.literal("OPEN"), v.literal("CLOSED")),
-    createdBy: v.id("agents"),
+    createdBy: v.optional(v.id("agents")), // absent = créée automatiquement par le bot
+    // Rattachement Discord : catégorie de la promo + date de la Police Academy
+    // (clé de rapprochement avec l'annonce du bot).
+    discordCategoryId: v.optional(v.string()),
+    paDate: v.optional(v.number()), // jour de la PA (minuit)
+    paTime: v.optional(v.string()),
+    paPlace: v.optional(v.string()),
   }).index("by_status", ["status"]),
 
   // Appartenance d'un cadet à une promo. ACTIVE = en formation ; REJECTED =
@@ -1251,6 +1257,12 @@ export default defineSchema({
     // Nomenclature du salon (placeholders {prenom} {nom} {date}). Défaut prenom-nom.
     nomenclature: v.optional(v.string()),
     renameNick: v.optional(v.boolean()), // renommer le pseudo Discord en Prénom Nom RP
+    // Rôles qui voient les catégories de promo (créées par le bot).
+    promoRoleIds: v.optional(v.array(v.string())),
+    cadetRoleId: v.optional(v.string()), // rôle @Cadet pingué dans l'annonce
+    // Corps configurable de l'annonce officielle (au-dessus des date/heure/lieu).
+    announceText: v.optional(v.string()),
+    announceItems: v.optional(v.string()), // « à prévoir », une ligne par item
     updatedAt: v.number(),
   }),
 
@@ -1274,6 +1286,11 @@ export default defineSchema({
     dateNaissance: v.optional(v.string()),
     motivations: v.optional(v.string()),
     status: v.union(v.literal("OPEN"), v.literal("CLOSED")),
+    // Intégration à la PA : EVALUATING 🟡 · FAILED 🔴 · PASSED 🟢 · PASSED_ABSENT 🟠
+    integrationStatus: v.optional(v.union(v.literal("EVALUATING"), v.literal("FAILED"), v.literal("PASSED"), v.literal("PASSED_ABSENT"))),
+    promotionId: v.optional(v.id("promotions")), // promo rejointe (après « Présent »)
     createdAt: v.number(),
-  }).index("by_channel", ["channelId"]),
+  })
+    .index("by_channel", ["channelId"])
+    .index("by_owner", ["ownerId"]),
 });

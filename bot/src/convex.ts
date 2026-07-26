@@ -85,14 +85,26 @@ export const mdt = {
     client.mutation(anyApi.bot.ticketCreate, { secret: env.botSecret, ...t }) as Promise<void>,
   ticketByChannel: (channelId: string) => client.query(anyApi.bot.ticketByChannel, { secret: env.botSecret, channelId }) as Promise<TicketOwner | null>,
   ticketClose: (channelId: string) => client.mutation(anyApi.bot.ticketClose, { secret: env.botSecret, channelId }) as Promise<void>,
+  ticketByOwner: (ownerId: string) => client.query(anyApi.bot.ticketByOwner, { secret: env.botSecret, ownerId }) as Promise<{ channelId: string; prenom: string; nom: string; integrationStatus: IntegStatus | null } | null>,
+  ticketSetStatus: (channelId: string, status: IntegStatus) => client.mutation(anyApi.bot.ticketSetStatus, { secret: env.botSecret, channelId, status }) as Promise<{ prenom: string; nom: string } | null>,
+  ticketSetPromotion: (channelId: string, promotionId: string) => client.mutation(anyApi.bot.ticketSetPromotion, { secret: env.botSecret, channelId, promotionId }) as Promise<void>,
+
+  promoUpsertByDate: (paDate: number, name: string | undefined, paTime: string | undefined, paPlace: string | undefined) =>
+    client.mutation(anyApi.bot.promoUpsertByDate, { secret: env.botSecret, paDate, name, paTime, paPlace }) as Promise<{ promotionId: string; name: string; discordCategoryId: string | null; created: boolean }>,
+  promoSetCategory: (promotionId: string, categoryId: string) => client.mutation(anyApi.bot.promoSetCategory, { secret: env.botSecret, promotionId, categoryId }) as Promise<void>,
+  promoGet: (promotionId: string) => client.query(anyApi.bot.promoGet, { secret: env.botSecret, promotionId }) as Promise<{ name: string; discordCategoryId: string | null } | null>,
+  promosNeedingCategory: () => client.query(anyApi.bot.promosNeedingCategory, { secret: env.botSecret }) as Promise<{ promotionId: string; name: string }[]>,
 };
 
+export type IntegStatus = "EVALUATING" | "FAILED" | "PASSED" | "PASSED_ABSENT";
 export type TicketConfig = {
   categoryId: string | null; panelChannelId: string | null; panelMessageId: string | null;
   candidaturesOpen: boolean;
   panelTitle: string; panelText: string;
   openTitle: string; openText: string; openColor: string;
   nomenclature: string; renameNick: boolean;
+  promoRoleIds: string[]; cadetRoleId: string | null;
+  announceText: string; announceItems: string;
 };
 export type TicketTemplate = { _id: string; name: string; title: string; description: string; color: string; pingOwner: boolean };
 export type TicketOwner = { ownerId: string; ownerName: string; prenom: string; nom: string; status: string };

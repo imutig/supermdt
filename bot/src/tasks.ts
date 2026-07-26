@@ -2,6 +2,7 @@ import { type Client, type TextChannel } from "discord.js";
 import { mdt } from "./convex.js";
 import { presenceEmbed, dailyEmbed } from "./embeds.js";
 import { openRollcall, closeRollcall } from "./rollcall.js";
+import { reconcilePromoCategories } from "./tickets.js";
 
 // Les salons et l'heure du récap sont lus depuis le MDT (page Configuration),
 // pas depuis l'environnement : un changement sur le site prend effet sans
@@ -74,6 +75,9 @@ export function startTasks(client: Client) {
         await closeRollcall(client, existing._id, existing.channelId, existing.messageId);
       }
     }
+
+    // --- Catégories de promo : crée celles qui manquent (promos du site) ---
+    await reconcilePromoCategories(client).catch(() => {});
 
     // --- Récapitulatif quotidien ---
     if (cfg.dailyChannel && cfg.dailyAt === hhmm && lastDailySent !== today) {

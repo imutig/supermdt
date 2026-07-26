@@ -415,6 +415,9 @@ export const presenceMessageSet = mutation({
 
 // ============ Système de tickets de candidature ============
 
+const DEFAULT_ANNOUNCE = "Présence obligatoire à toutes les personnes ayant le grade de {cadet}. Merci de nous prévenir à l'avance en cas de non-venue ; toute personne absente sans avoir prévenu sera démise de sa fonction d'apprenant.\n*(Prévenez de votre absence dans votre ticket, sinon blacklist automatique — sauf candidat en vacances !)*";
+const DEFAULT_ITEMS = "Une tenue décente\nUne coiffure et une barbe taillées et réglementaires\nDe la nourriture et de la boisson";
+
 function ticketDefaults(cfg: Doc<"ticketConfig"> | null) {
   return {
     categoryId: cfg?.categoryId ?? null,
@@ -428,6 +431,10 @@ function ticketDefaults(cfg: Doc<"ticketConfig"> | null) {
     openColor: cfg?.openColor ?? "#49a24a",
     nomenclature: cfg?.nomenclature ?? "{prenom}-{nom}",
     renameNick: cfg?.renameNick ?? true,
+    promoRoleIds: cfg?.promoRoleIds ?? [],
+    cadetRoleId: cfg?.cadetRoleId ?? null,
+    announceText: cfg?.announceText ?? DEFAULT_ANNOUNCE,
+    announceItems: cfg?.announceItems ?? DEFAULT_ITEMS,
   };
 }
 
@@ -454,6 +461,10 @@ export const ticketConfigSet = mutation({
       openColor: v.optional(v.string()),
       nomenclature: v.optional(v.string()),
       renameNick: v.optional(v.boolean()),
+      promoRoleIds: v.optional(v.array(v.string())),
+      cadetRoleId: v.optional(v.union(v.string(), v.null())),
+      announceText: v.optional(v.string()),
+      announceItems: v.optional(v.string()),
     }),
   },
   handler: async (ctx, { secret, patch }) => {
@@ -540,5 +551,94 @@ export const ticketClose = mutation({
     assertBot(secret);
     const t = await ctx.db.query("tickets").withIndex("by_channel", (q) => q.eq("channelId", channelId)).first();
     if (t) await ctx.db.patch(t._id, { status: "CLOSED" });
+  },
+});
+
+// Ticket ouvert d'un utilisateur Discord (pour la présence à l'annonce).
+export const ticketByOwner = query({
+  args: { secret: v.string(), ownerId: v.string() },
+  handler: async (ctx, { secret, ownerId }) => {
+    assertBot(secret);
+    const t = (await ctx.db.query("tickets").withIndex("by_owner", (q) => q.eq("ownerId", ownerId)).collect())
+      .filter((x) => x.status === "OPEN")
+      .sort((a, b) => b.createdAt - a.createdAt)[0];
+    return t ? { channelId: t.channelId, prenom: t.prenom, nom: t.nom, integrationStatus: t.integrationStatus ?? null } : null;
+  },
+});
+
+export const ticketSetStatus = mutation({
+  args: { secret: v.string(), channelId: v.string(), status: v.union(v.literal("EVALUATING"), v.literal("FAILED"), v.literal("PASSED"), v.literal("PASSED_ABSENT")) },
+  handler: async (ctx, { secret, channelId, status }) => {
+    assertBot(secret);
+    const t = await ctx.db.query("tickets").withIndex("by_channel", (q) => q.eq("channelId", channelId)).first();
+    if (t) await ctx.db.patch(t._id, { integrationStatus: status });
+    return t ? { prenom: t.prenom, nom: t.nom } : null;
+  },
+});
+
+export const ticketSetPromotion = mutation({
+  args: { secret: v.string(), channelId: v.string(), promotionId: v.string() },
+  handler: async (ctx, { secret, channelId, promotionId }) => {
+    assertBot(secret);
+    const t = await ctx.db.query("tickets").withIndex("by_channel", (q) => q.eq("channelId", channelId)).first();
+    if (t) await ctx.db.patch(t._id, { promotionId: promotionId as Id<"promotions"> });
+  },
+});
+
+// ---- Promotions (côté bot) ----
+
+function dayKey(ts: number) {
+  const d = new Date(ts);
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}
+
+// Rapproche l'annonce d'une promo par sa date : renvoie la promo du même jour,
+// ou la crée. C'est le point d'entrée principal de création d'une promo.
+export const promoUpsertByDate = mutation({
+  args: { secret: v.string(), paDate: v.number(), name: v.optional(v.string()), paTime: v.optional(v.string()), paPlace: v.optional(v.string()) },
+  handler: async (ctx, { secret, paDate, name, paTime, paPlace }) => {
+    assertBot(secret);
+    const key = dayKey(paDate);
+    const promos = await ctx.db.query("promotions").collect();
+    const existing = promos.find((p) => p.paDate != null && dayKey(p.paDate) === key);
+    if (existing) {
+      await ctx.db.patch(existing._id, { paDate: key, ...(paTime ? { paTime } : {}), ...(paPlace ? { paPlace } : {}) });
+      return { promotionId: existing._id, name: existing.name, discordCategoryId: existing.discordCategoryId ?? null, created: false };
+    }
+    const promotionId = await ctx.db.insert("promotions", {
+      name: name?.trim() || `Promotion du ${new Date(key).toLocaleDateString("fr-FR")}`,
+      startAt: Date.now(), status: "OPEN", paDate: key, paTime, paPlace,
+    });
+    return { promotionId, name: (name?.trim() || `Promotion du ${new Date(key).toLocaleDateString("fr-FR")}`), discordCategoryId: null, created: true };
+  },
+});
+
+export const promoSetCategory = mutation({
+  args: { secret: v.string(), promotionId: v.string(), categoryId: v.string() },
+  handler: async (ctx, { secret, promotionId, categoryId }) => {
+    assertBot(secret);
+    await ctx.db.patch(promotionId as Id<"promotions">, { discordCategoryId: categoryId });
+  },
+});
+
+export const promoGet = query({
+  args: { secret: v.string(), promotionId: v.string() },
+  handler: async (ctx, { secret, promotionId }) => {
+    assertBot(secret);
+    const p = await ctx.db.get(promotionId as Id<"promotions">);
+    return p ? { name: p.name, discordCategoryId: p.discordCategoryId ?? null } : null;
+  },
+});
+
+// Promos sans catégorie Discord : le bot les crée (tâche de réconciliation,
+// couvre notamment les promos créées sur le site).
+export const promosNeedingCategory = query({
+  args: { secret: v.string() },
+  handler: async (ctx, { secret }) => {
+    assertBot(secret);
+    return (await ctx.db.query("promotions").withIndex("by_status", (q) => q.eq("status", "OPEN")).collect())
+      .filter((p) => !p.discordCategoryId)
+      .map((p) => ({ promotionId: p._id, name: p.name }));
   },
 });

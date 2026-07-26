@@ -8,7 +8,7 @@ import {
   presenceEmbed, dailyEmbed, overviewEmbed, weeklyHoursEmbed,
   vehicleEmbed, vehicleNotFoundEmbed, casierEmbed, absenceEmbed, errorEmbed,
 } from "./embeds.js";
-import { openHub, sendTemplate, renderTemplatesCmd, startTemplateBuilder } from "./tickets.js";
+import { openHub, sendTemplate, renderTemplatesCmd, startTemplateBuilder, openAnnounce, integrer } from "./tickets.js";
 
 // Définition des commandes slash. Chaque réponse est un embed élaboré.
 export const commands = [
@@ -43,6 +43,10 @@ export const commands = [
       .addStringOption((o) => o.setName("nom").setDescription("Nom du template").setRequired(true).setAutocomplete(true)))
     .addSubcommand((s) => s.setName("create").setDescription("Créer un template (avec aperçu)"))
     .addSubcommand((s) => s.setName("list").setDescription("Lister les templates")),
+  new SlashCommandBuilder().setName("annonce").setDescription("Publier une annonce officielle de Police Academy")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+  new SlashCommandBuilder().setName("integrer").setDescription("Intégrer le candidat de ce ticket à la Police Academy")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages),
 ].map((c) => c.toJSON());
 
 // « JJ/MM/AAAA » -> timestamp (minuit), ou null si invalide.
@@ -82,6 +86,8 @@ export async function handleCommand(interaction: ChatInputCommandInteraction) {
       else await renderTemplatesCmd(interaction);
       return;
     }
+    if (interaction.commandName === "annonce") { await openAnnounce(interaction); return; }
+    if (interaction.commandName === "integrer") { await integrer(interaction); return; }
     if (interaction.commandName === "enservice") {
       await interaction.deferReply();
       const agents = await mdt.agentsOnDuty();
