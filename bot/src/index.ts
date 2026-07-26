@@ -4,6 +4,7 @@ import { env } from "./env.js";
 import { registerCommands, handleCommand } from "./commands.js";
 import { startTasks } from "./tasks.js";
 import { handleRollcallButton } from "./rollcall.js";
+import { handleTicketInteraction, templateAutocomplete } from "./tickets.js";
 
 // Le bot lit les événements de la Gateway (aucun intent privilégié requis :
 // il ne lit pas le contenu des messages, seulement les commandes slash).
@@ -20,8 +21,12 @@ client.once(Events.ClientReady, async (c) => {
 });
 
 client.on(Events.InteractionCreate, async (interaction) => {
-  if (interaction.isChatInputCommand()) await handleCommand(interaction);
-  else if (interaction.isButton() && interaction.customId.startsWith("rc|")) await handleRollcallButton(interaction);
+  if (interaction.isAutocomplete()) { await templateAutocomplete(interaction); return; }
+  if (interaction.isChatInputCommand()) { await handleCommand(interaction); return; }
+  if (interaction.isButton() && interaction.customId.startsWith("rc|")) { await handleRollcallButton(interaction); return; }
+  // Toutes les interactions du système de tickets (boutons, menus, modals).
+  const cid = "customId" in interaction ? (interaction.customId as string) : "";
+  if (cid.startsWith("tk|")) await handleTicketInteraction(interaction);
 });
 
 client.on(Events.Error, (err) => console.error("[bot] erreur client :", err));

@@ -1232,4 +1232,48 @@ export default defineSchema({
     objectType: v.string(), // nom du type OU "Autre"
     otherLabel: v.optional(v.string()), // saisi librement si "Autre"
   }).index("by_at", ["at"]),
+
+  // ============ BOT : tickets de candidature (Police Academy) ============
+  // Configuration du système, singleton. Tout est réglable depuis Discord via la
+  // commande centrale du bot.
+  ticketConfig: defineTable({
+    categoryId: v.optional(v.string()), // catégorie Discord où sont créés les tickets
+    panelChannelId: v.optional(v.string()), // salon du panneau « Soumettre ma candidature »
+    panelMessageId: v.optional(v.string()),
+    candidaturesOpen: v.boolean(), // le bouton de candidature n'agit que si ouvert
+    // Panneau public.
+    panelTitle: v.optional(v.string()),
+    panelText: v.optional(v.string()),
+    // Message d'ouverture posté dans le ticket.
+    openTitle: v.optional(v.string()),
+    openText: v.optional(v.string()),
+    openColor: v.optional(v.string()),
+    // Nomenclature du salon (placeholders {prenom} {nom} {date}). Défaut prenom-nom.
+    nomenclature: v.optional(v.string()),
+    renameNick: v.optional(v.boolean()), // renommer le pseudo Discord en Prénom Nom RP
+    updatedAt: v.number(),
+  }),
+
+  // Modèles de message (embeds) à envoyer dans un ticket.
+  ticketTemplates: defineTable({
+    name: v.string(),
+    title: v.string(),
+    description: v.string(),
+    color: v.string(), // hex
+    pingOwner: v.boolean(), // ping le propriétaire du ticket à l'envoi
+    createdAt: v.number(),
+  }).index("by_name", ["name"]),
+
+  // Tickets ouverts : lie un salon Discord à son candidat (pour le ping et le suivi).
+  tickets: defineTable({
+    channelId: v.string(),
+    ownerId: v.string(), // id Discord du candidat
+    ownerName: v.string(),
+    prenom: v.string(),
+    nom: v.string(),
+    dateNaissance: v.optional(v.string()),
+    motivations: v.optional(v.string()),
+    status: v.union(v.literal("OPEN"), v.literal("CLOSED")),
+    createdAt: v.number(),
+  }).index("by_channel", ["channelId"]),
 });

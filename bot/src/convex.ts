@@ -72,6 +72,29 @@ export const mdt = {
     client.mutation(anyApi.bot.requestAbsence, { secret: env.botSecret, query, from, to, reason, discordName }) as Promise<{ ok: boolean; reason?: string; name?: string }>,
   presenceMessageGet: () => client.query(anyApi.bot.presenceMessageGet, { secret: env.botSecret }) as Promise<string | null>,
   presenceMessageSet: (messageId: string) => client.mutation(anyApi.bot.presenceMessageSet, { secret: env.botSecret, messageId }) as Promise<void>,
+
+  // ---- Tickets de candidature ----
+  ticketConfigGet: () => client.query(anyApi.bot.ticketConfigGet, { secret: env.botSecret }) as Promise<TicketConfig>,
+  ticketConfigSet: (patch: Partial<TicketConfig>) => client.mutation(anyApi.bot.ticketConfigSet, { secret: env.botSecret, patch }) as Promise<void>,
+  ticketTemplateList: () => client.query(anyApi.bot.ticketTemplateList, { secret: env.botSecret }) as Promise<TicketTemplate[]>,
+  ticketTemplateUpsert: (t: { id?: string; name: string; title: string; description: string; color: string; pingOwner: boolean }) =>
+    client.mutation(anyApi.bot.ticketTemplateUpsert, { secret: env.botSecret, ...t }) as Promise<string>,
+  ticketTemplateDelete: (id: string) => client.mutation(anyApi.bot.ticketTemplateDelete, { secret: env.botSecret, id }) as Promise<void>,
+  ticketTemplateByName: (name: string) => client.query(anyApi.bot.ticketTemplateByName, { secret: env.botSecret, name }) as Promise<TicketTemplate | null>,
+  ticketCreate: (t: { channelId: string; ownerId: string; ownerName: string; prenom: string; nom: string; dateNaissance?: string; motivations?: string }) =>
+    client.mutation(anyApi.bot.ticketCreate, { secret: env.botSecret, ...t }) as Promise<void>,
+  ticketByChannel: (channelId: string) => client.query(anyApi.bot.ticketByChannel, { secret: env.botSecret, channelId }) as Promise<TicketOwner | null>,
+  ticketClose: (channelId: string) => client.mutation(anyApi.bot.ticketClose, { secret: env.botSecret, channelId }) as Promise<void>,
 };
+
+export type TicketConfig = {
+  categoryId: string | null; panelChannelId: string | null; panelMessageId: string | null;
+  candidaturesOpen: boolean;
+  panelTitle: string; panelText: string;
+  openTitle: string; openText: string; openColor: string;
+  nomenclature: string; renameNick: boolean;
+};
+export type TicketTemplate = { _id: string; name: string; title: string; description: string; color: string; pingOwner: boolean };
+export type TicketOwner = { ownerId: string; ownerName: string; prenom: string; nom: string; status: string };
 
 export type { OnDutyAgent, DayStats, Overview, BotConfig, WeeklyHours, RollcallState, VehicleInfo, CasierInfo };

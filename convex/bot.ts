@@ -1,7 +1,7 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import type { QueryCtx } from "./_generated/server";
-import type { Doc } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 
 // Passerelle pour le bot Discord.
 //
@@ -410,5 +410,135 @@ export const presenceMessageSet = mutation({
     const cfg = await ctx.db.query("integrationConfig").first();
     if (cfg) await ctx.db.patch(cfg._id, { botPresenceMessageId: messageId });
     else await ctx.db.insert("integrationConfig", { botPresenceMessageId: messageId, updatedAt: Date.now() });
+  },
+});
+
+// ============ Système de tickets de candidature ============
+
+function ticketDefaults(cfg: Doc<"ticketConfig"> | null) {
+  return {
+    categoryId: cfg?.categoryId ?? null,
+    panelChannelId: cfg?.panelChannelId ?? null,
+    panelMessageId: cfg?.panelMessageId ?? null,
+    candidaturesOpen: cfg?.candidaturesOpen ?? false,
+    panelTitle: cfg?.panelTitle ?? "Rejoindre la Police Academy",
+    panelText: cfg?.panelText ?? "Clique sur le bouton ci-dessous pour soumettre ta candidature.",
+    openTitle: cfg?.openTitle ?? "Nouvelle candidature",
+    openText: cfg?.openText ?? "Merci pour ta candidature ! Un membre de l'académie va te répondre.",
+    openColor: cfg?.openColor ?? "#49a24a",
+    nomenclature: cfg?.nomenclature ?? "{prenom}-{nom}",
+    renameNick: cfg?.renameNick ?? true,
+  };
+}
+
+export const ticketConfigGet = query({
+  args: { secret: v.string() },
+  handler: async (ctx, { secret }) => {
+    assertBot(secret);
+    return ticketDefaults(await ctx.db.query("ticketConfig").first());
+  },
+});
+
+export const ticketConfigSet = mutation({
+  args: {
+    secret: v.string(),
+    patch: v.object({
+      categoryId: v.optional(v.union(v.string(), v.null())),
+      panelChannelId: v.optional(v.string()),
+      panelMessageId: v.optional(v.string()),
+      candidaturesOpen: v.optional(v.boolean()),
+      panelTitle: v.optional(v.string()),
+      panelText: v.optional(v.string()),
+      openTitle: v.optional(v.string()),
+      openText: v.optional(v.string()),
+      openColor: v.optional(v.string()),
+      nomenclature: v.optional(v.string()),
+      renameNick: v.optional(v.boolean()),
+    }),
+  },
+  handler: async (ctx, { secret, patch }) => {
+    assertBot(secret);
+    const clean: Record<string, unknown> = { updatedAt: Date.now() };
+    for (const [k, val] of Object.entries(patch)) {
+      if (val === undefined) continue;
+      clean[k] = val === null ? undefined : val;
+    }
+    const cfg = await ctx.db.query("ticketConfig").first();
+    if (cfg) await ctx.db.patch(cfg._id, clean);
+    else await ctx.db.insert("ticketConfig", { candidaturesOpen: false, updatedAt: Date.now(), ...clean });
+  },
+});
+
+export const ticketTemplateList = query({
+  args: { secret: v.string() },
+  handler: async (ctx, { secret }) => {
+    assertBot(secret);
+    return (await ctx.db.query("ticketTemplates").collect())
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map((t) => ({ _id: t._id, name: t.name, title: t.title, description: t.description, color: t.color, pingOwner: t.pingOwner }));
+  },
+});
+
+export const ticketTemplateUpsert = mutation({
+  args: {
+    secret: v.string(),
+    id: v.optional(v.string()),
+    name: v.string(), title: v.string(), description: v.string(), color: v.string(), pingOwner: v.boolean(),
+  },
+  handler: async (ctx, { secret, id, name, title, description, color, pingOwner }) => {
+    assertBot(secret);
+    const data = { name: name.trim(), title: title.trim(), description, color, pingOwner };
+    if (id) { await ctx.db.patch(id as Id<"ticketTemplates">, data); return id; }
+    return await ctx.db.insert("ticketTemplates", { ...data, createdAt: Date.now() });
+  },
+});
+
+export const ticketTemplateDelete = mutation({
+  args: { secret: v.string(), id: v.string() },
+  handler: async (ctx, { secret, id }) => {
+    assertBot(secret);
+    await ctx.db.delete(id as Id<"ticketTemplates">);
+  },
+});
+
+export const ticketTemplateByName = query({
+  args: { secret: v.string(), name: v.string() },
+  handler: async (ctx, { secret, name }) => {
+    assertBot(secret);
+    const t = await ctx.db.query("ticketTemplates").withIndex("by_name", (q) => q.eq("name", name)).first();
+    return t ? { _id: t._id, name: t.name, title: t.title, description: t.description, color: t.color, pingOwner: t.pingOwner } : null;
+  },
+});
+
+export const ticketCreate = mutation({
+  args: {
+    secret: v.string(), channelId: v.string(), ownerId: v.string(), ownerName: v.string(),
+    prenom: v.string(), nom: v.string(), dateNaissance: v.optional(v.string()), motivations: v.optional(v.string()),
+  },
+  handler: async (ctx, a) => {
+    assertBot(a.secret);
+    await ctx.db.insert("tickets", {
+      channelId: a.channelId, ownerId: a.ownerId, ownerName: a.ownerName,
+      prenom: a.prenom, nom: a.nom, dateNaissance: a.dateNaissance, motivations: a.motivations,
+      status: "OPEN", createdAt: Date.now(),
+    });
+  },
+});
+
+export const ticketByChannel = query({
+  args: { secret: v.string(), channelId: v.string() },
+  handler: async (ctx, { secret, channelId }) => {
+    assertBot(secret);
+    const t = await ctx.db.query("tickets").withIndex("by_channel", (q) => q.eq("channelId", channelId)).first();
+    return t ? { ownerId: t.ownerId, ownerName: t.ownerName, prenom: t.prenom, nom: t.nom, status: t.status } : null;
+  },
+});
+
+export const ticketClose = mutation({
+  args: { secret: v.string(), channelId: v.string() },
+  handler: async (ctx, { secret, channelId }) => {
+    assertBot(secret);
+    const t = await ctx.db.query("tickets").withIndex("by_channel", (q) => q.eq("channelId", channelId)).first();
+    if (t) await ctx.db.patch(t._id, { status: "CLOSED" });
   },
 });

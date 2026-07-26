@@ -1,5 +1,5 @@
 import {
-  REST, Routes, SlashCommandBuilder,
+  REST, Routes, SlashCommandBuilder, PermissionFlagsBits,
   type ChatInputCommandInteraction, type Client,
 } from "discord.js";
 import { env } from "./env.js";
@@ -8,6 +8,7 @@ import {
   presenceEmbed, dailyEmbed, overviewEmbed, weeklyHoursEmbed,
   vehicleEmbed, vehicleNotFoundEmbed, casierEmbed, absenceEmbed, errorEmbed,
 } from "./embeds.js";
+import { openHub, sendTemplate, renderTemplatesCmd, startTemplateBuilder } from "./tickets.js";
 
 // Définition des commandes slash. Chaque réponse est un embed élaboré.
 export const commands = [
@@ -33,6 +34,15 @@ export const commands = [
     .addStringOption((o) => o.setName("du").setDescription("Date de début (JJ/MM/AAAA)").setRequired(true))
     .addStringOption((o) => o.setName("au").setDescription("Date de fin (JJ/MM/AAAA)").setRequired(true))
     .addStringOption((o) => o.setName("motif").setDescription("Motif de l'absence").setRequired(true)),
+  // Système de candidatures : hub central, réservé au staff (Gérer le serveur).
+  new SlashCommandBuilder().setName("candidatures").setDescription("Configurer le système de candidatures de l'académie")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+  new SlashCommandBuilder().setName("template").setDescription("Templates de message des tickets")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
+    .addSubcommand((s) => s.setName("send").setDescription("Envoyer un template dans ce ticket")
+      .addStringOption((o) => o.setName("nom").setDescription("Nom du template").setRequired(true).setAutocomplete(true)))
+    .addSubcommand((s) => s.setName("create").setDescription("Créer un template (avec aperçu)"))
+    .addSubcommand((s) => s.setName("list").setDescription("Lister les templates")),
 ].map((c) => c.toJSON());
 
 // « JJ/MM/AAAA » -> timestamp (minuit), ou null si invalide.
@@ -64,6 +74,14 @@ export async function registerCommands() {
 
 export async function handleCommand(interaction: ChatInputCommandInteraction) {
   try {
+    if (interaction.commandName === "candidatures") { await openHub(interaction); return; }
+    if (interaction.commandName === "template") {
+      const sub = interaction.options.getSubcommand();
+      if (sub === "send") await sendTemplate(interaction);
+      else if (sub === "create") await startTemplateBuilder(interaction);
+      else await renderTemplatesCmd(interaction);
+      return;
+    }
     if (interaction.commandName === "enservice") {
       await interaction.deferReply();
       const agents = await mdt.agentsOnDuty();
