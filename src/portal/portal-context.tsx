@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@/lib/api";
+import { MDT_ENABLED } from "@/lib/features";
 
 // Choix du portail. Il se fait AVANT la connexion : c'est le premier écran du
 // site, et il décide quelle surface (MDT ou LSPA) s'ouvre ensuite.
@@ -40,16 +41,19 @@ function readUnlockValid(): boolean {
 }
 
 export function PortalProvider({ children }: { children: React.ReactNode }) {
-  const [portal, setPortal] = useState<Portal | null>(() => readPortal());
+  const [portalState, setPortal] = useState<Portal | null>(() => readPortal());
   const [mdtUnlocked, setMdtUnlocked] = useState(() => readUnlockValid());
   const status = useQuery(api.access.status);
   const ready = status !== undefined;
   const mdtLocked = status?.mdtLocked ?? false;
+  // MDT désactivé : la seule surface est la LSPA, on force le portail quel que
+  // soit ce qui traîne en mémoire.
+  const portal: Portal | null = MDT_ENABLED ? portalState : "lspa";
 
   // Le déverrouillage expire ; sans ce contrôle, un navigateur resté sur le MDT
   // n'aurait jamais à ressaisir le code.
   useEffect(() => {
-    if (!ready) return;
+    if (!MDT_ENABLED || !ready) return;
     if (portal === "mdt" && mdtLocked && !mdtUnlocked) {
       localStorage.removeItem(PORTAL_KEY);
       setPortal(null);

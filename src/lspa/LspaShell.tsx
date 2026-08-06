@@ -6,6 +6,7 @@ import { useApp } from "@/providers/app-state";
 import { useCan } from "@/hooks/useCan";
 import { usePortals } from "@/hooks/usePortals";
 import { usePrefs } from "@/hooks/usePrefs";
+import { MDT_ENABLED } from "@/lib/features";
 import { LoadingScreen } from "@/components/common/Loader";
 import { ProfileMenu } from "@/components/shell/ProfileMenu";
 import { PageBoundary } from "@/components/shell/PageBoundary";
@@ -57,7 +58,7 @@ export function LspaShell() {
 
         <div className="flex-1" />
 
-        {canMdt && (
+        {MDT_ENABLED && canMdt && (
           <button
             onClick={() => navigate("/portail")}
             title="Changer de portail"

@@ -55,6 +55,7 @@ const SessionScreen = lazyReload(() => import("@/lspa/session/SessionScreen").th
 import { usePortals } from "@/hooks/usePortals";
 import { useCan } from "@/hooks/useCan";
 import { Splash } from "@/auth/Splash";
+import { MDT_ENABLED } from "@/lib/features";
 
 export default function App() {
   return (
@@ -128,12 +129,14 @@ function Gated() {
   if (portalsReady && academyBlocked) return <PendingScreen academy />;
 
   // Un cadet n'a pas accès au MDT : toute route hors académie le renvoie sur
-  // son portail, plutôt que de lui refuser page après page.
-  const inLspa = location.pathname.startsWith("/lspa") || location.pathname === "/portail";
+  // son portail, plutôt que de lui refuser page après page. Quand le MDT est
+  // désactivé, l'écran de bascule /portail n'existe plus non plus.
+  const inLspa = location.pathname.startsWith("/lspa") || (MDT_ENABLED && location.pathname === "/portail");
   if (portalsReady && !canMdt && !inLspa) return <Navigate to="/lspa" replace />;
   // Le portail retenu à l'entrée fixe la surface : on ne bascule que par
-  // l'écran de choix, jamais par une URL laissée dans l'historique.
-  if (portal === "lspa" && !inLspa) return <Navigate to="/lspa" replace />;
+  // l'écran de choix, jamais par une URL laissée dans l'historique. MDT coupé =
+  // LSPA imposée pour tout le monde.
+  if ((!MDT_ENABLED || portal === "lspa") && !inLspa) return <Navigate to="/lspa" replace />;
 
   return (
     <>

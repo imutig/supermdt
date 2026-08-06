@@ -5,6 +5,7 @@ import { AuthShell } from "./AuthShell";
 import { readableError } from "@/lib/errors";
 import { useApp } from "@/providers/app-state";
 import { usePortal } from "@/portal/portal-context";
+import { MDT_ENABLED } from "@/lib/features";
 
 const ID_RE = /^[a-zà-öø-ÿ'-]{2,}\.[a-zà-öø-ÿ'-]{2,}$/i;
 
@@ -66,13 +67,15 @@ export function LoginPage() {
     <AuthShell
       subtitle={isLspa ? "Los Santos Police Academy" : "Mobile Data Terminal"}
       footer={
-        <button
-          onClick={clear}
-          className="mt-[16px] flex w-full items-center justify-center gap-[6px] border-none bg-transparent text-[12.5px] font-semibold text-muted hover:text-text"
-        >
-          <ArrowLeft className="h-[14px] w-[14px]" />
-          Changer d'accès
-        </button>
+        MDT_ENABLED ? (
+          <button
+            onClick={clear}
+            className="mt-[16px] flex w-full items-center justify-center gap-[6px] border-none bg-transparent text-[12.5px] font-semibold text-muted hover:text-text"
+          >
+            <ArrowLeft className="h-[14px] w-[14px]" />
+            Changer d'accès
+          </button>
+        ) : undefined
       }
     >
       {/* Onglets */}
