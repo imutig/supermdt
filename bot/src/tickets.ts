@@ -5,7 +5,7 @@ import {
   MessageFlags,
   type ChatInputCommandInteraction, type ButtonInteraction, type ModalSubmitInteraction,
   type AnySelectMenuInteraction, type Guild, type TextChannel, type CategoryChannel,
-  type Interaction, type Client,
+  type Interaction, type Client, type Message, type User, type GuildMember, type ColorResolvable,
 } from "discord.js";
 import { mdt, type TicketConfig, type TicketTemplate, type IntegStatus, type RichEmbed, type EmbedField, type ArchiveMessage } from "./convex.js";
 import { baseEmbed, BRAND } from "./theme.js";
@@ -105,29 +105,34 @@ function hubComponents(cfg: TicketConfig) {
   );
   const row3 = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder().setCustomId("tk|hub|roles").setLabel("Rôles").setEmoji("👥").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId("tk|hub|conditions").setLabel("Conditions & infos").setEmoji("📋").setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId("tk|hub|annoncetxt").setLabel("Texte de l'annonce").setStyle(ButtonStyle.Secondary),
   );
   return [category, row1, row2, row3];
 }
 
 function rolesComponents(cfg: TicketConfig) {
+  const recruiters = new ActionRowBuilder<RoleSelectMenuBuilder>().addComponents(
+    new RoleSelectMenuBuilder().setCustomId("tk|cfg|recruiterroles").setPlaceholder("Rôles recruteurs (accès aux tickets, !r / !a, /validation)").setMinValues(0).setMaxValues(20).setDefaultRoles(cfg.recruiterRoleIds.slice(0, 20)),
+  );
+  const cadet = new ActionRowBuilder<RoleSelectMenuBuilder>().addComponents(
+    new RoleSelectMenuBuilder().setCustomId("tk|cfg|cadetrole").setPlaceholder("Rôle Cadet (attribué par /validation, ping annonce)").setMinValues(0).setMaxValues(1).setDefaultRoles(cfg.cadetRoleId ? [cfg.cadetRoleId] : []),
+  );
   const promo = new ActionRowBuilder<RoleSelectMenuBuilder>().addComponents(
     new RoleSelectMenuBuilder().setCustomId("tk|cfg|promoroles").setPlaceholder("Rôles ayant accès aux catégories de promo").setMinValues(0).setMaxValues(20).setDefaultRoles(cfg.promoRoleIds.slice(0, 20)),
   );
-  const cadet = new ActionRowBuilder<RoleSelectMenuBuilder>().addComponents(
-    new RoleSelectMenuBuilder().setCustomId("tk|cfg|cadetrole").setPlaceholder("Rôle @Cadet (ping de l'annonce)").setMinValues(0).setMaxValues(1).setDefaultRoles(cfg.cadetRoleId ? [cfg.cadetRoleId] : []),
-  );
   const back = new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId("tk|hub|back").setLabel("Retour").setStyle(ButtonStyle.Secondary));
-  return [promo, cadet, back];
+  return [recruiters, cadet, promo, back];
 }
 
 async function renderRoles(interaction: ButtonInteraction | AnySelectMenuInteraction) {
   const cfg = await mdt.ticketConfigGet();
   const embed = baseEmbed(BRAND.info).setTitle("👥 Rôles")
-    .setDescription("Définis les rôles qui voient les catégories de promotion, et le rôle @Cadet pinguée dans les annonces.")
+    .setDescription("Définis les rôles recruteurs (seuls à voir les tickets et à répondre), le rôle Cadet attribué par /validation, et les rôles qui voient les catégories de promotion.")
     .addFields(
-      { name: "Accès aux promos", value: cfg.promoRoleIds.length ? cfg.promoRoleIds.map((r) => `<@&${r}>`).join(" ") : "*aucun*" },
+      { name: "Recruteurs", value: cfg.recruiterRoleIds.length ? cfg.recruiterRoleIds.map((r) => `<@&${r}>`).join(" ") : "*aucun*" },
       { name: "Rôle Cadet", value: cfg.cadetRoleId ? `<@&${cfg.cadetRoleId}>` : "*non défini*" },
+      { name: "Accès aux promos", value: cfg.promoRoleIds.length ? cfg.promoRoleIds.map((r) => `<@&${r}>`).join(" ") : "*aucun*" },
     );
   await interaction.update({ embeds: [embed], components: rolesComponents(cfg) });
 }
@@ -297,6 +302,14 @@ function nomenModal(cfg: TicketConfig): ModalBuilder {
   );
 }
 
+// Conditions de candidature affichées au candidat (une ligne par élément).
+function conditionsModal(cfg: TicketConfig): ModalBuilder {
+  return new ModalBuilder().setCustomId("tk|m|conditions").setTitle("Conditions de candidature").addComponents(
+    ti("important", "Informations importantes (une par ligne)", TextInputStyle.Paragraph, cfg.importantInfo, true, 2000),
+    ti("conditions", "Conditions requises (une par ligne)", TextInputStyle.Paragraph, cfg.conditionsRP, true, 2000),
+  );
+}
+
 // Lecture d'un champ de modale : chaîne vidée -> undefined.
 function opt(interaction: ModalSubmitInteraction, field: string): string | undefined {
   const v = interaction.fields.getTextInputValue(field).trim();
@@ -368,78 +381,240 @@ function panelMessage(cfg: TicketConfig) {
   const embed = previewEmbed(cfg.panelEmbed);
   if (!cfg.candidaturesOpen) embed.addFields({ name: "​", value: "🔴 *Les candidatures sont actuellement fermées.*" });
   const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId("tk|apply").setLabel("Soumettre ma candidature").setEmoji("📝").setStyle(ButtonStyle.Success).setDisabled(!cfg.candidaturesOpen),
+    new ButtonBuilder().setCustomId("tk|cand|panel").setLabel("Candidater").setEmoji("📝").setStyle(ButtonStyle.Success).setDisabled(!cfg.candidaturesOpen),
   );
   return { embeds: [embed], components: [row] };
 }
 
-function applyModal(): ModalBuilder {
-  return new ModalBuilder().setCustomId("tk|m|apply").setTitle("Ma candidature").addComponents(
-    new ActionRowBuilder<TextInputBuilder>().addComponents(new TextInputBuilder().setCustomId("prenom").setLabel("Prénom RP").setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(40)),
-    new ActionRowBuilder<TextInputBuilder>().addComponents(new TextInputBuilder().setCustomId("nom").setLabel("Nom RP").setStyle(TextInputStyle.Short).setRequired(true).setMaxLength(40)),
-    new ActionRowBuilder<TextInputBuilder>().addComponents(new TextInputBuilder().setCustomId("naissance").setLabel("Date de naissance").setStyle(TextInputStyle.Short).setRequired(false).setMaxLength(20)),
-    new ActionRowBuilder<TextInputBuilder>().addComponents(new TextInputBuilder().setCustomId("motivations").setLabel("Motivations").setStyle(TextInputStyle.Paragraph).setRequired(true).setMaxLength(1500)),
+// ========================================================================
+// Candidature par MP : le candidat écrit au bot, remplit deux modales, le
+// ticket est créé côté serveur (visible des seuls recruteurs), et les échanges
+// transitent par le bot (MP <-> ticket).
+// ========================================================================
+
+// État transitoire d'une candidature en cours (avant/à la création du ticket).
+type CandState = { prenom: string; nom: string; naissance: string; channelId?: string; ticketPromise?: Promise<string | null> };
+const candidatures = new Map<string, CandState>();
+
+function bulletList(text: string): string {
+  return text.split("\n").map((s) => s.trim()).filter(Boolean).map((s) => `• ${s}`).join("\n") || "*(aucune)*";
+}
+
+// Embed d'accueil envoyé en MP + bouton pour démarrer (une modale ne peut pas
+// s'ouvrir sans une interaction : d'où le bouton).
+async function startCandidatureDM(user: User): Promise<boolean> {
+  const embed = baseEmbed(BRAND.green).setTitle("🎓 Candidature - Police Academy")
+    .setDescription("Bienvenue. Tu t'apprêtes à déposer ta candidature à la Los Santos Police Academy. Clique sur le bouton ci-dessous pour commencer.")
+    .setFooter({ text: "Tes échanges avec les recruteurs se feront ici, en message privé." });
+  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId("tk|cand|start").setLabel("Commencer ma candidature").setEmoji("📝").setStyle(ButtonStyle.Success),
+  );
+  try { await user.send({ embeds: [embed], components: [row] }); return true; }
+  catch { return false; }
+}
+
+function identityModal(): ModalBuilder {
+  return new ModalBuilder().setCustomId("tk|cand|m1").setTitle("Ta candidature (1/2)").addComponents(
+    ti("prenom", "Prénom RP", TextInputStyle.Short, undefined, true, 40),
+    ti("nom", "Nom RP", TextInputStyle.Short, undefined, true, 40),
+    ti("naissance", "Date de naissance (JJ/MM/AAAA)", TextInputStyle.Short, undefined, true, 20),
+  );
+}
+function dossierModal(): ModalBuilder {
+  return new ModalBuilder().setCustomId("tk|cand|m2").setTitle("Ta candidature (2/2)").addComponents(
+    ti("motivations", "Motivations", TextInputStyle.Paragraph, undefined, true, 1500),
+    ti("experiences", "Expériences professionnelles", TextInputStyle.Paragraph, undefined, true, 1500),
   );
 }
 
-// Droits du salon de ticket : hérite de la catégorie (les rôles staff gardent
-// accès), refuse @everyone, autorise le candidat et le bot.
-function ticketOverwrites(guild: Guild, category: CategoryChannel | null, applicantId: string) {
-  const map = new Map<string, { id: string; allow: bigint[]; deny: bigint[] }>();
-  if (category) for (const po of category.permissionOverwrites.cache.values()) map.set(po.id, { id: po.id, allow: po.allow.toArray().map(BigInt), deny: po.deny.toArray().map(BigInt) });
-  map.set(guild.roles.everyone.id, { id: guild.roles.everyone.id, allow: [], deny: [PermissionFlagsBits.ViewChannel] });
-  map.set(applicantId, { id: applicantId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.AttachFiles], deny: [] });
-  if (guild.members.me) map.set(guild.members.me.id, { id: guild.members.me.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ManageChannels], deny: [] });
-  return [...map.values()];
+// Conditions à accepter, affichées après la modale d'identité.
+function conditionsMessage(cfg: TicketConfig) {
+  const embed = baseEmbed(BRAND.info).setTitle("📋 Conditions de candidature")
+    .addFields(
+      { name: "⚠️ Informations importantes", value: bulletList(cfg.importantInfo).slice(0, 1024) },
+      { name: "Conditions requises", value: bulletList(cfg.conditionsRP).slice(0, 1024) },
+    )
+    .setFooter({ text: "En validant, tu certifies remplir ces conditions." });
+  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId("tk|cand|accept").setLabel("J'accepte et je postule").setEmoji("✅").setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId("tk|cand|cancel").setLabel("Annuler").setStyle(ButtonStyle.Secondary),
+  );
+  return { embeds: [embed], components: [row] };
 }
 
-async function createTicket(interaction: ModalSubmitInteraction) {
+// Droits du ticket : @everyone masqué, rôles recruteurs autorisés, bot autorisé.
+// Le candidat n'a PAS accès au salon (il échange par MP).
+function recruiterOverwrites(guild: Guild, cfg: TicketConfig) {
+  const rows: { id: string; allow: bigint[]; deny: bigint[] }[] = [
+    { id: guild.roles.everyone.id, allow: [], deny: [PermissionFlagsBits.ViewChannel] },
+  ];
+  for (const r of cfg.recruiterRoleIds) rows.push({ id: r, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.AttachFiles], deny: [] });
+  if (guild.members.me) rows.push({ id: guild.members.me.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ManageChannels, PermissionFlagsBits.ManageMessages], deny: [] });
+  return rows;
+}
+
+// Crée le salon de ticket (recruteurs uniquement) et l'entrée en base.
+async function createCandidatureTicket(client: Client, user: User, state: CandState): Promise<string | null> {
   const cfg = await mdt.ticketConfigGet();
-  if (!cfg.candidaturesOpen) { await interaction.reply({ content: "Les candidatures sont fermées.", flags: EPH }); return; }
-  const guild = interaction.guild;
-  if (!guild) { await interaction.reply({ content: "Action possible uniquement sur le serveur.", flags: EPH }); return; }
-  if (!cfg.categoryId) { await interaction.reply({ content: "La catégorie des tickets n'est pas configurée. Un responsable doit la définir via /candidatures.", flags: EPH }); return; }
-
-  await interaction.deferReply({ flags: EPH });
-  const prenom = interaction.fields.getTextInputValue("prenom").trim();
-  const nom = interaction.fields.getTextInputValue("nom").trim();
-  const naissance = interaction.fields.getTextInputValue("naissance").trim();
-  const motivations = interaction.fields.getTextInputValue("motivations").trim();
-
-  const category = guild.channels.cache.get(cfg.categoryId) as CategoryChannel | undefined;
-  const name = applyNomenclature(cfg.nomenclature, { prenom, nom, date: naissance || "" });
-
+  const guild = client.guilds.cache.first();
+  if (!guild || !cfg.categoryId) return null;
+  const name = applyNomenclature(cfg.nomenclature, { prenom: state.prenom, nom: state.nom, date: state.naissance || "" });
   let channel: TextChannel;
   try {
-    channel = await guild.channels.create({
-      name, type: ChannelType.GuildText, parent: cfg.categoryId,
-      permissionOverwrites: ticketOverwrites(guild, category ?? null, interaction.user.id),
-    });
-  } catch (err) {
-    console.error("[ticket] création du salon impossible :", err);
-    await interaction.editReply({ content: "Impossible de créer le ticket (le bot a-t-il la permission Gérer les salons ?)." });
-    return;
-  }
+    channel = await guild.channels.create({ name, type: ChannelType.GuildText, parent: cfg.categoryId, permissionOverwrites: recruiterOverwrites(guild, cfg) });
+  } catch (err) { console.error("[cand] création du salon impossible :", err); return null; }
 
-  // Renommage du pseudo en Prénom Nom RP.
-  if (cfg.renameNick && interaction.member && "setNickname" in interaction.member) {
-    await interaction.member.setNickname(`${prenom} ${nom}`).catch(() => {/* hiérarchie de rôles insuffisante */});
-  }
-
-  const embed = previewEmbed(cfg.openEmbed)
+  const embed = baseEmbed(BRAND.green).setTitle("🎓 Nouvelle candidature")
     .addFields(
-      { name: "Candidat", value: `${prenom} ${nom}`, inline: true },
-      ...(naissance ? [{ name: "Naissance", value: naissance, inline: true }] : []),
-      { name: "Motivations", value: motivations.slice(0, 1024) },
-    ).setTimestamp(new Date());
-  if (!embed.data.footer) embed.setFooter({ text: "Police Academy · candidature" });
+      { name: "Candidat", value: `${state.prenom} ${state.nom}`, inline: true },
+      { name: "Naissance", value: state.naissance || "-", inline: true },
+      { name: "Discord", value: `<@${user.id}> · \`${user.username}\`` },
+    )
+    .setFooter({ text: "Dossier en cours de complétion..." }).setTimestamp(new Date());
   const controls = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder().setCustomId("tk|manage").setLabel("Statut du candidat").setEmoji("🎓").setStyle(ButtonStyle.Primary),
     new ButtonBuilder().setCustomId("tk|close").setLabel("Fermer le ticket").setEmoji("🔒").setStyle(ButtonStyle.Danger),
   );
-  await channel.send({ content: `<@${interaction.user.id}>`, embeds: [embed], components: [controls] });
-  await mdt.ticketCreate({ channelId: channel.id, ownerId: interaction.user.id, ownerName: `${prenom} ${nom}`, prenom, nom, dateNaissance: naissance || undefined, motivations });
-  await interaction.editReply({ content: `Ta candidature est créée : <#${channel.id}>` });
+  await channel.send({ embeds: [embed], components: [controls] });
+  await mdt.ticketCreate({ channelId: channel.id, ownerId: user.id, ownerName: `${state.prenom} ${state.nom}`, prenom: state.prenom, nom: state.nom, dateNaissance: state.naissance || undefined });
+  state.channelId = channel.id;
+  return channel.id;
+}
+
+// Modale 1 (identité) : on mémorise, puis on présente les conditions à accepter.
+async function handleIdentityModal(interaction: ModalSubmitInteraction) {
+  const prenom = interaction.fields.getTextInputValue("prenom").trim();
+  const nom = interaction.fields.getTextInputValue("nom").trim();
+  const naissance = interaction.fields.getTextInputValue("naissance").trim();
+  candidatures.set(interaction.user.id, { prenom, nom, naissance });
+  const cfg = await mdt.ticketConfigGet();
+  await interaction.reply(conditionsMessage(cfg));
+}
+
+// Modale 2 (dossier) : complète le ticket créé à l'acceptation des conditions.
+async function handleDossierModal(interaction: ModalSubmitInteraction) {
+  const state = candidatures.get(interaction.user.id);
+  const motivations = interaction.fields.getTextInputValue("motivations").trim();
+  const experiences = interaction.fields.getTextInputValue("experiences").trim();
+  await interaction.deferReply();
+
+  let channelId: string | null = state?.channelId ?? null;
+  if (!channelId && state?.ticketPromise) channelId = await state.ticketPromise;
+  if (!channelId) {
+    const existing = await mdt.ticketByOwner(interaction.user.id);
+    channelId = existing?.channelId ?? (state ? await createCandidatureTicket(interaction.client, interaction.user, state) : null);
+  }
+  if (!channelId) { await interaction.editReply({ embeds: [baseEmbed(BRAND.danger).setDescription("Impossible de finaliser ta candidature. Renvoie-moi **Candidature** pour réessayer.")] }); return; }
+
+  await mdt.ticketSetDossier(channelId, motivations, experiences);
+  const chan = await interaction.client.channels.fetch(channelId).catch(() => null);
+  if (chan && chan.type === ChannelType.GuildText) {
+    await (chan as TextChannel).send({ embeds: [baseEmbed(BRAND.info).setTitle("📄 Dossier de candidature").addFields(
+      { name: "Motivations", value: motivations.slice(0, 1024) || "-" },
+      { name: "Expériences professionnelles", value: experiences.slice(0, 1024) || "-" },
+    )] }).catch(() => {});
+  }
+  candidatures.delete(interaction.user.id);
+  await interaction.editReply({ embeds: [baseEmbed(BRAND.green).setTitle("✅ Candidature envoyée")
+    .setDescription("Ton dossier est transmis aux recruteurs. Tu peux continuer à m'écrire ici : je relaie tes messages, et les recruteurs te répondront de la même façon.")] });
+}
+
+// ---------- Relais MP <-> ticket ----------
+
+function isRecruiter(member: GuildMember | null, cfg: TicketConfig): boolean {
+  if (!member) return false;
+  if (member.permissions.has(PermissionFlagsBits.ManageMessages)) return true;
+  return cfg.recruiterRoleIds.some((r) => member.roles.cache.has(r));
+}
+
+async function dmSay(user: User, color: ColorResolvable, desc: string, title?: string) {
+  const e = baseEmbed(color).setDescription(desc);
+  if (title) e.setTitle(title);
+  await user.send({ embeds: [e] }).catch(() => {});
+}
+
+// Message du candidat (MP) retranscrit dans son ticket.
+async function relayCandidateMessage(msg: Message, channelId: string, name: string): Promise<boolean> {
+  const chan = await msg.client.channels.fetch(channelId).catch(() => null);
+  if (!chan || chan.type !== ChannelType.GuildText) return false;
+  const embed = baseEmbed(BRAND.info)
+    .setAuthor({ name: `${name} (candidat)`, iconURL: msg.author.displayAvatarURL() })
+    .setDescription((msg.content || "*(sans texte)*").slice(0, 4000));
+  const files = [...msg.attachments.values()].map((a) => a.url);
+  if (files.length) embed.addFields({ name: "Pièces jointes", value: files.map((u) => `[fichier](${u})`).join("\n").slice(0, 1024) });
+  await (chan as TextChannel).send({ embeds: [embed] });
+  return true;
+}
+
+// Réponse d'un recruteur (!r nominatif / !a anonyme) envoyée au candidat en MP,
+// avec un miroir dans le ticket.
+async function relayRecruiterMessage(msg: Message, ownerId: string, body: string, anon: boolean) {
+  const nick = msg.member?.displayName ?? msg.author.username;
+  let delivered = true;
+  try {
+    const user = await msg.client.users.fetch(ownerId);
+    await user.send({ embeds: [baseEmbed(anon ? BRAND.muted : BRAND.green).setDescription(`**${anon ? "Recruteur" : nick}** : ${body}`.slice(0, 4000))] });
+  } catch { delivered = false; }
+  const mirror = baseEmbed(anon ? BRAND.muted : BRAND.green)
+    .setAuthor({ name: anon ? `${nick} (anonyme)` : nick, iconURL: msg.author.displayAvatarURL() })
+    .setDescription(body.slice(0, 4000));
+  if (!delivered) mirror.setFooter({ text: "Non reçu par le candidat (MP fermés)." });
+  await (msg.channel as TextChannel).send({ embeds: [mirror] }).catch(() => {});
+}
+
+// MP reçu par le bot : lancement de candidature ou retranscription.
+export async function handleDirectMessage(msg: Message) {
+  const content = (msg.content ?? "").trim();
+  if (/^candidatures?$/i.test(content)) {
+    const cfg = await mdt.ticketConfigGet();
+    if (!cfg.candidaturesOpen) { await dmSay(msg.author, BRAND.muted, "Les candidatures sont actuellement fermées. Reviens un peu plus tard."); return; }
+    const existing = await mdt.ticketByOwner(msg.author.id);
+    if (existing) { await dmSay(msg.author, BRAND.muted, "Tu as déjà une candidature en cours. Écris-moi simplement ici, je transmets aux recruteurs."); return; }
+    const ok = await startCandidatureDM(msg.author);
+    if (!ok) await dmSay(msg.author, BRAND.danger, "Je n'ai pas pu ouvrir la procédure. Vérifie que tes messages privés sont ouverts.");
+    return;
+  }
+  const ticket = await mdt.ticketByOwner(msg.author.id);
+  if (ticket) {
+    const ok = await relayCandidateMessage(msg, ticket.channelId, `${ticket.prenom} ${ticket.nom}`);
+    if (ok) await msg.react("📨").catch(() => {});
+    return;
+  }
+  await dmSay(msg.author, BRAND.muted, "Pour déposer une candidature à la Police Academy, envoie-moi simplement le mot **Candidature**.");
+}
+
+// Message dans un salon serveur : commandes recruteur !r / !a.
+export async function handleTicketChannelMessage(msg: Message) {
+  const m = /^!([ra])\b\s*([\s\S]*)$/i.exec(msg.content ?? "");
+  if (!m) return;
+  const ticket = await mdt.ticketByChannel(msg.channel.id);
+  if (!ticket) return;
+  const cfg = await mdt.ticketConfigGet();
+  const member = msg.member ?? (msg.guild ? await msg.guild.members.fetch(msg.author.id).catch(() => null) : null);
+  if (!isRecruiter(member, cfg)) { await msg.react("⛔").catch(() => {}); return; }
+  const body = m[2].trim();
+  if (!body) { await msg.react("❓").catch(() => {}); return; }
+  await relayRecruiterMessage(msg, ticket.ownerId, body, m[1].toLowerCase() === "a");
+  await msg.delete().catch(() => {});
+}
+
+// /validation : attribue le rôle Cadet au candidat du ticket.
+export async function validation(interaction: ChatInputCommandInteraction) {
+  const channel = interaction.channel;
+  if (!channel || channel.type !== ChannelType.GuildText || !interaction.guild) { await interaction.reply({ content: "À utiliser dans le salon d'un ticket.", flags: EPH }); return; }
+  const cfg = await mdt.ticketConfigGet();
+  if (!isRecruiter(interaction.member as GuildMember | null, cfg)) { await interaction.reply({ content: "Réservé aux recruteurs.", flags: EPH }); return; }
+  const ticket = await mdt.ticketByChannel(channel.id);
+  if (!ticket) { await interaction.reply({ content: "Ce salon n'est pas un ticket de candidature.", flags: EPH }); return; }
+  if (!cfg.cadetRoleId) { await interaction.reply({ content: "Le rôle Cadet n'est pas configuré (/candidatures puis Rôles).", flags: EPH }); return; }
+  await interaction.deferReply();
+  const member = await interaction.guild.members.fetch(ticket.ownerId).catch(() => null);
+  if (!member) { await interaction.editReply({ embeds: [baseEmbed(BRAND.danger).setDescription("Le candidat n'est pas (ou plus) sur le serveur.")] }); return; }
+  try { await member.roles.add(cfg.cadetRoleId); }
+  catch { await interaction.editReply({ embeds: [baseEmbed(BRAND.danger).setDescription("Attribution impossible : le bot a-t-il « Gérer les rôles » et un rôle placé au-dessus de Cadet ?")] }); return; }
+  await mdt.ticketLogEvent(channel.id, { type: "status", label: "Validé : rôle Cadet attribué", by: interaction.user.username });
+  await interaction.editReply({ embeds: [baseEmbed(BRAND.green).setTitle("✅ Candidat validé").setDescription(`<@${ticket.ownerId}> reçoit le rôle <@&${cfg.cadetRoleId}>.`)] });
+  await dmSay(member.user, BRAND.green, "Ta candidature est validée : tu rejoins la Police Academy en tant que Cadet. Bienvenue !", "🎉 Félicitations");
 }
 
 function closeModal(): ModalBuilder {
@@ -540,8 +715,21 @@ export async function sendTemplate(interaction: ChatInputCommandInteraction) {
   const t = await mdt.ticketTemplateByName(name);
   if (!t) { await interaction.reply({ content: `Aucun template nommé « ${name} ».`, flags: EPH }); return; }
   const ticket = interaction.channel && interaction.channel.type === ChannelType.GuildText ? await mdt.ticketByChannel(interaction.channelId) : null;
-  const ping = t.pingOwner && ticket ? `<@${ticket.ownerId}>` : undefined;
-  await interaction.reply({ ...(ping ? { content: ping } : {}), embeds: [buildEmbed(t.embed)] });
+  // Hors ticket : simple envoi de l'embed.
+  if (!ticket) { await interaction.reply({ embeds: [buildEmbed(t.embed)] }); return; }
+  // Dans un ticket : le template part au candidat en MP, comme une réponse !r.
+  await interaction.deferReply();
+  const member = interaction.member;
+  const nick = (member && "displayName" in member ? (member.displayName as string) : null) ?? interaction.user.username;
+  let delivered = true;
+  try {
+    const user = await interaction.client.users.fetch(ticket.ownerId);
+    await user.send({ embeds: [buildEmbed(t.embed)] });
+  } catch { delivered = false; }
+  const note = baseEmbed(BRAND.green).setAuthor({ name: nick, iconURL: interaction.user.displayAvatarURL() })
+    .setDescription(`Template envoyé au candidat : **${t.name}**`);
+  if (!delivered) note.setFooter({ text: "Non reçu par le candidat (MP fermés)." });
+  await interaction.editReply({ embeds: [buildEmbed(t.embed), note] });
 }
 
 export async function templateAutocomplete(interaction: Interaction) {
@@ -730,25 +918,9 @@ async function applyStatusFromSelect(interaction: AnySelectMenuInteraction) {
   if (!interaction.channel || interaction.channel.type !== ChannelType.GuildText) return;
   await mdt.ticketSetStatus(interaction.channel.id, status, interaction.user.username);
   await renameStatus(interaction.client, interaction.channel.id, status);
-  await syncCadetRole(interaction, interaction.channel.id, status);
   await interaction.update(statusPanel(status));
-}
-
-// Le rôle @Cadet est donné dès qu'un candidat est reçu (réussi / réussi mais
-// absent) et retiré s'il repasse en évaluation ou en échec. Nécessite que le
-// bot ait « Gérer les rôles » et un rôle placé au-dessus de @Cadet.
-async function syncCadetRole(interaction: AnySelectMenuInteraction, channelId: string, status: IntegStatus) {
-  try {
-    const cfg = await mdt.ticketConfigGet();
-    if (!cfg.cadetRoleId || !interaction.guild) return;
-    const ticket = await mdt.ticketByChannel(channelId);
-    if (!ticket) return;
-    const member = await interaction.guild.members.fetch(ticket.ownerId).catch(() => null);
-    if (!member) return;
-    const grant = status === "PASSED" || status === "PASSED_ABSENT";
-    if (grant) await member.roles.add(cfg.cadetRoleId).catch(() => {});
-    else await member.roles.remove(cfg.cadetRoleId).catch(() => {});
-  } catch (err) { console.error("[ticket] rôle cadet :", err); }
+  // Le rôle Cadet n'est PLUS attribué automatiquement au statut : il l'est
+  // uniquement par la commande /validation (geste explicite du recruteur).
 }
 
 // Réconciliation : crée les catégories manquantes (promos créées sur le site).
@@ -832,10 +1004,38 @@ export async function handleTicketInteraction(interaction: Interaction) {
     // Boutons
     if (interaction.isButton()) {
       const id = interaction.customId;
-      if (id === "tk|apply") {
+      // --- Candidature par MP ---
+      if (id === "tk|cand|panel") {
         const cfg = await mdt.ticketConfigGet();
         if (!cfg.candidaturesOpen) { await interaction.reply({ content: "Les candidatures sont actuellement fermées.", flags: EPH }); return; }
-        await interaction.showModal(applyModal()); return;
+        const existing = await mdt.ticketByOwner(interaction.user.id);
+        if (existing) { await interaction.reply({ content: "Tu as déjà une candidature en cours. Regarde tes messages privés.", flags: EPH }); return; }
+        const ok = await startCandidatureDM(interaction.user);
+        await interaction.reply({ content: ok ? "Je t'ai envoyé un message privé pour démarrer ta candidature." : "Je n'arrive pas à t'écrire en privé : ouvre tes messages privés puis réessaie.", flags: EPH });
+        return;
+      }
+      if (id === "tk|cand|start") {
+        const cfg = await mdt.ticketConfigGet();
+        if (!cfg.candidaturesOpen) { await interaction.reply({ content: "Les candidatures sont fermées.", flags: EPH }); return; }
+        const existing = await mdt.ticketByOwner(interaction.user.id);
+        if (existing) { await interaction.reply({ content: "Tu as déjà une candidature en cours.", flags: EPH }); return; }
+        await interaction.showModal(identityModal()); return;
+      }
+      if (id === "tk|cand|cancel") {
+        candidatures.delete(interaction.user.id);
+        await interaction.update({ embeds: [baseEmbed(BRAND.muted).setDescription("Candidature annulée. Renvoie **Candidature** quand tu veux recommencer.")], components: [] });
+        return;
+      }
+      if (id === "tk|cand|accept") {
+        const state = candidatures.get(interaction.user.id);
+        if (!state) { await interaction.reply({ content: "Ta session a expiré. Renvoie-moi **Candidature** pour recommencer.", flags: EPH }); return; }
+        const existing = await mdt.ticketByOwner(interaction.user.id);
+        if (existing) { await interaction.reply({ content: "Tu as déjà une candidature en cours.", flags: EPH }); return; }
+        // showModal doit être la réponse : on lance la création du ticket juste
+        // après (elle se termine avant que le candidat n'envoie la modale 2).
+        await interaction.showModal(dossierModal());
+        state.ticketPromise = createCandidatureTicket(interaction.client, interaction.user, state);
+        return;
       }
       if (id === "tk|close") { await interaction.showModal(closeModal()); return; }
       if (id === "tk|reopen") { await reopenTicket(interaction); return; }
@@ -865,6 +1065,7 @@ export async function handleTicketInteraction(interaction: Interaction) {
         drafts.set(interaction.user.id, d); await renderBuilder(interaction, d); return;
       }
       if (id === "tk|hub|nomen") { await interaction.showModal(nomenModal(await mdt.ticketConfigGet())); return; }
+      if (id === "tk|hub|conditions") { await interaction.showModal(conditionsModal(await mdt.ticketConfigGet())); return; }
       if (id === "tk|hub|roles") { await renderRoles(interaction); return; }
       if (id === "tk|hub|annoncetxt") {
         const cfg = await mdt.ticketConfigGet();
@@ -912,6 +1113,7 @@ export async function handleTicketInteraction(interaction: Interaction) {
     }
     if (interaction.isRoleSelectMenu()) {
       if (interaction.customId === "tk|cfg|promoroles") { await mdt.ticketConfigSet({ promoRoleIds: [...interaction.values] }); await renderRoles(interaction); return; }
+      if (interaction.customId === "tk|cfg|recruiterroles") { await mdt.ticketConfigSet({ recruiterRoleIds: [...interaction.values] }); await renderRoles(interaction); return; }
       if (interaction.customId === "tk|cfg|cadetrole") { await mdt.ticketConfigSet({ cadetRoleId: interaction.values[0] ?? null }); await renderRoles(interaction); return; }
     }
     if (interaction.isStringSelectMenu()) {
@@ -940,9 +1142,14 @@ export async function handleTicketInteraction(interaction: Interaction) {
     // Modals
     if (interaction.isModalSubmit()) {
       const id = interaction.customId;
-      if (id === "tk|m|apply") { await createTicket(interaction); return; }
+      if (id === "tk|cand|m1") { await handleIdentityModal(interaction); return; }
+      if (id === "tk|cand|m2") { await handleDossierModal(interaction); return; }
       if (id === "tk|m|close") { await softCloseTicket(interaction); return; }
       if (id === "tk|m|nomen") { await mdt.ticketConfigSet({ nomenclature: interaction.fields.getTextInputValue("nomen") }); await renderHub(interaction, true); return; }
+      if (id === "tk|m|conditions") {
+        await mdt.ticketConfigSet({ importantInfo: interaction.fields.getTextInputValue("important"), conditionsRP: interaction.fields.getTextInputValue("conditions") });
+        await renderHub(interaction, true); return;
+      }
       if (id === "tk|m|annonce") { await postAnnouncement(interaction); return; }
 
       // --- Sous-modales du constructeur d'embed ---

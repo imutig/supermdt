@@ -49,6 +49,7 @@ export const get = query({
       nom: a.nom,
       dateNaissance: a.dateNaissance ?? null,
       motivations: a.motivations ?? null,
+      experiences: a.experiences ?? null,
       promotionName: a.promotionName ?? null,
       integrationStatus: a.integrationStatus ?? null,
       finalStatus: a.finalStatus,

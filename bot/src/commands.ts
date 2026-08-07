@@ -8,7 +8,7 @@ import {
   presenceEmbed, dailyEmbed, overviewEmbed, weeklyHoursEmbed,
   vehicleEmbed, vehicleNotFoundEmbed, casierEmbed, absenceEmbed, errorEmbed,
 } from "./embeds.js";
-import { openHub, sendTemplate, renderTemplatesCmd, startTemplateBuilder, openAnnounce, integrer } from "./tickets.js";
+import { openHub, sendTemplate, renderTemplatesCmd, startTemplateBuilder, openAnnounce, integrer, validation } from "./tickets.js";
 
 // Définition des commandes slash. Chaque réponse est un embed élaboré.
 export const commands = [
@@ -46,6 +46,8 @@ export const commands = [
   new SlashCommandBuilder().setName("annonce").setDescription("Publier une annonce officielle de Police Academy")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
   new SlashCommandBuilder().setName("integrer").setDescription("Intégrer le candidat de ce ticket à la Police Academy")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages),
+  new SlashCommandBuilder().setName("validation").setDescription("Valider le candidat de ce ticket : lui attribuer le rôle Cadet")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages),
 ].map((c) => c.toJSON());
 
@@ -88,6 +90,7 @@ export async function handleCommand(interaction: ChatInputCommandInteraction) {
     }
     if (interaction.commandName === "annonce") { await openAnnounce(interaction); return; }
     if (interaction.commandName === "integrer") { await integrer(interaction); return; }
+    if (interaction.commandName === "validation") { await validation(interaction); return; }
     if (interaction.commandName === "enservice") {
       await interaction.deferReply();
       const agents = await mdt.agentsOnDuty();

@@ -116,6 +116,12 @@ function ArchiveDetail({ id, onClose }: { id: Id<"ticketArchives">; onClose: () 
                 <div className="whitespace-pre-wrap rounded-sm bg-surface p-[9px_11px] text-[12.5px] text-muted">{a.motivations}</div>
               </div>
             )}
+            {a.experiences && (
+              <div className="mt-[10px]">
+                <div className="mb-[3px] text-[10.5px] font-bold uppercase tracking-[0.07em] text-faint">Expériences professionnelles</div>
+                <div className="whitespace-pre-wrap rounded-sm bg-surface p-[9px_11px] text-[12.5px] text-muted">{a.experiences}</div>
+              </div>
+            )}
             {a.closeReason && (
               <div className="mt-[8px] text-[12px]"><span className="font-semibold text-danger">Raison de fermeture : </span><span className="text-muted">{a.closeReason}</span></div>
             )}

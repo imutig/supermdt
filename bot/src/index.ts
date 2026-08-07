@@ -1,14 +1,24 @@
-import { Client, GatewayIntentBits, Events } from "discord.js";
+import { Client, GatewayIntentBits, Partials, Events } from "discord.js";
 import { createServer } from "node:http";
 import { env } from "./env.js";
 import { registerCommands, handleCommand } from "./commands.js";
 import { startTasks } from "./tasks.js";
 import { handleRollcallButton } from "./rollcall.js";
-import { handleTicketInteraction, templateAutocomplete } from "./tickets.js";
+import { handleTicketInteraction, templateAutocomplete, handleDirectMessage, handleTicketChannelMessage } from "./tickets.js";
 
-// Le bot lit les événements de la Gateway (aucun intent privilégié requis :
-// il ne lit pas le contenu des messages, seulement les commandes slash).
-const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+// La candidature se fait par MP (le candidat écrit au bot) et les recruteurs
+// répondent avec !r / !a dans le ticket : il faut donc lire le contenu des
+// messages (intent privilégié « Message Content », à activer dans le portail
+// développeur Discord) et recevoir les MP (Partials.Channel pour les salons DM).
+const client = new Client({
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.DirectMessages,
+    GatewayIntentBits.MessageContent,
+  ],
+  partials: [Partials.Channel, Partials.Message],
+});
 
 client.once(Events.ClientReady, async (c) => {
   console.log(`[bot] connecté en tant que ${c.user.tag}`);
@@ -27,6 +37,18 @@ client.on(Events.InteractionCreate, async (interaction) => {
   // Toutes les interactions du système de tickets (boutons, menus, modals).
   const cid = "customId" in interaction ? (interaction.customId as string) : "";
   if (cid.startsWith("tk|")) await handleTicketInteraction(interaction);
+});
+
+// Messages : MP des candidats (candidature + retranscription) et !r / !a des
+// recruteurs dans les tickets.
+client.on(Events.MessageCreate, async (msg) => {
+  try {
+    if (msg.author.bot) return;
+    if (!msg.guild) { await handleDirectMessage(msg); return; }
+    if (msg.content.startsWith("!")) await handleTicketChannelMessage(msg);
+  } catch (err) {
+    console.error("[message] erreur :", err);
+  }
 });
 
 client.on(Events.Error, (err) => console.error("[bot] erreur client :", err));

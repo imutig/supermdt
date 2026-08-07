@@ -415,6 +415,19 @@ export const presenceMessageSet = mutation({
 
 // ============ Système de tickets de candidature ============
 
+const DEFAULT_IMPORTANT = [
+  "Les informations fournies doivent être exactes et vérifiables. Toute fausse déclaration entraîne la disqualification.",
+  "La soumission du formulaire ne garantit pas l'admission.",
+  "Une confirmation sera envoyée après validation de votre dossier.",
+  "Les candidats retenus passeront un entretien, une évaluation écrite, une étude du manuel, une évaluation psychologique et un examen final.",
+].join("\n");
+const DEFAULT_CONDITIONS = [
+  "21 ans minimum",
+  "Nationalité américaine ou permis de travail valide",
+  "Casier judiciaire vierge",
+  "Permis de conduire valide",
+  "Disponibilité pour suivre la formation complète et résider à proximité",
+].join("\n");
 const DEFAULT_ANNOUNCE = "Présence obligatoire à toutes les personnes ayant le grade de {cadet}. Merci de nous prévenir à l'avance en cas de non-venue ; toute personne absente sans avoir prévenu sera démise de sa fonction d'apprenant.\n*(Prévenez de votre absence dans votre ticket, sinon blacklist automatique - sauf candidat en vacances !)*";
 const DEFAULT_ITEMS = "Une tenue décente\nUne coiffure et une barbe taillées et réglementaires\nDe la nourriture et de la boisson";
 
@@ -465,6 +478,9 @@ function ticketDefaults(cfg: Doc<"ticketConfig"> | null) {
     renameNick: cfg?.renameNick ?? true,
     promoRoleIds: cfg?.promoRoleIds ?? [],
     cadetRoleId: cfg?.cadetRoleId ?? null,
+    recruiterRoleIds: cfg?.recruiterRoleIds ?? [],
+    importantInfo: cfg?.importantInfo ?? DEFAULT_IMPORTANT,
+    conditionsRP: cfg?.conditionsRP ?? DEFAULT_CONDITIONS,
     announceEmbed: cfg?.announceEmbed ?? defaultAnnounceEmbed(cfg),
   };
 }
@@ -496,6 +512,9 @@ export const ticketConfigSet = mutation({
       renameNick: v.optional(v.boolean()),
       promoRoleIds: v.optional(v.array(v.string())),
       cadetRoleId: v.optional(v.union(v.string(), v.null())),
+      recruiterRoleIds: v.optional(v.array(v.string())),
+      importantInfo: v.optional(v.string()),
+      conditionsRP: v.optional(v.string()),
       announceEmbed: v.optional(richEmbedArg),
       announceText: v.optional(v.string()),
       announceItems: v.optional(v.string()),
@@ -555,16 +574,28 @@ export const ticketTemplateByName = query({
 export const ticketCreate = mutation({
   args: {
     secret: v.string(), channelId: v.string(), ownerId: v.string(), ownerName: v.string(),
-    prenom: v.string(), nom: v.string(), dateNaissance: v.optional(v.string()), motivations: v.optional(v.string()),
+    prenom: v.string(), nom: v.string(), dateNaissance: v.optional(v.string()),
+    motivations: v.optional(v.string()), experiences: v.optional(v.string()),
   },
   handler: async (ctx, a) => {
     assertBot(a.secret);
     await ctx.db.insert("tickets", {
       channelId: a.channelId, ownerId: a.ownerId, ownerName: a.ownerName,
-      prenom: a.prenom, nom: a.nom, dateNaissance: a.dateNaissance, motivations: a.motivations,
+      prenom: a.prenom, nom: a.nom, dateNaissance: a.dateNaissance,
+      motivations: a.motivations, experiences: a.experiences,
       status: "OPEN", createdAt: Date.now(),
       events: [{ at: Date.now(), type: "created", label: `Candidature ouverte par ${a.ownerName}`, by: a.ownerName }],
     });
+  },
+});
+
+// Complète le dossier après la seconde modale (motivations + expériences).
+export const ticketSetDossier = mutation({
+  args: { secret: v.string(), channelId: v.string(), motivations: v.optional(v.string()), experiences: v.optional(v.string()) },
+  handler: async (ctx, { secret, channelId, motivations, experiences }) => {
+    assertBot(secret);
+    const t = await ctx.db.query("tickets").withIndex("by_channel", (q) => q.eq("channelId", channelId)).first();
+    if (t) await ctx.db.patch(t._id, { motivations, experiences });
   },
 });
 
@@ -626,7 +657,8 @@ export const ticketFull = query({
     const promo = t.promotionId ? await ctx.db.get(t.promotionId) : null;
     return {
       channelId: t.channelId, ownerId: t.ownerId, ownerName: t.ownerName,
-      prenom: t.prenom, nom: t.nom, dateNaissance: t.dateNaissance ?? null, motivations: t.motivations ?? null,
+      prenom: t.prenom, nom: t.nom, dateNaissance: t.dateNaissance ?? null,
+      motivations: t.motivations ?? null, experiences: t.experiences ?? null,
       status: t.status, integrationStatus: t.integrationStatus ?? null,
       promotionName: promo?.name ?? null, closeReason: t.closeReason ?? null,
       events: t.events ?? [],
@@ -650,7 +682,7 @@ export const ticketArchiveSave = mutation({
     await ctx.db.insert("ticketArchives", {
       channelId: t.channelId, channelName,
       ownerId: t.ownerId, ownerName: t.ownerName, prenom: t.prenom, nom: t.nom,
-      dateNaissance: t.dateNaissance, motivations: t.motivations,
+      dateNaissance: t.dateNaissance, motivations: t.motivations, experiences: t.experiences,
       promotionName: promo?.name, integrationStatus: t.integrationStatus,
       finalStatus: t.status, closeReason: t.closeReason,
       events: t.events ?? [], messages,

@@ -1289,7 +1289,12 @@ export default defineSchema({
     renameNick: v.optional(v.boolean()), // renommer le pseudo Discord en Prénom Nom RP
     // Rôles qui voient les catégories de promo (créées par le bot).
     promoRoleIds: v.optional(v.array(v.string())),
-    cadetRoleId: v.optional(v.string()), // rôle @Cadet pingué dans l'annonce
+    cadetRoleId: v.optional(v.string()), // rôle @Cadet (ping annonce + attribué par /validation)
+    // Rôles recruteurs : seuls à voir les tickets et à utiliser !r / !a / /validation.
+    recruiterRoleIds: v.optional(v.array(v.string())),
+    // Textes configurables de la candidature par MP (une ligne par élément).
+    importantInfo: v.optional(v.string()), // « Informations importantes »
+    conditionsRP: v.optional(v.string()), // « Conditions RP » à accepter
     // Annonce officielle : embed riche avec placeholders ({date} {heure} {lieu}
     // {promo} {cadet}) substitués à l'envoi.
     announceEmbed: v.optional(richEmbed),
@@ -1320,6 +1325,7 @@ export default defineSchema({
     nom: v.string(),
     dateNaissance: v.optional(v.string()),
     motivations: v.optional(v.string()),
+    experiences: v.optional(v.string()), // expériences professionnelles RP
     status: v.union(v.literal("OPEN"), v.literal("CLOSED")),
     // Intégration à la PA : EVALUATING 🟡 · FAILED 🔴 · PASSED 🟢 · PASSED_ABSENT 🟠
     integrationStatus: v.optional(v.union(v.literal("EVALUATING"), v.literal("FAILED"), v.literal("PASSED"), v.literal("PASSED_ABSENT"))),
@@ -1345,6 +1351,7 @@ export default defineSchema({
     nom: v.string(),
     dateNaissance: v.optional(v.string()),
     motivations: v.optional(v.string()),
+    experiences: v.optional(v.string()),
     promotionName: v.optional(v.string()),
     integrationStatus: v.optional(v.string()),
     finalStatus: v.string(),

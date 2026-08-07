@@ -81,8 +81,10 @@ export const mdt = {
     client.mutation(anyApi.bot.ticketTemplateUpsert, { secret: env.botSecret, ...t }) as Promise<string>,
   ticketTemplateDelete: (id: string) => client.mutation(anyApi.bot.ticketTemplateDelete, { secret: env.botSecret, id }) as Promise<void>,
   ticketTemplateByName: (name: string) => client.query(anyApi.bot.ticketTemplateByName, { secret: env.botSecret, name }) as Promise<TicketTemplate | null>,
-  ticketCreate: (t: { channelId: string; ownerId: string; ownerName: string; prenom: string; nom: string; dateNaissance?: string; motivations?: string }) =>
+  ticketCreate: (t: { channelId: string; ownerId: string; ownerName: string; prenom: string; nom: string; dateNaissance?: string; motivations?: string; experiences?: string }) =>
     client.mutation(anyApi.bot.ticketCreate, { secret: env.botSecret, ...t }) as Promise<void>,
+  ticketSetDossier: (channelId: string, motivations?: string, experiences?: string) =>
+    client.mutation(anyApi.bot.ticketSetDossier, { secret: env.botSecret, channelId, motivations, experiences }) as Promise<void>,
   ticketByChannel: (channelId: string) => client.query(anyApi.bot.ticketByChannel, { secret: env.botSecret, channelId }) as Promise<TicketOwner | null>,
   ticketClose: (channelId: string, reason?: string, by?: string) => client.mutation(anyApi.bot.ticketClose, { secret: env.botSecret, channelId, reason, by }) as Promise<{ ownerId: string; ownerName: string } | null>,
   ticketReopen: (channelId: string, by?: string) => client.mutation(anyApi.bot.ticketReopen, { secret: env.botSecret, channelId, by }) as Promise<{ ownerId: string } | null>,
@@ -107,7 +109,7 @@ export type TicketEvent = { at: number; type: string; label: string; by?: string
 export type ArchiveMessage = { authorId: string; authorName: string; bot?: boolean; content: string; at: number; attachments?: string[] };
 export type TicketFull = {
   channelId: string; ownerId: string; ownerName: string;
-  prenom: string; nom: string; dateNaissance: string | null; motivations: string | null;
+  prenom: string; nom: string; dateNaissance: string | null; motivations: string | null; experiences: string | null;
   status: string; integrationStatus: IntegStatus | null;
   promotionName: string | null; closeReason: string | null;
   events: TicketEvent[]; createdAt: number;
@@ -128,6 +130,8 @@ export type TicketConfig = {
   panelEmbed: RichEmbed; openEmbed: RichEmbed;
   nomenclature: string; renameNick: boolean;
   promoRoleIds: string[]; cadetRoleId: string | null;
+  recruiterRoleIds: string[];
+  importantInfo: string; conditionsRP: string;
   announceEmbed: RichEmbed;
 };
 export type TicketTemplate = { _id: string; name: string; pingOwner: boolean; embed: RichEmbed };
