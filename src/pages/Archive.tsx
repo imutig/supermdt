@@ -9,21 +9,44 @@ import { AgentTag } from "@/components/common/AgentTag";
 import { EmptyState } from "@/components/common/EmptyState";
 import { SkeletonRows } from "@/components/common/Skeleton";
 
-type Kind = "casier" | "citation" | "mandat" | "report" | "agent";
+type Kind =
+  | "casier" | "citation" | "mandat" | "report" | "complaint" | "vehicle" | "weapon"
+  | "saisie" | "discipline" | "deposition" | "note" | "relation" | "fleetVehicle"
+  | "citizen" | "agent";
 const KIND_LABEL: Record<Kind, string> = {
   casier: "Casier",
   citation: "Contravention",
   mandat: "Mandat",
   report: "Rapport",
+  complaint: "Plainte",
+  vehicle: "Véhicule",
+  weapon: "Arme",
+  saisie: "Saisie",
+  discipline: "Sanction",
+  deposition: "Déposition",
+  note: "Note",
+  relation: "Lien familial",
+  fleetVehicle: "Véhicule LSPD",
+  citizen: "Citoyen",
   agent: "Compte agent",
 };
 const FILTERS: { key: Kind | "all"; label: string }[] = [
   { key: "all", label: "Tout" },
-  { key: "agent", label: "Comptes agents" },
-  { key: "casier", label: "Casier" },
+  { key: "citizen", label: "Citoyens" },
+  { key: "vehicle", label: "Véhicules" },
+  { key: "weapon", label: "Armes" },
+  { key: "casier", label: "Casiers" },
   { key: "citation", label: "Contraventions" },
   { key: "mandat", label: "Mandats" },
   { key: "report", label: "Rapports" },
+  { key: "complaint", label: "Plaintes" },
+  { key: "deposition", label: "Dépositions" },
+  { key: "saisie", label: "Saisies" },
+  { key: "discipline", label: "Sanctions" },
+  { key: "note", label: "Notes" },
+  { key: "relation", label: "Liens" },
+  { key: "fleetVehicle", label: "Flotte" },
+  { key: "agent", label: "Comptes agents" },
 ];
 
 export function Archive() {
@@ -55,7 +78,7 @@ export function Archive() {
           const n =
             f.key === "all"
               ? counts
-                ? counts.casier + counts.citation + counts.mandat + counts.report
+                ? Object.values(counts).reduce((a, b) => a + (b ?? 0), 0)
                 : undefined
               : counts?.[f.key];
           return (
@@ -123,7 +146,7 @@ export function Archive() {
                 >
                   <RotateCcw className="h-[14px] w-[14px]" /> {r.kind === "agent" ? "Réactiver" : "Restaurer"}
                 </button>
-                {canPurge && r.kind !== "agent" &&
+                {canPurge && r.kind !== "agent" && r.kind !== "citizen" &&
                   (purging === r._id ? (
                     <span className="flex items-center gap-1">
                       <button

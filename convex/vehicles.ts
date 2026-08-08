@@ -22,10 +22,10 @@ export const byOwner = query({
   handler: async (ctx, { citizenId }) => {
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "vehicules.view");
-    const vehicles = await ctx.db
+    const vehicles = (await ctx.db
       .query("vehicles")
       .withIndex("by_owner", (q) => q.eq("ownerId", citizenId))
-      .collect();
+      .collect()).filter((veh) => !veh.deletedAt);
     const out = [];
     for (const veh of vehicles) {
       const flagLinks = await ctx.db
@@ -64,6 +64,7 @@ export const list = query({
     } else {
       rows = await ctx.db.query("vehicles").order("desc").take(300);
     }
+    rows = rows.filter((veh) => !veh.deletedAt);
     const out = [];
     for (const veh of rows) {
       const owner = veh.ownerId ? await ctx.db.get(veh.ownerId) : null;
@@ -101,6 +102,7 @@ export const page = query({
     const res = await ctx.db.query("vehicles").order("desc").paginate(paginationOpts);
     const rows = [];
     for (const veh of res.page) {
+      if (veh.deletedAt) continue;
       const owner = veh.ownerId ? await ctx.db.get(veh.ownerId) : null;
       const flagLinks = await ctx.db.query("vehicleFlags").withIndex("by_vehicle", (qq) => qq.eq("vehicleId", veh._id)).collect();
       const flags: string[] = [];
@@ -118,7 +120,7 @@ export const get = query({
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "vehicules.view");
     const veh = await ctx.db.get(id);
-    if (!veh) return null;
+    if (!veh || veh.deletedAt) return null;
     const owner = veh.ownerId ? await ctx.db.get(veh.ownerId) : null;
     const flagLinks = await ctx.db
       .query("vehicleFlags")
@@ -174,7 +176,7 @@ export const pickerList = query({
   handler: async (ctx) => {
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "vehicules.view");
-    const rows = await ctx.db.query("vehicles").order("desc").take(300);
+    const rows = (await ctx.db.query("vehicles").order("desc").take(300)).filter((v) => !v.deletedAt);
     return rows.map((v) => ({ _id: v._id, label: `${v.plaque} · ${v.modele ?? ""}`.trim() }));
   },
 });
@@ -244,10 +246,10 @@ export const search = query({
       .replace(/[̀-ͯ]/g, "")
       .toLowerCase()
       .trim();
-    const rows = await ctx.db
+    const rows = (await ctx.db
       .query("vehicles")
       .withSearchIndex("search", (s) => s.search("searchText", needle))
-      .take(10);
+      .take(10)).filter((veh) => !veh.deletedAt);
     const out = [];
     for (const veh of rows) {
       const owner = veh.ownerId ? await ctx.db.get(veh.ownerId) : null;
@@ -345,14 +347,11 @@ export const remove = mutation({
   handler: async (ctx, { id }) => {
     const agent = await requireAgent(ctx);
     const veh = await ctx.db.get(id);
-    if (!veh) throw new Error("Véhicule introuvable.");
+    if (!veh || veh.deletedAt) throw new Error("Véhicule introuvable.");
     await requireOwnOrPermission(ctx, agent, veh.createdBy, "vehicules.edit");
-    const flags = await ctx.db
-      .query("vehicleFlags")
-      .withIndex("by_vehicle", (q) => q.eq("vehicleId", id))
-      .collect();
-    for (const f of flags) await ctx.db.delete(f._id);
-    await ctx.db.delete(id);
+    // Archivage (soft-delete) : le véhicule et ses flags sont conservés,
+    // restaurables ; la purge définitive (owner) se fait depuis les Archives.
+    await ctx.db.patch(id, { deletedAt: Date.now(), deletedBy: agent._id });
     await writeAudit(ctx, agent, {
       action: "vehicle.delete",
       resourceType: "vehicle",

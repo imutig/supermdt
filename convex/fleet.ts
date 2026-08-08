@@ -36,10 +36,11 @@ export const list = query({
   handler: async (ctx, { q }) => {
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "flotte.view");
-    const rows =
+    const rows = (
       q && q.trim()
         ? await ctx.db.query("fleetVehicles").withSearchIndex("search", (s) => s.search("searchText", norm(q))).take(50)
-        : await ctx.db.query("fleetVehicles").order("desc").take(200);
+        : await ctx.db.query("fleetVehicles").order("desc").take(200)
+    ).filter((v) => !v.deletedAt);
     return rows.map(shape);
   },
 });
@@ -50,7 +51,7 @@ export const get = query({
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "flotte.view");
     const v = await ctx.db.get(id);
-    return v ? shape(v) : null;
+    return v && !v.deletedAt ? shape(v) : null;
   },
 });
 
@@ -60,10 +61,11 @@ export const pick = query({
   handler: async (ctx, { q }) => {
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "dispatch.self");
-    const rows =
+    const rows = (
       q && q.trim()
         ? await ctx.db.query("fleetVehicles").withSearchIndex("search", (s) => s.search("searchText", norm(q))).take(20)
-        : await ctx.db.query("fleetVehicles").order("desc").take(20);
+        : await ctx.db.query("fleetVehicles").order("desc").take(20)
+    ).filter((v) => !v.deletedAt);
     // Véhicules déjà pris par une sortie ouverte : signalés, pas masqués.
     const openTrips = await ctx.db.query("fleetTrips").withIndex("by_open", (t) => t.eq("endedAt", undefined)).collect();
     const busy = new Set(openTrips.map((t) => t.fleetVehicleId as string));
@@ -134,9 +136,10 @@ export const remove = mutation({
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "flotte.delete");
     const v = await ctx.db.get(id);
+    if (!v || v.deletedAt) return;
     // Les sorties conservent leur snapshot (roofNumber, vehicleLabel) : leur
-    // historique reste lisible après la suppression du véhicule.
-    await ctx.db.delete(id);
+    // historique reste lisible après l'archivage du véhicule.
+    await ctx.db.patch(id, { deletedAt: Date.now(), deletedBy: agent._id });
     await writeAudit(ctx, agent, { action: "flotte.delete", resourceType: "fleetVehicle", resourceId: id, resourceLabel: v ? `${v.modele} · ${v.plaque}` : "" });
   },
 });

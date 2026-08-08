@@ -8,11 +8,11 @@ export const byCitizen = query({
   handler: async (ctx, { citizenId }) => {
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "depositions.view");
-    const rows = await ctx.db
+    const rows = (await ctx.db
       .query("depositions")
       .withIndex("by_citizen", (q) => q.eq("citizenId", citizenId))
       .order("desc")
-      .collect();
+      .collect()).filter((d) => !d.deletedAt);
     const out = [];
     for (const d of rows) {
       let linkLabel = "-";
@@ -92,9 +92,9 @@ export const remove = mutation({
   handler: async (ctx, { id }) => {
     const agent = await requireAgent(ctx);
     const d = await ctx.db.get(id);
-    if (!d) return;
+    if (!d || d.deletedAt) return;
     await requireOwnOrPermission(ctx, agent, d.createdBy, "depositions.delete");
-    await ctx.db.delete(id);
+    await ctx.db.patch(id, { deletedAt: Date.now(), deletedBy: agent._id });
     await writeAudit(ctx, agent, { action: "deposition.delete", resourceType: "deposition", resourceId: id });
   },
 });

@@ -454,7 +454,11 @@ export default defineSchema({
     searchText: v.string(), // toit + plaque + modèle, normalisés (recherche)
     active: v.boolean(),
     createdBy: v.optional(v.id("agents")),
-  }).searchIndex("search", { searchField: "searchText" }),
+    deletedAt: v.optional(v.number()),
+    deletedBy: v.optional(v.id("agents")),
+  })
+    .index("by_deleted", ["deletedAt"])
+    .searchIndex("search", { searchField: "searchText" }),
 
   // Une sortie = une patrouille roulant avec un véhicule LSPD donné. Changer de
   // véhicule clôt la sortie courante et en ouvre une nouvelle.
@@ -688,10 +692,13 @@ export default defineSchema({
     mergedInto: v.optional(v.id("citizens")),
     createdBy: v.optional(v.id("agents")),
     searchText: v.string(),
+    deletedAt: v.optional(v.number()),
+    deletedBy: v.optional(v.id("agents")),
   })
     .index("by_empreinte", ["empreinte"])
     .index("by_nom", ["nom"])
     .index("by_telephone", ["telephone"])
+    .index("by_deleted", ["deletedAt"])
     .searchIndex("search", { searchField: "searchText" }),
 
   // Liens de parenté entre citoyens enregistrés (arbre généalogique).
@@ -702,9 +709,12 @@ export default defineSchema({
     kind: v.union(v.literal("PARENT"), v.literal("SPOUSE"), v.literal("SIBLING")),
     byAgentId: v.optional(v.id("agents")),
     at: v.number(),
+    deletedAt: v.optional(v.number()),
+    deletedBy: v.optional(v.id("agents")),
   })
     .index("by_from", ["fromId"])
-    .index("by_to", ["toId"]),
+    .index("by_to", ["toId"])
+    .index("by_deleted", ["deletedAt"]),
 
   licenseTypes: defineTable({ name: v.string(), position: v.number(), active: v.boolean() }),
 
@@ -759,9 +769,12 @@ export default defineSchema({
     photoUrls: v.optional(v.array(v.string())),
     searchText: v.string(),
     createdBy: v.optional(v.id("agents")),
+    deletedAt: v.optional(v.number()),
+    deletedBy: v.optional(v.id("agents")),
   })
     .index("by_plaque", ["plaque"])
     .index("by_owner", ["ownerId"])
+    .index("by_deleted", ["deletedAt"])
     .searchIndex("search", { searchField: "searchText" }),
 
   vehicleFlagTypes: defineTable({
@@ -967,7 +980,11 @@ export default defineSchema({
     tone: v.optional(v.string()),
     byAgentId: v.optional(v.id("agents")),
     at: v.number(),
-  }).index("by_citizen", ["citizenId"]),
+    deletedAt: v.optional(v.number()),
+    deletedBy: v.optional(v.id("agents")),
+  })
+    .index("by_citizen", ["citizenId"])
+    .index("by_deleted", ["deletedAt"]),
 
   // ============ PROTOCOLES / SOP ============
   protocols: defineTable({
@@ -1014,7 +1031,11 @@ export default defineSchema({
     imageUrls: v.optional(v.array(v.string())),
     byAgentId: v.optional(v.id("agents")),
     at: v.number(),
-  }).index("by_agent", ["agentId"]),
+    deletedAt: v.optional(v.number()),
+    deletedBy: v.optional(v.id("agents")),
+  })
+    .index("by_agent", ["agentId"])
+    .index("by_deleted", ["deletedAt"]),
 
   // ============ RESSOURCES (livret cadets, §9) ============
   resourceCategories: defineTable({
@@ -1124,7 +1145,11 @@ export default defineSchema({
     at: v.number(),
     closedAt: v.optional(v.number()),
     closedBy: v.optional(v.id("agents")),
-  }).index("by_active", ["active"]),
+    deletedAt: v.optional(v.number()),
+    deletedBy: v.optional(v.id("agents")),
+  })
+    .index("by_active", ["active"])
+    .index("by_deleted", ["deletedAt"]),
 
   // ============ CONTRAVENTIONS (§10.9) ============
   citations: defineTable({
@@ -1229,9 +1254,12 @@ export default defineSchema({
     at: v.number(),
     createdBy: v.optional(v.id("agents")),
     searchText: v.string(),
+    deletedAt: v.optional(v.number()),
+    deletedBy: v.optional(v.id("agents")),
   })
     .index("by_owner", ["ownerId"])
     .index("by_serial", ["serial"])
+    .index("by_deleted", ["deletedAt"])
     .searchIndex("search", { searchField: "searchText" }),
 
   // ============ DÉPOSITIONS (item 7) ============
@@ -1245,7 +1273,11 @@ export default defineSchema({
     body: v.string(),
     at: v.number(),
     createdBy: v.optional(v.id("agents")),
-  }).index("by_citizen", ["citizenId"]),
+    deletedAt: v.optional(v.number()),
+    deletedBy: v.optional(v.id("agents")),
+  })
+    .index("by_citizen", ["citizenId"])
+    .index("by_deleted", ["deletedAt"]),
 
   // ============ FICHE DE RENSEIGNEMENT AGENT (item 11) ============
   agentSheets: defineTable({
@@ -1265,7 +1297,11 @@ export default defineSchema({
     quantity: v.number(),
     objectType: v.string(), // nom du type OU "Autre"
     otherLabel: v.optional(v.string()), // saisi librement si "Autre"
-  }).index("by_at", ["at"]),
+    deletedAt: v.optional(v.number()),
+    deletedBy: v.optional(v.id("agents")),
+  })
+    .index("by_at", ["at"])
+    .index("by_deleted", ["deletedAt"]),
 
   // ============ BOT : tickets de candidature (Police Academy) ============
   // Configuration du système, singleton. Tout est réglable depuis Discord via la

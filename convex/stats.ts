@@ -66,8 +66,8 @@ export const recompute = internalMutation({
     // ---- Compteurs globaux ----
     const agentsActive = (await ctx.db.query("agents").withIndex("by_status", (q) => q.eq("status", "ACTIVE")).collect()).filter((a) => !a.isOwner).length;
     const citizensCount = (await ctx.db.query("citizens").take(5000)).filter((c) => c.status === "ACTIVE").length;
-    const vehiclesCount = (await ctx.db.query("vehicles").take(5000)).length;
-    const weaponsCount = (await ctx.db.query("weapons").take(5000)).length;
+    const vehiclesCount = (await ctx.db.query("vehicles").take(5000)).filter((v) => !v.deletedAt).length;
+    const weaponsCount = (await ctx.db.query("weapons").take(5000)).filter((w) => !w.deletedAt).length;
 
     // ---- Arrestations (casier) ----
     const casiers = await ctx.db.query("casierEntries").order("desc").take(2000);

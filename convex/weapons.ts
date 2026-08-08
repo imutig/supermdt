@@ -40,13 +40,14 @@ export const list = query({
   handler: async (ctx, { q }) => {
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "armes.view");
-    const rows =
+    const rows = (
       q && q.trim()
         ? await ctx.db
             .query("weapons")
             .withSearchIndex("search", (s) => s.search("searchText", norm(q)))
             .take(50)
-        : await ctx.db.query("weapons").order("desc").take(100);
+        : await ctx.db.query("weapons").order("desc").take(100)
+    ).filter((w) => !w.deletedAt);
     const out = [];
     for (const w of rows) out.push(await shape(ctx, w, agent._id));
     return out;
@@ -61,7 +62,7 @@ export const page = query({
     await requirePermission(ctx, agent, "armes.view");
     const res = await ctx.db.query("weapons").order("desc").paginate(paginationOpts);
     const rows = [];
-    for (const w of res.page) rows.push(await shape(ctx, w));
+    for (const w of res.page) { if (w.deletedAt) continue; rows.push(await shape(ctx, w)); }
     return { ...res, page: rows };
   },
 });
@@ -71,10 +72,10 @@ export const byOwner = query({
   handler: async (ctx, { citizenId }) => {
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "armes.view");
-    const rows = await ctx.db
+    const rows = (await ctx.db
       .query("weapons")
       .withIndex("by_owner", (q) => q.eq("ownerId", citizenId))
-      .collect();
+      .collect()).filter((w) => !w.deletedAt);
     const out = [];
     for (const w of rows) out.push(await shape(ctx, w, agent._id));
     return out;
@@ -87,7 +88,7 @@ export const pickerList = query({
   handler: async (ctx) => {
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "armes.view");
-    const rows = await ctx.db.query("weapons").order("desc").take(200);
+    const rows = (await ctx.db.query("weapons").order("desc").take(200)).filter((w) => !w.deletedAt);
     return rows.map((w) => ({ _id: w._id, label: `${w.typeName ?? ""} ${w.modele} · ${w.serial}`.trim() }));
   },
 });
@@ -144,9 +145,9 @@ export const remove = mutation({
   handler: async (ctx, { id }) => {
     const agent = await requireAgent(ctx);
     const w = await ctx.db.get(id);
-    if (!w) return;
+    if (!w || w.deletedAt) return;
     await requireOwnOrPermission(ctx, agent, w.createdBy, "armes.delete");
-    await ctx.db.delete(id);
+    await ctx.db.patch(id, { deletedAt: Date.now(), deletedBy: agent._id });
     await writeAudit(ctx, agent, { action: "weapon.delete", resourceType: "weapon", resourceId: id, resourceLabel: w ? `${w.modele} ${w.serial}` : "" });
     await touchStats(ctx);
   },

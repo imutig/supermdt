@@ -9,7 +9,7 @@ export const list = query({
   handler: async (ctx) => {
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "discipline.view");
-    const rows = await ctx.db.query("disciplines").order("desc").take(60);
+    const rows = (await ctx.db.query("disciplines").order("desc").take(60)).filter((d) => !d.deletedAt);
     const out = [];
     for (const d of rows) {
       const ag = await ctx.db.get(d.agentId);
@@ -48,11 +48,11 @@ export const byAgent = query({
   handler: async (ctx, { agentId }) => {
     const viewer = await requireAgent(ctx);
     await requirePermission(ctx, viewer, "discipline.view");
-    const rows = await ctx.db
+    const rows = (await ctx.db
       .query("disciplines")
       .withIndex("by_agent", (q) => q.eq("agentId", agentId))
       .order("desc")
-      .collect();
+      .collect()).filter((d) => !d.deletedAt);
     const out = [];
     for (const d of rows) {
       const by = d.byAgentId ? await ctx.db.get(d.byAgentId) : null;
@@ -84,7 +84,9 @@ export const remove = mutation({
   handler: async (ctx, { id }) => {
     const actor = await requireAgent(ctx);
     await requirePermission(ctx, actor, "discipline.delete");
-    await ctx.db.delete(id);
+    const d = await ctx.db.get(id);
+    if (!d || d.deletedAt) return;
+    await ctx.db.patch(id, { deletedAt: Date.now(), deletedBy: actor._id });
     await writeAudit(ctx, actor, { action: "discipline.remove", resourceType: "discipline", resourceId: id });
   },
 });

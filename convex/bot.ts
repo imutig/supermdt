@@ -301,7 +301,7 @@ export const vehicleByPlate = query({
     const p = plaque.trim().toUpperCase().replace(/\s+/g, "");
     if (!p) return null;
     const all = await ctx.db.query("vehicles").collect();
-    const veh = all.find((v) => v.plaque.toUpperCase().replace(/\s+/g, "") === p);
+    const veh = all.find((v) => !v.deletedAt && v.plaque.toUpperCase().replace(/\s+/g, "") === p);
     if (!veh) return null;
     const owner = veh.ownerId ? await ctx.db.get(veh.ownerId) : null;
     const flags = [];

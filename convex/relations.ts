@@ -16,12 +16,12 @@ async function node(ctx: QueryCtx, id: Id<"citizens">): Promise<Node | null> {
 // Parents directs d'un citoyen (rows PARENT où toId = citizen).
 async function parentsOf(ctx: QueryCtx, id: Id<"citizens">) {
   const rows = await ctx.db.query("citizenRelations").withIndex("by_to", (q) => q.eq("toId", id)).collect();
-  return rows.filter((r) => r.kind === "PARENT");
+  return rows.filter((r) => r.kind === "PARENT" && !r.deletedAt);
 }
 // Enfants directs (rows PARENT où fromId = citizen).
 async function childrenOf(ctx: QueryCtx, id: Id<"citizens">) {
   const rows = await ctx.db.query("citizenRelations").withIndex("by_from", (q) => q.eq("fromId", id)).collect();
-  return rows.filter((r) => r.kind === "PARENT");
+  return rows.filter((r) => r.kind === "PARENT" && !r.deletedAt);
 }
 
 // Arbre familial : grands-parents, parents, fratrie, conjoints, self, enfants, petits-enfants.
@@ -73,7 +73,7 @@ export const family = query({
     const sibRows = [
       ...(await ctx.db.query("citizenRelations").withIndex("by_from", (q) => q.eq("fromId", citizenId)).collect()),
       ...(await ctx.db.query("citizenRelations").withIndex("by_to", (q) => q.eq("toId", citizenId)).collect()),
-    ].filter((r) => r.kind === "SIBLING");
+    ].filter((r) => r.kind === "SIBLING" && !r.deletedAt);
     for (const sr of sibRows) {
       const otherId = sr.fromId === citizenId ? sr.toId : sr.fromId;
       if (!siblingMap.has(otherId)) {
@@ -87,7 +87,7 @@ export const family = query({
     const spouseRows = [
       ...(await ctx.db.query("citizenRelations").withIndex("by_from", (q) => q.eq("fromId", citizenId)).collect()),
       ...(await ctx.db.query("citizenRelations").withIndex("by_to", (q) => q.eq("toId", citizenId)).collect()),
-    ].filter((r) => r.kind === "SPOUSE");
+    ].filter((r) => r.kind === "SPOUSE" && !r.deletedAt);
     const spouses = [];
     for (const sr of spouseRows) {
       const otherId = sr.fromId === citizenId ? sr.toId : sr.fromId;
@@ -145,8 +145,8 @@ export const remove = mutation({
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "citoyens.edit");
     const r = await ctx.db.get(relationId);
-    if (!r) return;
-    await ctx.db.delete(relationId);
+    if (!r || r.deletedAt) return;
+    await ctx.db.patch(relationId, { deletedAt: Date.now(), deletedBy: agent._id });
     await writeAudit(ctx, agent, { action: "citizen.relation_remove", resourceType: "citizen", resourceId: r.toId });
   },
 });

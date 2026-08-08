@@ -10,7 +10,7 @@ export const list = query({
   handler: async (ctx) => {
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "saisies.view");
-    const rows = await ctx.db.query("saisies").withIndex("by_at").order("desc").collect();
+    const rows = (await ctx.db.query("saisies").withIndex("by_at").order("desc").collect()).filter((s) => !s.deletedAt);
     return rows.map((s) => ({
       _id: s._id,
       at: s.at,
@@ -77,11 +77,11 @@ export const remove = mutation({
   handler: async (ctx, { id }) => {
     const agent = await requireAgent(ctx);
     const s = await ctx.db.get(id);
-    if (!s) return;
+    if (!s || s.deletedAt) return;
     // Le créateur peut supprimer sa propre saisie ; sinon il faut la permission dédiée.
     if (s.agentId !== agent._id && !(await can(ctx, agent, "saisies.delete")))
       throw new Error("Suppression non autorisée.");
-    await ctx.db.delete(id);
+    await ctx.db.patch(id, { deletedAt: Date.now(), deletedBy: agent._id });
     await writeAudit(ctx, agent, { action: "saisie.delete", resourceType: "saisie", resourceId: id });
   },
 });
