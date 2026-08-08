@@ -1,9 +1,10 @@
 import { useEffect, type ReactNode } from "react";
 import { X } from "lucide-react";
 
-// Boîte de dialogue centrée, partagée par les créations et les confirmations.
-// Toute création passe par une modale (ou une page dédiée) : jamais de champ de
-// saisie greffé directement sur la page d'origine.
+// Panneau latéral (side panel) qui s'ouvre depuis la droite, comme les fiches du
+// MDT. C'est le format unique de tous les modaux : créations, configurations,
+// confirmations. Toute création passe par ce panneau (ou une page dédiée),
+// jamais par un champ greffé sur la page d'origine.
 export function Modal({
   title,
   icon,
@@ -17,9 +18,10 @@ export function Modal({
   onClose: () => void;
   children: ReactNode;
   footer?: ReactNode;
+  /** Largeur du panneau (px). Plafonnée à 96vw sur petit écran. */
   width?: number;
 }) {
-  // Échap ferme : la modale couvre l'écran, c'est le réflexe attendu.
+  // Échap ferme : le panneau couvre le contenu, c'est le réflexe attendu.
   useEffect(() => {
     const h = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", h);
@@ -29,13 +31,13 @@ export function Modal({
   return (
     <div
       onClick={onClose}
-      className="fixed inset-0 z-[70] flex items-center justify-center p-4"
+      className="fixed inset-0 z-[70] flex justify-end"
       style={{ background: "var(--scrim)", backdropFilter: "blur(6px)", animation: "mdtFade .15s ease" }}
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="mdt-pop flex max-h-[86vh] flex-col rounded-card border border-border-strong bg-elev shadow-[0_24px_70px_rgba(0,0,0,.4)]"
-        style={{ width, maxWidth: "94vw" }}
+        className="flex h-full flex-col border-l border-border-strong bg-elev shadow-[-24px_0_70px_rgba(0,0,0,.3)]"
+        style={{ width, maxWidth: "96vw", animation: "mdtSlide .26s cubic-bezier(.16,1,.3,1)" }}
       >
         <div className="flex flex-shrink-0 items-center gap-[10px] border-b border-border px-5 py-4">
           {icon && <span className="flex-shrink-0 text-accent">{icon}</span>}
