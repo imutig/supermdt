@@ -6,6 +6,7 @@ import { ShieldCheck, ChevronRight, Settings, Plus, Trash2, ChevronUp, ChevronDo
 import { api } from "@/lib/api";
 import type { Id } from "convex/_generated/dataModel";
 import { useCan } from "@/hooks/useCan";
+import { useMe } from "@/hooks/useMe";
 import { useToast } from "@/providers/toast";
 import { EmptyState } from "@/components/common/EmptyState";
 import { SkeletonRows } from "@/components/common/Skeleton";
@@ -19,19 +20,23 @@ export function LspaFto() {
   const list = useQuery(api.fto.listOffi1);
   const navigate = useNavigate();
   const { can } = useCan();
-  const { academyOnly } = usePortals();
+  const { academyMember } = usePortals();
+  const me = useMe();
   const [configuring, setConfiguring] = useState(false);
 
-  if (academyOnly) return <Navigate to="/lspa" replace />;
+  // Réservé à la Formation Terrain : Officier 2+, académie, owner.
+  if (me === undefined) return null;
+  if (!me?.fieldTrainingAccess) return <Navigate to="/lspa" replace />;
+  const canManage = me.agent.isOwner || academyMember || can("fto.manage");
 
   return (
     <div className="p-[22px_26px]" style={{ animation: "mdtFade .2s ease" }}>
       <div className="mb-[18px] flex items-end gap-3">
         <div className="flex-1">
-          <h1 className="m-0 text-[21px] font-bold tracking-tight">Formation terrain</h1>
+          <h1 className="m-0 text-[21px] font-bold tracking-tight">Formation Terrain</h1>
           <div className="mt-[3px] text-[13px] text-muted">Les Officiers 1 en formation, encadrés par leur tuteur jusqu'au passage Officier 2.</div>
         </div>
-        {can("fto.manage") && <Button onClick={() => setConfiguring(true)}><Settings className="h-[15px] w-[15px]" /> Configurer la fiche</Button>}
+        {canManage && <Button onClick={() => setConfiguring(true)}><Settings className="h-[15px] w-[15px]" /> Configurer la fiche</Button>}
       </div>
 
       {configuring && <FtoConfigModal onClose={() => setConfiguring(false)} />}

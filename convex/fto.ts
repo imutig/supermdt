@@ -2,7 +2,7 @@ import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
-import { requireAgent, requirePermission, can } from "./rbac";
+import { requireAgent, can } from "./rbac";
 
 // FTO : formation terrain des Officiers 1, encadrés par un tuteur (officier
 // référent) jusqu'à leur passage Officier 2. Fiche configurable, remplie au fil
@@ -20,13 +20,50 @@ async function sheetDoc(ctx: QueryCtx | MutationCtx, agentId: Id<"agents">) {
   return await ctx.db.query("ftoSheets").withIndex("by_agent", (q) => q.eq("agentId", agentId)).unique();
 }
 
-// Qui peut modifier : le tuteur de la fiche, ou un détenteur de fto.edit.
-async function assertEdit(ctx: MutationCtx, viewer: Doc<"agents">, agentId: Id<"agents">) {
-  if (viewer.isOwner) return;
+// Membre de l'académie (instructeur / cadre) : porte un grade d'académie.
+function isAcademy(viewer: Doc<"agents">): boolean {
+  return !!viewer.academyRankId;
+}
+
+// Officier 2 ou plus : grade opérationnel (non académie, non extérieur) placé
+// au-dessus du grade d'entrée (Officier 1).
+async function isOffi2Plus(ctx: QueryCtx | MutationCtx, viewer: Doc<"agents">): Promise<boolean> {
+  if (!viewer.gradeId) return false;
+  const g = await ctx.db.get(viewer.gradeId);
+  if (!g || g.academyOnly || g.external) return false;
+  const entry = await entryGrade(ctx);
+  return !!entry && g.position > entry.position;
+}
+
+// Accès à la Formation Terrain : Officier 2+, académie, ou owner.
+async function hasFieldTraining(ctx: QueryCtx | MutationCtx, viewer: Doc<"agents">): Promise<boolean> {
+  return viewer.isOwner || isAcademy(viewer) || (await can(ctx, viewer, "fto.view")) || (await isOffi2Plus(ctx, viewer));
+}
+
+// Modifier la FICHE (critères, briefing, connaissances) : le tuteur référent, un
+// membre de l'académie, un détenteur de fto.edit, ou l'owner.
+async function canEditSheet(ctx: QueryCtx | MutationCtx, viewer: Doc<"agents">, agentId: Id<"agents">): Promise<boolean> {
+  if (viewer.isOwner || isAcademy(viewer)) return true;
   const sheet = await sheetDoc(ctx, agentId);
-  if (sheet?.tutorId && sheet.tutorId === viewer._id) return;
-  if (await can(ctx, viewer, "fto.edit")) return;
-  throw new Error("Vous ne pouvez pas modifier cette fiche FTO.");
+  if (sheet?.tutorId && sheet.tutorId === viewer._id) return true;
+  return await can(ctx, viewer, "fto.edit");
+}
+async function assertEdit(ctx: MutationCtx, viewer: Doc<"agents">, agentId: Id<"agents">) {
+  if (!(await canEditSheet(ctx, viewer, agentId))) throw new Error("Seul le tuteur FTO ou l'académie peut modifier cette fiche.");
+}
+
+// Ajouter un RAPPORT DE PATROUILLE : tout Officier 2+ (en plus de ceux qui
+// peuvent éditer la fiche).
+async function canAddPatrol(ctx: QueryCtx | MutationCtx, viewer: Doc<"agents">, agentId: Id<"agents">): Promise<boolean> {
+  return (await canEditSheet(ctx, viewer, agentId)) || (await isOffi2Plus(ctx, viewer));
+}
+
+// Gérer le MODÈLE (critères configurables) et l'encadrement : académie, owner,
+// ou fto.manage.
+async function assertManage(ctx: QueryCtx | MutationCtx, viewer: Doc<"agents">) {
+  if (viewer.isOwner || isAcademy(viewer)) return;
+  if (await can(ctx, viewer, "fto.manage")) return;
+  throw new Error("Réservé à l'encadrement de l'académie.");
 }
 
 // ---------- Liste des Officiers 1 ----------
@@ -42,7 +79,7 @@ export const listOffi1 = query({
     if (viewerGrade?.academyOnly) return [];
     const grade = await entryGrade(ctx);
     if (!grade) return [];
-    const hasFtoView = viewer.isOwner || (await can(ctx, viewer, "fto.view"));
+    const hasFtoView = await hasFieldTraining(ctx, viewer);
     const items = (await ctx.db.query("ftoItems").withIndex("by_position").collect()).filter((i) => i.active !== false);
     const totalItems = items.length;
 
@@ -87,9 +124,9 @@ export const sheet = query({
     const agent = await ctx.db.get(agentId);
     if (!agent) return null;
     const doc = await sheetDoc(ctx, agentId);
-    // Accès : référent ou fto.view. Sinon on renvoie une fiche verrouillée
-    // plutôt que d'erreur (l'agent a pu arriver là depuis la liste).
-    const allowed = viewer.isOwner || doc?.tutorId === viewer._id || (await can(ctx, viewer, "fto.view"));
+    // Accès : Officier 2+, académie, référent, ou fto.view. Sinon fiche
+    // verrouillée plutôt qu'une erreur (arrivée depuis la liste).
+    const allowed = (await hasFieldTraining(ctx, viewer)) || doc?.tutorId === viewer._id;
     if (!allowed) return { denied: true as const };
     const tutor = doc?.tutorId ? await ctx.db.get(doc.tutorId) : null;
 
@@ -115,7 +152,8 @@ export const sheet = query({
       startAt: doc?.startAt ?? null,
       items: scored,
       patrols,
-      canEdit: viewer.isOwner || (doc?.tutorId === viewer._id) || (await can(ctx, viewer, "fto.edit")),
+      canEdit: await canEditSheet(ctx, viewer, agentId),
+      canPatrol: await canAddPatrol(ctx, viewer, agentId),
     };
   },
 });
@@ -151,7 +189,7 @@ export const setHeader = mutation({
   handler: async (ctx, { agentId, tutorId, startAt }) => {
     const viewer = await requireAgent(ctx);
     // Attribuer un tuteur / la date d'entrée est un acte d'encadrement.
-    await requirePermission(ctx, viewer, "fto.manage");
+    await assertManage(ctx, viewer);
     const doc = await sheetDoc(ctx, agentId);
     const patch = {
       ...(tutorId !== undefined ? { tutorId: tutorId ?? undefined } : {}),
@@ -168,7 +206,7 @@ export const addPatrol = mutation({
   args: { agentId: v.id("agents"), startAt: v.number(), endAt: v.optional(v.number()), lacunes: v.optional(v.string()), progres: v.optional(v.string()), general: v.optional(v.string()) },
   handler: async (ctx, a) => {
     const viewer = await requireAgent(ctx);
-    await assertEdit(ctx, viewer, a.agentId);
+    if (!(await canAddPatrol(ctx, viewer, a.agentId))) throw new Error("Réservé aux Officiers 2 et plus.");
     await ctx.db.insert("ftoPatrols", {
       agentId: a.agentId,
       startAt: a.startAt,
@@ -189,7 +227,7 @@ export const removePatrol = mutation({
     const viewer = await requireAgent(ctx);
     const p = await ctx.db.get(patrolId);
     if (!p) return;
-    if (p.authorId !== viewer._id) await requirePermission(ctx, viewer, "fto.manage");
+    if (p.authorId !== viewer._id) await assertManage(ctx, viewer);
     await ctx.db.delete(patrolId);
   },
 });
@@ -199,7 +237,7 @@ export const tutors = query({
   args: {},
   handler: async (ctx) => {
     const viewer = await requireAgent(ctx);
-    await requirePermission(ctx, viewer, "fto.manage");
+    await assertManage(ctx, viewer);
     const grades = new Map((await ctx.db.query("grades").collect()).map((g) => [g._id as string, g]));
     return (await ctx.db.query("agents").withIndex("by_status", (q) => q.eq("status", "ACTIVE")).collect())
       .filter((a) => !a.isOwner && a.gradeId && !grades.get(a.gradeId as string)?.academyOnly)
@@ -214,7 +252,7 @@ export const listItems = query({
   args: {},
   handler: async (ctx) => {
     const viewer = await requireAgent(ctx);
-    await requirePermission(ctx, viewer, "fto.view");
+    if (!(await hasFieldTraining(ctx, viewer))) return [];
     return (await ctx.db.query("ftoItems").withIndex("by_position").collect()).map((it) => ({
       _id: it._id, section: it.section, label: it.label, kind: it.kind, active: it.active !== false, position: it.position,
     }));
@@ -230,7 +268,7 @@ export const saveItem = mutation({
   },
   handler: async (ctx, a) => {
     const viewer = await requireAgent(ctx);
-    await requirePermission(ctx, viewer, "fto.manage");
+    await assertManage(ctx, viewer);
     if (!a.section.trim() || !a.label.trim()) throw new Error("Section et libellé obligatoires.");
     const base = { section: a.section.trim(), label: a.label.trim(), kind: a.kind };
     if (a.itemId) { await ctx.db.patch(a.itemId, base); return a.itemId; }
@@ -244,7 +282,7 @@ export const removeItem = mutation({
   args: { itemId: v.id("ftoItems") },
   handler: async (ctx, { itemId }) => {
     const viewer = await requireAgent(ctx);
-    await requirePermission(ctx, viewer, "fto.manage");
+    await assertManage(ctx, viewer);
     for (const e of await ctx.db.query("ftoEntries").collect()) if (e.itemId === itemId) await ctx.db.delete(e._id);
     await ctx.db.delete(itemId);
   },
@@ -254,7 +292,7 @@ export const moveItem = mutation({
   args: { itemId: v.id("ftoItems"), direction: v.union(v.literal("up"), v.literal("down")) },
   handler: async (ctx, { itemId, direction }) => {
     const viewer = await requireAgent(ctx);
-    await requirePermission(ctx, viewer, "fto.manage");
+    await assertManage(ctx, viewer);
     const all = await ctx.db.query("ftoItems").withIndex("by_position").collect();
     const i = all.findIndex((x) => x._id === itemId);
     const j = direction === "up" ? i - 1 : i + 1;
@@ -268,7 +306,7 @@ export const seedDefault = mutation({
   args: {},
   handler: async (ctx) => {
     const viewer = await requireAgent(ctx);
-    await requirePermission(ctx, viewer, "fto.manage");
+    await assertManage(ctx, viewer);
     if (await ctx.db.query("ftoItems").first()) return "exists" as const;
     const tp = (section: string, labels: string[]) => labels.map((label) => ({ section, label, kind: "CHECK_TP" as const }));
     const items: Array<{ section: string; label: string; kind: "SCALE" | "CHECK_TP" | "CHECK" }> = [

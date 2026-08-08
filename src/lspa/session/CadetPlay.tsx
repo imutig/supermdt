@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { useNavigate } from "react-router-dom";
 import {
@@ -36,13 +36,20 @@ export function CadetPlay({ sessionId }: { sessionId: Id<"quizSessions"> }) {
   const navigate = useNavigate();
   const toast = useToast();
   const [counting, setCounting] = useState(false);
+  const countTriggered = useRef(false);
 
   const status = data?.session.status;
   const startedAt = data?.session.startedAt ?? null;
 
-  // Bascule automatiquement en décompte quand le départ est imminent.
+  // Décompte au démarrage : uniquement si le cadet est présent au lancement
+  // (départ imminent ou tout juste passé), pas s'il rejoint une session déjà
+  // en cours. Une fois lancé, il ne se relance pas.
   useEffect(() => {
-    if (status === "RUNNING" && startedAt && startedAt > Date.now()) setCounting(true);
+    if (status !== "RUNNING" || !startedAt || countTriggered.current) return;
+    if (Date.now() - startedAt < 1500) {
+      countTriggered.current = true;
+      setCounting(true);
+    }
   }, [status, startedAt]);
 
   if (data === undefined) return <LoadingScreen label="Chargement de la session…" />;
@@ -110,8 +117,8 @@ export function CadetPlay({ sessionId }: { sessionId: Id<"quizSessions"> }) {
       </Centered>
     );
   }
-  if (counting && startedAt && startedAt > Date.now()) {
-    return <div className="h-full"><Countdown to={startedAt} onDone={() => setCounting(false)} /></div>;
+  if (counting) {
+    return <div className="h-full"><Countdown seconds={3} onDone={() => setCounting(false)} /></div>;
   }
   if (!data.questions) return <LoadingScreen label="Préparation de l'épreuve…" />;
 
@@ -150,7 +157,15 @@ function Runner({
   const [i, setI] = useState(0);
   const [reviewing, setReviewing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  // Questions chronométrées déjà consommées : une fois qu'on les quitte, elles
+  // se verrouillent (plus de réponse, plus de nouveau chrono en y revenant).
+  const [locked, setLocked] = useState<Set<string>>(() => new Set());
   const timers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+
+  const lockIfTimed = useCallback((idx: number) => {
+    const qq = questions[idx];
+    if (qq?.timeLimitSeconds) setLocked((prev) => (prev.has(qq._id) ? prev : new Set(prev).add(qq._id)));
+  }, [questions]);
 
   const time = useCountdownLabel(endsAt);
   const q = questions[i];
@@ -180,6 +195,7 @@ function Runner({
   }
 
   function setChoice(questionId: string, choiceId: string, multiple: boolean) {
+    if (locked.has(questionId)) return;
     setAnswers((prev) => {
       const cur = prev[questionId] ?? { choiceIds: [], text: "" };
       let choiceIds: string[];
@@ -195,6 +211,7 @@ function Runner({
   }
 
   function setText(questionId: string, text: string) {
+    if (locked.has(questionId)) return;
     setAnswers((prev) => {
       const cur = prev[questionId] ?? { choiceIds: [], text: "" };
       const next = { ...cur, text };
@@ -217,7 +234,9 @@ function Runner({
     if (r !== undefined && !auto) toast.success("Copie rendue.");
   }
 
-  const goNext = () => (i < questions.length - 1 ? setI(i + 1) : setReviewing(true));
+  const goNext = () => { lockIfTimed(i); if (i < questions.length - 1) setI(i + 1); else setReviewing(true); };
+  const goPrev = () => { lockIfTimed(i); setI(Math.max(0, i - 1)); };
+  const goReview = () => { lockIfTimed(i); setReviewing(true); };
 
   return (
     <div className="flex h-full flex-col">
@@ -261,6 +280,7 @@ function Runner({
               key={q._id}
               q={q}
               answer={answers[q._id] ?? { choiceIds: [], text: "" }}
+              readOnly={locked.has(q._id)}
               onChoice={(cid) => setChoice(q._id, cid, q.multiple)}
               onText={(t) => setText(q._id, t)}
               onExpire={goNext}
@@ -271,14 +291,14 @@ function Runner({
 
       {!reviewing && (
         <div className="flex flex-shrink-0 items-center gap-2 border-t border-border bg-surface px-[20px] py-[12px]">
-          <Button onClick={() => setI(Math.max(0, i - 1))} disabled={i === 0}>
+          <Button onClick={goPrev} disabled={i === 0}>
             <ChevronLeft className="h-[15px] w-[15px]" /> Précédent
           </Button>
           <div className="flex-1" />
           {i < questions.length - 1 ? (
             <Button variant="primary" onClick={goNext}>Suivant <ChevronRight className="h-[15px] w-[15px]" /></Button>
           ) : (
-            <Button variant="primary" onClick={() => setReviewing(true)}>Vérifier mes réponses <ChevronRight className="h-[15px] w-[15px]" /></Button>
+            <Button variant="primary" onClick={goReview}>Vérifier mes réponses <ChevronRight className="h-[15px] w-[15px]" /></Button>
           )}
         </div>
       )}
@@ -287,17 +307,23 @@ function Runner({
 }
 
 export function QuestionCard({
-  q, answer, onChoice, onText, onExpire,
+  q, answer, onChoice, onText, onExpire, readOnly = false,
 }: {
   q: PlayQuestion;
   answer: LocalAnswer;
   onChoice: (choiceId: string) => void;
   onText: (text: string) => void;
   onExpire: () => void;
+  readOnly?: boolean;
 }) {
   return (
     <div style={{ animation: "mdtPopIn .25s ease" }}>
-      {q.timeLimitSeconds && <QuestionTimer key={q._id} seconds={q.timeLimitSeconds} onExpire={onExpire} />}
+      {q.timeLimitSeconds != null && !readOnly && <QuestionTimer key={q._id} seconds={q.timeLimitSeconds} onExpire={onExpire} />}
+      {q.timeLimitSeconds != null && readOnly && (
+        <div className="mb-[14px] flex items-center gap-[6px] rounded-[8px] border border-border bg-surface-2 px-[11px] py-[7px] text-[12px] font-semibold text-faint">
+          <Clock className="h-[13px] w-[13px]" /> Temps écoulé pour cette question. Votre réponse est verrouillée.
+        </div>
+      )}
 
       <div className="mb-[6px] flex items-center gap-[8px] text-[11px] font-bold uppercase tracking-[0.08em] text-faint">
         <span>{q.kind === "TEXT" ? "Réponse libre" : q.multiple ? "Plusieurs réponses" : "Une réponse"}</span>
@@ -319,9 +345,10 @@ export function QuestionCard({
         <textarea
           value={answer.text}
           onChange={(e) => onText(e.target.value)}
+          readOnly={readOnly}
           rows={6}
           placeholder="Rédigez votre réponse…"
-          className="w-full rounded-sm border border-border bg-surface-2 p-3 text-[14px] leading-[1.55] outline-none focus:border-accent"
+          className="w-full rounded-sm border border-border bg-surface-2 p-3 text-[14px] leading-[1.55] outline-none focus:border-accent disabled:opacity-60"
         />
       ) : (
         <div className="flex flex-col gap-[9px]">
@@ -331,7 +358,8 @@ export function QuestionCard({
               <button
                 key={c._id}
                 onClick={() => onChoice(c._id)}
-                className="mdt-press flex items-center gap-[12px] rounded-[11px] border p-[13px_15px] text-left"
+                disabled={readOnly}
+                className="mdt-press flex items-center gap-[12px] rounded-[11px] border p-[13px_15px] text-left disabled:cursor-default"
                 style={{
                   borderColor: picked ? "var(--accent)" : "var(--border)",
                   background: picked ? "var(--accent-soft)" : "var(--surface)",
@@ -351,6 +379,7 @@ export function QuestionCard({
               <textarea
                 value={answer.text}
                 onChange={(e) => onText(e.target.value)}
+                readOnly={readOnly}
                 rows={3}
                 placeholder="Expliquez votre choix…"
                 className="w-full rounded-sm border border-border bg-surface-2 p-3 text-[13.5px] outline-none focus:border-accent"

@@ -82,7 +82,7 @@ export function FtoSheet() {
             </div>
           </section>
 
-          <PatrolSection agentId={agentId} patrols={data.patrols} canEdit={edit} />
+          <PatrolSection agentId={agentId} patrols={data.patrols} canEdit={edit} canAdd={data.canPatrol} />
         </div>
 
         {/* Colonne droite : checklists théorie/pratique + validations */}
@@ -196,10 +196,11 @@ function TutorModal({ agentId, currentStart, onClose }: { agentId: Id<"agents">;
   );
 }
 
-function PatrolSection({ agentId, patrols, canEdit }: {
+function PatrolSection({ agentId, patrols, canEdit, canAdd }: {
   agentId: Id<"agents">;
   patrols: { _id: string; startAt: number; endAt: number | null; lacunes: string; progres: string; general: string; authorName: string; mine: boolean }[];
   canEdit: boolean;
+  canAdd: boolean;
 }) {
   const remove = useMutation(api.fto.removePatrol);
   const [adding, setAdding] = useState(false);
@@ -208,7 +209,7 @@ function PatrolSection({ agentId, patrols, canEdit }: {
       <div className="flex items-center gap-2 border-b border-border px-[15px] py-[9px]" style={{ background: "color-mix(in srgb, var(--accent) 8%, var(--surface))" }}>
         <Radio className="h-[14px] w-[14px] text-accent" />
         <span className="flex-1 text-[12px] font-bold uppercase tracking-[0.09em]">Rapports de patrouille</span>
-        {canEdit && <Button onClick={() => setAdding(true)} className="!py-[4px] !text-[11.5px]"><Plus className="h-[13px] w-[13px]" /> Ajouter</Button>}
+        {canAdd && <Button onClick={() => setAdding(true)} className="!py-[4px] !text-[11.5px]"><Plus className="h-[13px] w-[13px]" /> Ajouter</Button>}
       </div>
       {patrols.length === 0 ? (
         <div className="px-[15px] py-[16px] text-center text-[12px] text-faint">Aucune patrouille enregistrée.</div>

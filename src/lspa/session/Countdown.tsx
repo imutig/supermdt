@@ -1,13 +1,16 @@
 import { useEffect, useState } from "react";
 
-// Décompte 3-2-1 avant le départ de l'épreuve. Purement visuel : le vrai
-// démarrage est l'horodatage `to` fixé par le serveur, partagé par tous.
-export function Countdown({ to, onDone }: { to: number; onDone: () => void }) {
-  const [left, setLeft] = useState(() => Math.max(0, Math.ceil((to - Date.now()) / 1000)));
+// Décompte 3-2-1 avant le départ de l'épreuve. Purement visuel : il tourne côté
+// client sur une durée fixe (l'épreuve est à rythme libre, pas besoin d'une
+// synchro à la milliseconde). Fixer la fin au montage garantit un vrai 3-2-1,
+// sans être rogné par la latence de propagation du départ serveur.
+export function Countdown({ seconds = 3, onDone }: { seconds?: number; onDone: () => void }) {
+  const [end] = useState(() => Date.now() + seconds * 1000);
+  const [left, setLeft] = useState(seconds);
 
   useEffect(() => {
     const id = setInterval(() => {
-      const remaining = to - Date.now();
+      const remaining = end - Date.now();
       if (remaining <= 0) {
         clearInterval(id);
         setLeft(0);
@@ -15,9 +18,9 @@ export function Countdown({ to, onDone }: { to: number; onDone: () => void }) {
       } else {
         setLeft(Math.ceil(remaining / 1000));
       }
-    }, 120);
+    }, 100);
     return () => clearInterval(id);
-  }, [to, onDone]);
+  }, [end, onDone]);
 
   return (
     <div className="flex h-full flex-col items-center justify-center gap-[18px]" style={{ animation: "mdtFade .2s ease" }}>
@@ -30,7 +33,7 @@ export function Countdown({ to, onDone }: { to: number; onDone: () => void }) {
         {left > 0 ? left : "GO"}
       </div>
       <div className="h-[3px] w-[180px] overflow-hidden rounded-full bg-surface-2">
-        <div className="h-full rounded-full bg-accent" style={{ width: `${((3 - Math.min(left, 3)) / 3) * 100}%`, transition: "width .3s linear" }} />
+        <div className="h-full rounded-full bg-accent" style={{ width: `${((seconds - Math.min(left, seconds)) / seconds) * 100}%`, transition: "width .3s linear" }} />
       </div>
     </div>
   );

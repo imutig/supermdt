@@ -4,6 +4,7 @@ import { Home, Users, GraduationCap, ClipboardList, History, ShieldCheck, Compas
 import type { LucideIcon } from "lucide-react";
 import { useApp } from "@/providers/app-state";
 import { useCan } from "@/hooks/useCan";
+import { useMe } from "@/hooks/useMe";
 import { usePortals } from "@/hooks/usePortals";
 import { usePrefs } from "@/hooks/usePrefs";
 import { MDT_ENABLED } from "@/lib/features";
@@ -14,7 +15,7 @@ import { PageBoundary } from "@/components/shell/PageBoundary";
 // Enveloppe du portail de l'académie. Structure volontairement proche du MDT
 // (barre haute, rail de navigation, contenu) pour ne pas dérouter, mais avec sa
 // propre navigation : les deux surfaces n'ont rien de commun au-delà du compte.
-type Item = { to: string; label: string; icon: LucideIcon; perm?: string; hideForCadet?: boolean };
+type Item = { to: string; label: string; icon: LucideIcon; perm?: string; hideForCadet?: boolean; requireField?: boolean };
 
 const ITEMS: Item[] = [
   { to: "/lspa", label: "Accueil", icon: Home, perm: "lspa.view" },
@@ -22,9 +23,8 @@ const ITEMS: Item[] = [
   { to: "/lspa/promotions", label: "Promotions", icon: GraduationCap, perm: "lspa.effectif.view" },
   { to: "/lspa/candidatures", label: "Candidatures", icon: Archive, perm: "lspa.effectif.view" },
   { to: "/lspa/quiz", label: "Quiz", icon: ClipboardList, perm: "lspa.view" },
-  // Formation terrain : ouverte à tout agent assermenté (les référents y
-  // accèdent), mais jamais aux cadets.
-  { to: "/lspa/fto", label: "Formation terrain", icon: Compass, hideForCadet: true },
+  // Formation Terrain : visible à partir d'Officier 2 (et pour l'académie).
+  { to: "/lspa/fto", label: "Formation Terrain", icon: Compass, requireField: true },
   { to: "/lspa/historique", label: "Historique", icon: History, perm: "lspa.session.manage" },
   // Même administration que le MDT (validation des comptes, invitations,
   // permissions…), accessible ici pour l'encadrement de l'académie.
@@ -37,11 +37,15 @@ export function LspaShell() {
   const { mode, toggleMode, exitFocus } = useApp();
   const { can, ready } = useCan();
   const { canMdt, academyOnly } = usePortals();
+  const me = useMe();
 
   const routeKey = location.pathname;
   useEffect(() => { exitFocus(); }, [routeKey, exitFocus]);
 
-  const items = ITEMS.filter((i) => (!i.perm || !ready || can(i.perm)) && !(i.hideForCadet && academyOnly));
+  const items = ITEMS.filter((i) =>
+    (!i.perm || !ready || can(i.perm))
+    && !(i.hideForCadet && academyOnly)
+    && !(i.requireField && !me?.fieldTrainingAccess));
 
   return (
     <div className="relative flex h-full flex-col overflow-hidden">
