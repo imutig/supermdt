@@ -23,12 +23,13 @@ const KIND = v.union(
   v.literal("note"),
   v.literal("relation"),
   v.literal("fleetVehicle"),
+  v.literal("interview"),
   v.literal("citizen"),
   v.literal("agent"),
 );
 type Kind =
   | "casier" | "citation" | "mandat" | "report" | "complaint" | "vehicle" | "weapon"
-  | "saisie" | "discipline" | "deposition" | "note" | "relation" | "fleetVehicle"
+  | "saisie" | "discipline" | "deposition" | "note" | "relation" | "fleetVehicle" | "interview"
   | "citizen" | "agent";
 
 async function citizenName(ctx: QueryCtx, id: Id<"citizens"> | undefined | null) {
@@ -110,6 +111,10 @@ const SOFT: Record<Exclude<Kind, "citizen" | "agent">, SoftConfig> = {
   fleetVehicle: {
     table: "fleetVehicles",
     describe: async (_ctx, v2) => ({ label: `${v2.roofNumber} · ${v2.plaque}`, summary: `Véhicule LSPD - ${v2.modele}` }),
+  },
+  interview: {
+    table: "interviews",
+    describe: async (_ctx, i) => ({ label: `${i.prenom} ${i.nom}`, summary: `Entretien${i.score != null ? ` - ${i.score}%` : ""}` }),
   },
 };
 

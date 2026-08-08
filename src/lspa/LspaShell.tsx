@@ -1,6 +1,6 @@
 import { Suspense, useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { Home, Users, GraduationCap, ClipboardList, History, ShieldCheck, Compass, ArrowLeftRight, Sun, Moon, Archive } from "lucide-react";
+import { Home, Users, GraduationCap, ClipboardList, History, ShieldCheck, Compass, ArrowLeftRight, Sun, Moon, Archive, ClipboardCheck } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useApp } from "@/providers/app-state";
 import { useCan } from "@/hooks/useCan";
@@ -15,7 +15,7 @@ import { PageBoundary } from "@/components/shell/PageBoundary";
 // Enveloppe du portail de l'académie. Structure volontairement proche du MDT
 // (barre haute, rail de navigation, contenu) pour ne pas dérouter, mais avec sa
 // propre navigation : les deux surfaces n'ont rien de commun au-delà du compte.
-type Item = { to: string; label: string; icon: LucideIcon; perm?: string; hideForCadet?: boolean; requireField?: boolean };
+type Item = { to: string; label: string; icon: LucideIcon; perm?: string; hideForCadet?: boolean; requireField?: boolean; entretiens?: boolean };
 
 const ITEMS: Item[] = [
   { to: "/lspa", label: "Accueil", icon: Home, perm: "lspa.view" },
@@ -23,6 +23,8 @@ const ITEMS: Item[] = [
   { to: "/lspa/promotions", label: "Promotions", icon: GraduationCap, perm: "lspa.effectif.view" },
   { to: "/lspa/candidatures", label: "Candidatures", icon: Archive, perm: "lspa.effectif.view" },
   { to: "/lspa/quiz", label: "Quiz", icon: ClipboardList, perm: "lspa.view" },
+  // Entretiens : encadrement académie + grades ayant la permission dédiée.
+  { to: "/lspa/entretiens", label: "Entretiens", icon: ClipboardCheck, entretiens: true },
   // Formation Terrain : visible à partir d'Officier 2 (et pour l'académie).
   { to: "/lspa/fto", label: "Formation Terrain", icon: Compass, requireField: true },
   { to: "/lspa/historique", label: "Historique", icon: History, perm: "lspa.session.manage" },
@@ -42,10 +44,12 @@ export function LspaShell() {
   const routeKey = location.pathname;
   useEffect(() => { exitFocus(); }, [routeKey, exitFocus]);
 
+  const entretiensAccess = !!me?.agent.isOwner || !!me?.academyRank || can("lspa.entretiens");
   const items = ITEMS.filter((i) =>
     (!i.perm || !ready || can(i.perm))
     && !(i.hideForCadet && academyOnly)
-    && !(i.requireField && !me?.fieldTrainingAccess));
+    && !(i.requireField && !me?.fieldTrainingAccess)
+    && !(i.entretiens && !entretiensAccess));
 
   return (
     <div className="relative flex h-full flex-col overflow-hidden">

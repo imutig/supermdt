@@ -1279,6 +1279,39 @@ export default defineSchema({
     .index("by_citizen", ["citizenId"])
     .index("by_deleted", ["deletedAt"]),
 
+  // ============ ENTRETIENS (portail LSPA) ============
+  // Banque configurable de questions et de mises en situation. Chaque élément a
+  // un intitulé et l'explication de la réponse attendue.
+  interviewItems: defineTable({
+    kind: v.union(v.literal("QUESTION"), v.literal("SCENARIO")),
+    text: v.string(),
+    explanation: v.optional(v.string()),
+    position: v.number(),
+    active: v.boolean(),
+  })
+    .index("by_position", ["position"])
+    .index("by_kind", ["kind"]),
+
+  // Un entretien passé : identité du candidat, questions notées (snapshot) et
+  // une mise en situation tirée au hasard. Score final calculé (0-100).
+  interviews: defineTable({
+    prenom: v.string(),
+    nom: v.string(),
+    dateNaissance: v.optional(v.string()),
+    // Snapshot : le contenu survit aux changements de la banque, et reste
+    // éditable dans la fiche.
+    questions: v.array(v.object({ text: v.string(), explanation: v.optional(v.string()), note: v.optional(v.number()) })),
+    scenario: v.optional(v.object({ text: v.string(), explanation: v.optional(v.string()), note: v.optional(v.number()) })),
+    score: v.optional(v.number()), // pourcentage 0-100
+    createdBy: v.optional(v.id("agents")),
+    createdByName: v.string(),
+    createdAt: v.number(),
+    deletedAt: v.optional(v.number()),
+    deletedBy: v.optional(v.id("agents")),
+  })
+    .index("by_created", ["createdAt"])
+    .index("by_deleted", ["deletedAt"]),
+
   // ============ FICHE DE RENSEIGNEMENT AGENT (item 11) ============
   agentSheets: defineTable({
     agentId: v.id("agents"),

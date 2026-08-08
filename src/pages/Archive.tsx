@@ -11,7 +11,7 @@ import { SkeletonRows } from "@/components/common/Skeleton";
 
 type Kind =
   | "casier" | "citation" | "mandat" | "report" | "complaint" | "vehicle" | "weapon"
-  | "saisie" | "discipline" | "deposition" | "note" | "relation" | "fleetVehicle"
+  | "saisie" | "discipline" | "deposition" | "note" | "relation" | "fleetVehicle" | "interview"
   | "citizen" | "agent";
 const KIND_LABEL: Record<Kind, string> = {
   casier: "Casier",
@@ -27,6 +27,7 @@ const KIND_LABEL: Record<Kind, string> = {
   note: "Note",
   relation: "Lien familial",
   fleetVehicle: "Véhicule LSPD",
+  interview: "Entretien",
   citizen: "Citoyen",
   agent: "Compte agent",
 };
@@ -46,6 +47,7 @@ const FILTERS: { key: Kind | "all"; label: string }[] = [
   { key: "note", label: "Notes" },
   { key: "relation", label: "Liens" },
   { key: "fleetVehicle", label: "Flotte" },
+  { key: "interview", label: "Entretiens" },
   { key: "agent", label: "Comptes agents" },
 ];
 
