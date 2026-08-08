@@ -3,6 +3,7 @@ import { useMutation, useQuery } from "convex/react";
 import { RotateCcw, Trash2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useCan } from "@/hooks/useCan";
+import { useMe } from "@/hooks/useMe";
 import { useToast } from "@/providers/toast";
 import { AgentTag } from "@/components/common/AgentTag";
 import { EmptyState } from "@/components/common/EmptyState";
@@ -35,8 +36,10 @@ export function Archive() {
   const purge = useMutation(api.archive.purge);
   const [purging, setPurging] = useState<string | null>(null);
 
+  const me = useMe();
   const canRestore = can("archive.restore");
-  const canPurge = can("archive.purge");
+  // Suppression définitive : uniquement le compte propriétaire.
+  const canPurge = !!me?.agent.isOwner;
 
   return (
     <div className="p-[22px_26px]" style={{ animation: "mdtFade .2s ease" }}>

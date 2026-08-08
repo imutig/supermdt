@@ -193,7 +193,9 @@ export const purge = mutation({
   args: { kind: KIND, id: v.string() },
   handler: async (ctx, { kind, id }) => {
     const agent = await requireAgent(ctx);
-    await requirePermission(ctx, agent, "archive.purge");
+    // Suppression définitive : réservée au compte propriétaire (owner). Les
+    // autres ne disposent que de l'archivage (soft-delete) et de la restauration.
+    if (!agent.isOwner) throw new Error("Seul le compte propriétaire peut supprimer définitivement un élément.");
     if (kind === "agent") throw new Error("Un compte agent ne peut pas être purgé ici.");
     const doc = await resolve(ctx, kind, id);
     if (!doc) throw new Error("Élément introuvable.");
