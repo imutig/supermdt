@@ -13,7 +13,8 @@ import { DetectiveEditor } from "./DetectiveEditor";
 import { MediaField, MediaView } from "./media";
 import { MapPickField } from "./MapField";
 import { GangPicker } from "./pickers";
-import { DRUG_KIND, Field, inputCls, selectCls, dtShort } from "./ui";
+import { useDialogs } from "./dialogs";
+import { DRUG_KIND, Field, inputCls, selectCls, filterSelectCls, dtShort } from "./ui";
 
 export function DrugsSection({ divisionId, canWrite }: { divisionId: Id<"divisions">; canWrite: boolean }) {
   const [q, setQ] = useState("");
@@ -33,7 +34,7 @@ export function DrugsSection({ divisionId, canWrite }: { divisionId: Id<"divisio
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-faint" />
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Rechercher un point / labo…" className={`${inputCls} pl-9`} />
         </div>
-        <select value={kind} onChange={(e) => setKind(e.target.value)} className={`${selectCls} w-auto`}>
+        <select value={kind} onChange={(e) => setKind(e.target.value)} className={filterSelectCls}>
           <option value="">Tous</option>{Object.entries(DRUG_KIND).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
         </select>
         <Button variant="secondary" onClick={() => setMapView((v) => !v)}><MapIcon className="h-4 w-4" /> {mapView ? "Liste" : "Carte"}</Button>
@@ -68,6 +69,7 @@ function DrugPanel({ divisionId, existing, canWrite = true, onClose }: { divisio
   const update = useMutation(api.detectiveGangs.updateDrugSite);
   const remove = useMutation(api.detectiveGangs.removeDrugSite);
   const toast = useToast();
+  const { confirm } = useDialogs();
   const readOnly = existing && !canWrite;
   const [name, setName] = useState(existing?.name ?? "");
   const [kind, setKind] = useState(existing?.kind ?? "POINT_VENTE");
@@ -100,7 +102,7 @@ function DrugPanel({ divisionId, existing, canWrite = true, onClose }: { divisio
 
   return (
     <Modal title={existing ? "Modifier" : "Nouveau point / labo"} onClose={onClose} width={560}
-      footer={<div className="flex justify-between">{existing && canWrite ? <Button variant="danger" onClick={async () => { if (confirm("Supprimer ?")) { await toast.guard(remove({ id: existing._id }), "Suppression impossible"); onClose(); } }}><Trash2 className="h-4 w-4" /></Button> : <span />}<div className="flex gap-2"><Button variant="ghost" onClick={onClose}>Annuler</Button><Button variant="primary" loading={busy} onClick={submit}>{existing ? "Enregistrer" : "Créer"}</Button></div></div>}>
+      footer={<div className="flex justify-between">{existing && canWrite ? <Button variant="danger" onClick={async () => { if (await confirm({ title: "Supprimer ce point / labo ?", danger: true, confirmLabel: "Supprimer" })) { await toast.guard(remove({ id: existing._id }), "Suppression impossible"); onClose(); } }}><Trash2 className="h-4 w-4" /></Button> : <span />}<div className="flex gap-2"><Button variant="ghost" onClick={onClose}>Annuler</Button><Button variant="primary" loading={busy} onClick={submit}>{existing ? "Enregistrer" : "Créer"}</Button></div></div>}>
       <div className="flex flex-col gap-[14px]">
         <div className="grid grid-cols-2 gap-[12px]">
           <Field label="Nom"><input value={name} onChange={(e) => setName(e.target.value)} className={inputCls} /></Field>

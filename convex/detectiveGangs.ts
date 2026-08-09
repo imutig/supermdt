@@ -74,7 +74,7 @@ export const getGang = query({
 export const createGang = mutation({
   args: {
     divisionId: v.id("divisions"), name: v.string(), orgType: ORG_TYPE,
-    subDivision: v.optional(SUBDIV), color: v.optional(v.string()), logoUrl: v.optional(v.string()),
+    subDivision: v.optional(v.union(SUBDIV, v.null())), color: v.optional(v.union(v.string(), v.null())), logoUrl: v.optional(v.union(v.string(), v.null())),
     description: v.optional(v.string()), territoryText: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
@@ -82,7 +82,7 @@ export const createGang = mutation({
     if (!args.name.trim()) throw new Error("Nom requis.");
     return await ctx.db.insert("dbGangs", {
       divisionId: args.divisionId, name: args.name.trim(), orgType: args.orgType,
-      subDivision: args.subDivision, color: args.color, logoUrl: args.logoUrl,
+      subDivision: args.subDivision ?? undefined, color: args.color ?? undefined, logoUrl: args.logoUrl ?? undefined,
       description: args.description, territoryText: args.territoryText?.trim() || undefined,
       createdBy: agent._id, authorName: agentName(agent), at: Date.now(),
     });

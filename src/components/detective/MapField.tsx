@@ -3,7 +3,7 @@ import { api } from "@/lib/api";
 import { LosSantosMap } from "@/components/carte/LosSantosMap";
 
 // Sélection / affichage d'un point sur le fond de carte du MDT (réutilise
-// LosSantosMap et l'image configurée dans carte.get). Coords en % (0–100).
+// LosSantosMap et l'image configurée dans carte.get). Coords en % (0-100).
 
 export function MapPickField({ value, onChange }: { value: { x: number; y: number } | null; onChange: (v: { x: number; y: number }) => void }) {
   const data = useQuery(api.carte.get);

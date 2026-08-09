@@ -40,7 +40,7 @@ export function modulePermsOf(division: Doc<"divisions">): { slug: string; label
 }
 
 // Catalogue complet des permissions internes proposées pour cette division
-// (communes + modules actifs) — utilisé par l'éditeur de grades internes.
+// (communes + modules actifs) - utilisé par l'éditeur de grades internes.
 export function permCatalogFor(division: Doc<"divisions">): { slug: string; label: string }[] {
   return [...DIVISION_PERMS, ...modulePermsOf(division)];
 }

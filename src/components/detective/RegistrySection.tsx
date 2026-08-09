@@ -11,7 +11,8 @@ import { SkeletonRows } from "@/components/common/Skeleton";
 import { DetectiveEditor } from "./DetectiveEditor";
 import { MediaField, MediaView, PhotoField } from "./media";
 import { CitizenPicker, GangPicker } from "./pickers";
-import { PERSON_ROLE, Pill, Field, inputCls, selectCls } from "./ui";
+import { useDialogs } from "./dialogs";
+import { PERSON_ROLE, Pill, Field, inputCls, selectCls, filterSelectCls } from "./ui";
 
 export function RegistrySection({ divisionId, canWrite, openPersonId, onConsumeOpen }: {
   divisionId: Id<"divisions">; canWrite: boolean; openPersonId?: string | null; onConsumeOpen?: () => void;
@@ -32,7 +33,7 @@ export function RegistrySection({ divisionId, canWrite, openPersonId, onConsumeO
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-faint" />
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Rechercher (nom, alias)…" className={`${inputCls} pl-9`} />
         </div>
-        <select value={role} onChange={(e) => setRole(e.target.value)} className={`${selectCls} w-auto`}>
+        <select value={role} onChange={(e) => setRole(e.target.value)} className={filterSelectCls}>
           <option value="">Tous rôles</option>
           {Object.entries(PERSON_ROLE).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
         </select>
@@ -67,12 +68,13 @@ function PersonView({ divisionId, personId, canWrite, onClose }: { divisionId: I
   const p = useQuery(api.detectiveRegistry.getPerson, { personId });
   const remove = useMutation(api.detectiveRegistry.removePerson);
   const toast = useToast();
+  const { confirm } = useDialogs();
   const [editing, setEditing] = useState(false);
   if (!p) return <Modal title="Fiche" onClose={onClose}><SkeletonRows rows={4} /></Modal>;
   if (editing) return <PersonPanel divisionId={divisionId} existing={p} onClose={() => setEditing(false)} />;
   return (
     <Modal title={p.name} onClose={onClose} width={560}
-      footer={canWrite ? <div className="flex justify-between"><Button variant="danger" onClick={async () => { if (confirm("Supprimer cette fiche ?")) { await toast.guard(remove({ personId }), "Suppression impossible"); onClose(); } }}><Trash2 className="h-4 w-4" /> Supprimer</Button><Button variant="secondary" onClick={() => setEditing(true)}><Pencil className="h-4 w-4" /> Modifier</Button></div> : undefined}>
+      footer={canWrite ? <div className="flex justify-between"><Button variant="danger" onClick={async () => { if (await confirm({ title: "Supprimer cette fiche ?", danger: true, confirmLabel: "Supprimer" })) { await toast.guard(remove({ personId }), "Suppression impossible"); onClose(); } }}><Trash2 className="h-4 w-4" /> Supprimer</Button><Button variant="secondary" onClick={() => setEditing(true)}><Pencil className="h-4 w-4" /> Modifier</Button></div> : undefined}>
       <div className="flex flex-col gap-[14px]">
         <div className="flex items-center gap-3">
           {p.photoUrl ? <img src={p.photoUrl} className="h-16 w-16 rounded-[10px] object-cover" alt="" /> : <span className="flex h-16 w-16 items-center justify-center rounded-[10px] bg-surface-2 text-faint">{p.name.slice(0, 2).toUpperCase()}</span>}
@@ -101,7 +103,7 @@ function PersonView({ divisionId, personId, canWrite, onClose }: { divisionId: I
           <div>
             <div className="mb-1 text-[11px] font-bold uppercase tracking-[0.08em] text-faint">Enquêtes liées</div>
             <div className="flex flex-col gap-1">
-              {p.cases.map((c) => <div key={c.caseId} className="text-[12.5px]">#{c.number} — {c.title} <span className="text-faint">({c.caseRole})</span></div>)}
+              {p.cases.map((c) => <div key={c.caseId} className="text-[12.5px]">#{c.number} - {c.title} <span className="text-faint">({c.caseRole})</span></div>)}
             </div>
           </div>
         )}
@@ -159,7 +161,7 @@ function PersonPanel({ divisionId, existing, onClose }: { divisionId: Id<"divisi
           <Field label="Alias"><input value={alias} onChange={(e) => setAlias(e.target.value)} className={inputCls} /></Field>
         </div>
         <div className="grid grid-cols-2 gap-[12px]">
-          <Field label="Rôle"><select value={role} onChange={(e) => setRole(e.target.value)} className={selectCls}><option value="">—</option>{Object.entries(PERSON_ROLE).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}</select></Field>
+          <Field label="Rôle"><select value={role} onChange={(e) => setRole(e.target.value)} className={selectCls}><option value="">-</option>{Object.entries(PERSON_ROLE).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}</select></Field>
           <Field label="Niveau de recherche"><input value={wantedLevel} onChange={(e) => setWantedLevel(e.target.value)} className={inputCls} placeholder="Ex. Activement recherché" /></Field>
         </div>
         <Field label="Lien encodage (citoyen)">{citizen ? <div className="flex items-center justify-between rounded-sm border border-border bg-surface-2 px-3 py-2 text-[13px]"><span>{citizen.name}</span><button onClick={() => setCitizen(null)} className="text-[12px] text-danger hover:underline">Retirer</button></div> : <CitizenPicker onPick={setCitizen} />}</Field>

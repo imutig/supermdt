@@ -669,7 +669,9 @@ export const setDivisions = mutation({
     await requirePermission(ctx, actor, "effectif.division");
     const target = await ctx.db.get(agentId);
     if (!target) throw new Error("Agent introuvable.");
-    await assertOutranks(ctx, actor, target);
+    // Affecter des divisions à soi-même est légitime (on a déjà la permission) :
+    // on ne vérifie la hiérarchie que pour un autre agent.
+    if (actor._id !== agentId) await assertOutranks(ctx, actor, target);
     const existing = await ctx.db
       .query("agentDivisions")
       .withIndex("by_agent", (q) => q.eq("agentId", agentId))

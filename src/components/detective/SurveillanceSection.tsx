@@ -12,6 +12,7 @@ import { DetectiveEditor } from "./DetectiveEditor";
 import { MediaField, MediaView } from "./media";
 import { MapPickField, MapPointView } from "./MapField";
 import { AgentPicker } from "./pickers";
+import { useDialogs } from "./dialogs";
 import { Field, inputCls, dtLong } from "./ui";
 
 const toLocalInput = (ts: number) => { const d = new Date(ts - new Date(ts).getTimezoneOffset() * 60000); return d.toISOString().slice(0, 16); };
@@ -52,11 +53,12 @@ export function SurveillanceSection({ divisionId, canWrite }: { divisionId: Id<"
 function SurvView({ divisionId, s, canWrite, onClose }: { divisionId: Id<"divisions">; s: any; canWrite: boolean; onClose: () => void }) {
   const remove = useMutation(api.detectiveSurveillance.removeSurveillance);
   const toast = useToast();
+  const { confirm } = useDialogs();
   const [editing, setEditing] = useState(false);
   if (editing) return <SurvPanel divisionId={divisionId} existing={s} onClose={() => setEditing(false)} />;
   return (
     <Modal title={s.title || "Surveillance"} onClose={onClose} width={600}
-      footer={canWrite ? <div className="flex justify-between"><Button variant="danger" onClick={async () => { if (confirm("Supprimer ?")) { await toast.guard(remove({ id: s._id }), "Suppression impossible"); onClose(); } }}><Trash2 className="h-4 w-4" /></Button><Button variant="secondary" onClick={() => setEditing(true)}>Modifier</Button></div> : undefined}>
+      footer={canWrite ? <div className="flex justify-between"><Button variant="danger" onClick={async () => { if (await confirm({ title: "Supprimer cette surveillance ?", danger: true, confirmLabel: "Supprimer" })) { await toast.guard(remove({ id: s._id }), "Suppression impossible"); onClose(); } }}><Trash2 className="h-4 w-4" /></Button><Button variant="secondary" onClick={() => setEditing(true)}>Modifier</Button></div> : undefined}>
       <div className="flex flex-col gap-3">
         <div className="text-[12.5px] text-muted">{dtLong(s.date)}{s.durationMin ? ` · ${s.durationMin} min` : ""}{s.locationText ? ` · ${s.locationText}` : ""}</div>
         {s.members.length > 0 && <div className="text-[12.5px]"><b>Présents :</b> {s.members.map((m: any) => m.name).join(", ")}</div>}

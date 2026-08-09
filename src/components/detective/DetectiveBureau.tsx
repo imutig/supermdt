@@ -5,6 +5,7 @@ import { api } from "@/lib/api";
 import type { Id } from "convex/_generated/dataModel";
 import { useToast } from "@/providers/toast";
 import { DetectiveNavProvider, type DetectiveNav } from "./nav";
+import { DialogsProvider } from "./dialogs";
 import { CasesSection } from "./CasesSection";
 import { CaseDetail } from "./CaseDetail";
 import { RegistrySection } from "./RegistrySection";
@@ -39,6 +40,7 @@ export function DetectiveBureau({ divisionId, perms, isLead }: { divisionId: Id<
 
   return (
     <DetectiveNavProvider value={nav}>
+      <DialogsProvider>
       <div className="flex flex-col gap-[14px]">
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex flex-1 flex-wrap gap-[2px] rounded-card border border-border bg-surface p-[5px]">
@@ -62,6 +64,7 @@ export function DetectiveBureau({ divisionId, perms, isLead }: { divisionId: Id<
         {section === "stups" && <DrugsSection divisionId={divisionId} canWrite={has("db.drugs")} />}
         {section === "surveillance" && <SurveillanceSection divisionId={divisionId} canWrite={has("db.surveillance")} />}
       </div>
+      </DialogsProvider>
     </DetectiveNavProvider>
   );
 }

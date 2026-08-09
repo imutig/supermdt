@@ -18,7 +18,7 @@ export const listSurveillance = query({
       const members = [];
       for (const m of s.members) { const a = await ctx.db.get(m); if (a) members.push({ agentId: a._id, name: agentName(a), matricule: a.matricule ?? null }); }
       let caseLabel: string | null = null;
-      if (s.caseId) { const c = await ctx.db.get(s.caseId); if (c && !c.deletedAt) caseLabel = `#${c.number} — ${c.title}`; }
+      if (s.caseId) { const c = await ctx.db.get(s.caseId); if (c && !c.deletedAt) caseLabel = `#${c.number} - ${c.title}`; }
       out.push({
         _id: s._id, title: s.title ?? "", locationText: s.locationText ?? "", x: s.x ?? null, y: s.y ?? null,
         date: s.date, durationMin: s.durationMin ?? null, observations: s.observations ?? "",

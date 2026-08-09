@@ -15,6 +15,7 @@ import { DetectiveEditor } from "./DetectiveEditor";
 import { MediaField, MediaView } from "./media";
 import { AgentPicker, PersonPicker, CitizenPicker, VehiclePicker, GangPicker } from "./pickers";
 import { Board } from "./Board";
+import { useDialogs } from "./dialogs";
 import { MapPickField, MapPointView } from "./MapField";
 import {
   CASE_STATUS, PRIORITY, SUBDIV_LABEL, CASE_ROLE, ITEM_TYPE, EVIDENCE_TYPE, ORG_TYPE,
@@ -29,6 +30,7 @@ export function CaseDetail({ divisionId, caseId, onBack }: {
   const c = useQuery(api.detective.getCase, { caseId });
   const removeCase = useMutation(api.detective.removeCase);
   const toast = useToast();
+  const { confirm } = useDialogs();
   const [tab, setTab] = useState<InnerTab>("synth");
   const [editing, setEditing] = useState(false);
 
@@ -61,7 +63,7 @@ export function CaseDetail({ divisionId, caseId, onBack }: {
           </div>
         </div>
         {c.canWrite && <Button variant="secondary" onClick={() => setEditing(true)}><Pencil className="h-4 w-4" /> Modifier</Button>}
-        {c.canDelete && <Button variant="danger" onClick={async () => { if (confirm(`Supprimer l'enquête #${c.number} ?`)) { await toast.guard(removeCase({ caseId }), "Suppression impossible"); onBack(); } }}><Trash2 className="h-4 w-4" /></Button>}
+        {c.canDelete && <Button variant="danger" onClick={async () => { if (await confirm({ title: `Supprimer l'enquête #${c.number} ?`, message: "Cette action est réversible depuis les archives.", danger: true, confirmLabel: "Supprimer" })) { await toast.guard(removeCase({ caseId }), "Suppression impossible"); onBack(); } }}><Trash2 className="h-4 w-4" /></Button>}
       </div>
 
       {c.canWrite && <StatusBar caseId={caseId} status={c.status} />}
@@ -81,7 +83,7 @@ export function CaseDetail({ divisionId, caseId, onBack }: {
       {tab === "pieces" && <PiecesTab divisionId={divisionId} caseId={caseId} canWrite={c.canWrite} />}
       {tab === "evidence" && <EvidenceTab divisionId={divisionId} caseId={caseId} canWrite={c.canWrite} />}
       {tab === "chrono" && <ChronoTab divisionId={divisionId} caseId={caseId} canWrite={c.canWrite} />}
-      {tab === "board" && <Board caseId={caseId} canWrite={c.canWrite} />}
+      {tab === "board" && <Board divisionId={divisionId} caseId={caseId} canWrite={c.canWrite} />}
 
       {editing && <EditCasePanel divisionId={divisionId} caseId={caseId} current={c} onClose={() => setEditing(false)} />}
     </div>
@@ -138,20 +140,22 @@ function PersonsCard({ divisionId, caseId, canWrite }: { divisionId: Id<"divisio
   const persons = useQuery(api.detectiveRegistry.casePersons, { caseId });
   const remove = useMutation(api.detectiveRegistry.removeCasePerson);
   const toast = useToast();
+  const { confirm } = useDialogs();
   const [adding, setAdding] = useState(false);
   return (
     <Card title="Personnes" action={canWrite ? <Button variant="secondary" onClick={() => setAdding(true)}><Plus className="h-4 w-4" /> Ajouter</Button> : undefined}>
       {persons === undefined ? <SkeletonRows rows={2} /> : persons.length === 0 ? <EmptyState compact title="Aucune personne" /> : (
         <div className="flex flex-col gap-[6px]">
           {persons.map((p) => (
-            <div key={p._id} className="flex items-center gap-2 rounded-sm border border-border bg-surface-2 px-3 py-2">
-              {p.photoUrl ? <img src={p.photoUrl} className="h-8 w-8 rounded-full object-cover" alt="" /> : <span className="flex h-8 w-8 items-center justify-center rounded-full bg-surface text-faint text-[11px]">{p.name.slice(0, 2).toUpperCase()}</span>}
+            <div key={p._id} className="flex items-start gap-2 rounded-sm border border-border bg-surface-2 px-3 py-2">
+              {p.photoUrl ? <img src={p.photoUrl} className="h-8 w-8 rounded-full object-cover" alt="" /> : <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-surface text-faint text-[11px]">{p.name.slice(0, 2).toUpperCase()}</span>}
               <div className="min-w-0 flex-1">
                 <div className="truncate text-[13px] font-semibold">{p.name} {p.deceased && <span className="text-danger">†</span>}</div>
                 {p.alias && <div className="text-[11px] text-faint">alias « {p.alias} »</div>}
+                {p.note && <div className="mt-0.5 text-[11.5px] text-muted">{p.note}</div>}
               </div>
               <Pill {...CASE_ROLE[p.caseRole]} />
-              {canWrite && <button onClick={() => confirm("Retirer cette personne de l'enquête ?") && toast.guard(remove({ id: p._id }), "Action impossible")} className="text-faint hover:text-danger"><X className="h-4 w-4" /></button>}
+              {canWrite && <button onClick={async () => { if (await confirm({ title: "Retirer cette personne de l'enquête ?", danger: true, confirmLabel: "Retirer" })) void toast.guard(remove({ id: p._id }), "Action impossible"); }} className="text-faint hover:text-danger"><X className="h-4 w-4" /></button>}
             </div>
           ))}
         </div>
@@ -234,7 +238,7 @@ function VehiclesCard({ caseId, canWrite }: { caseId: Id<"dbCases">; canWrite: b
         <div className="flex flex-col gap-[6px]">
           {list.map((v) => (
             <div key={v._id} className="flex items-center gap-2 rounded-sm border border-border bg-surface-2 px-3 py-2">
-              <span className="font-data text-[13px] font-semibold">{v.plaque || "—"}</span>
+              <span className="font-data text-[13px] font-semibold">{v.plaque || "-"}</span>
               <span className="flex-1 truncate text-[12px] text-muted">{v.label} {v.note && `· ${v.note}`}</span>
               {canWrite && <button onClick={() => toast.guard(remove({ id: v._id }), "Action impossible")} className="text-faint hover:text-danger"><X className="h-4 w-4" /></button>}
             </div>
@@ -300,6 +304,7 @@ function PiecesTab({ divisionId, caseId, canWrite }: { divisionId: Id<"divisions
   const addFolder = useMutation(api.detective.addFolder);
   const removeFolder = useMutation(api.detective.removeFolder);
   const toast = useToast();
+  const { confirm, prompt } = useDialogs();
   const [folder, setFolder] = useState<string>("");
   const [adding, setAdding] = useState(false);
   const [view, setView] = useState<any | null>(null);
@@ -313,8 +318,8 @@ function PiecesTab({ divisionId, caseId, canWrite }: { divisionId: Id<"divisions
           <option value="">Tous les dossiers</option>
           {folders.map((f) => <option key={f._id} value={f._id}>{f.name}</option>)}
         </select>
-        {canWrite && <Button variant="ghost" onClick={async () => { const n = prompt("Nom du sous-dossier"); if (n?.trim()) await toast.guard(addFolder({ caseId, name: n.trim() }), "Action impossible"); }}><Plus className="h-4 w-4" /> Sous-dossier</Button>}
-        {canWrite && folder && <Button variant="ghost" onClick={async () => { if (confirm("Supprimer ce dossier ? Ses pièces repassent à la racine.")) { await toast.guard(removeFolder({ id: folder as Id<"dbFolders"> }), "Action impossible"); setFolder(""); } }}><Trash2 className="h-4 w-4" /></Button>}
+        {canWrite && <Button variant="ghost" onClick={async () => { const n = await prompt({ title: "Nouveau sous-dossier", label: "Nom du dossier", placeholder: "ex. Auditions" }); if (n?.trim()) await toast.guard(addFolder({ caseId, name: n.trim() }), "Création impossible"); }}><Plus className="h-4 w-4" /> Sous-dossier</Button>}
+        {canWrite && folder && <Button variant="ghost" onClick={async () => { if (await confirm({ title: "Supprimer ce dossier ?", message: "Ses pièces repassent à la racine de l'enquête.", danger: true, confirmLabel: "Supprimer" })) { await toast.guard(removeFolder({ id: folder as Id<"dbFolders"> }), "Action impossible"); setFolder(""); } }}><Trash2 className="h-4 w-4" /></Button>}
         <div className="flex-1" />
         {canWrite && <Button variant="primary" onClick={() => setAdding(true)}><Plus className="h-4 w-4" /> Nouvelle pièce</Button>}
       </div>
@@ -395,9 +400,10 @@ function AddItemPanel({ divisionId, caseId, folders, defaultFolder, onClose }: {
 function ViewItemPanel({ divisionId, item, canWrite, onClose }: { divisionId: Id<"divisions">; item: any; canWrite: boolean; onClose: () => void }) {
   const remove = useMutation(api.detective.removeItem);
   const toast = useToast();
+  const { confirm } = useDialogs();
   return (
     <Modal title={item.title || ITEM_TYPE[item.type]} onClose={onClose} width={640}
-      footer={canWrite ? <div className="flex justify-between"><Button variant="danger" onClick={async () => { if (confirm("Supprimer cette pièce ?")) { await toast.guard(remove({ id: item._id }), "Suppression impossible"); onClose(); } }}><Trash2 className="h-4 w-4" /> Supprimer</Button><Button variant="ghost" onClick={onClose}>Fermer</Button></div> : undefined}>
+      footer={canWrite ? <div className="flex justify-between"><Button variant="danger" onClick={async () => { if (await confirm({ title: "Supprimer cette pièce ?", danger: true, confirmLabel: "Supprimer" })) { await toast.guard(remove({ id: item._id }), "Suppression impossible"); onClose(); } }}><Trash2 className="h-4 w-4" /> Supprimer</Button><Button variant="ghost" onClick={onClose}>Fermer</Button></div> : undefined}>
       <div className="flex flex-col gap-[14px]">
         <div className="flex items-center gap-2 text-[12px] text-muted">
           <span className="rounded-[4px] bg-surface-2 px-1.5 py-px text-[10px] font-bold uppercase text-faint">{ITEM_TYPE[item.type]}</span>
@@ -417,6 +423,7 @@ function EvidenceTab({ divisionId, caseId, canWrite }: { divisionId: Id<"divisio
   const list = useQuery(api.detective.evidence, { caseId });
   const remove = useMutation(api.detective.removeEvidence);
   const toast = useToast();
+  const { confirm } = useDialogs();
   const [adding, setAdding] = useState(false);
   const [view, setView] = useState<any | null>(null);
   return (
@@ -439,7 +446,7 @@ function EvidenceTab({ divisionId, caseId, canWrite }: { divisionId: Id<"divisio
       {adding && <EvidencePanel divisionId={divisionId} caseId={caseId} onClose={() => setAdding(false)} />}
       {view && (
         <Modal title={view.label} onClose={() => setView(null)} width={560}
-          footer={canWrite ? <div className="flex justify-between"><Button variant="danger" onClick={async () => { if (confirm("Supprimer cette preuve ?")) { await toast.guard(remove({ id: view._id }), "Suppression impossible"); setView(null); } }}><Trash2 className="h-4 w-4" /> Supprimer</Button><Button variant="ghost" onClick={() => setView(null)}>Fermer</Button></div> : undefined}>
+          footer={canWrite ? <div className="flex justify-between"><Button variant="danger" onClick={async () => { if (await confirm({ title: "Supprimer cette preuve ?", danger: true, confirmLabel: "Supprimer" })) { await toast.guard(remove({ id: view._id }), "Suppression impossible"); setView(null); } }}><Trash2 className="h-4 w-4" /> Supprimer</Button><Button variant="ghost" onClick={() => setView(null)}>Fermer</Button></div> : undefined}>
           <div className="flex flex-col gap-3">
             <div className="text-[12px] text-muted">{view.evidenceType && EVIDENCE_TYPE[view.evidenceType]}{view.sealNumber && ` · Scellé ${view.sealNumber}`}{view.storageLoc && ` · ${view.storageLoc}`}</div>
             {view.description && <DetectiveEditor value={view.description} editable={false} divisionId={divisionId} minHeight={0} />}
@@ -495,12 +502,18 @@ function ChronoTab({ divisionId, caseId, canWrite }: { divisionId: Id<"divisions
   const toggleTodo = useMutation(api.detective.toggleTodo);
   const removeTodo = useMutation(api.detective.removeTodo);
   const toast = useToast();
+  const { prompt } = useDialogs();
   const [todoText, setTodoText] = useState("");
   const [assignee, setAssignee] = useState<{ agentId: Id<"agents">; name: string } | null>(null);
+  const submitTodo = async () => {
+    if (!todoText.trim()) return;
+    await toast.guard(addTodo({ caseId, text: todoText.trim(), assigneeId: assignee?.agentId }), "Action impossible");
+    setTodoText(""); setAssignee(null);
+  };
 
   return (
     <div className="grid grid-cols-1 items-start gap-[14px] lg:grid-cols-[1.4fr_1fr]">
-      <Card title="Chronologie" action={canWrite ? <Button variant="ghost" onClick={async () => { const l = prompt("Évènement"); if (l?.trim()) await toast.guard(addEvent({ caseId, label: l.trim() }), "Action impossible"); }}><Plus className="h-4 w-4" /> Évènement</Button> : undefined}>
+      <Card title="Chronologie" action={canWrite ? <Button variant="ghost" onClick={async () => { const l = await prompt({ title: "Nouvel évènement", label: "Intitulé", placeholder: "ex. Perquisition du domicile" }); if (l?.trim()) await toast.guard(addEvent({ caseId, label: l.trim() }), "Action impossible"); }}><Plus className="h-4 w-4" /> Évènement</Button> : undefined}>
         {timeline === undefined ? <SkeletonRows rows={3} /> : timeline.length === 0 ? <EmptyState compact title="Rien pour l'instant" /> : (
           <div className="flex flex-col">
             {timeline.map((t, i) => (
@@ -522,8 +535,11 @@ function ChronoTab({ divisionId, caseId, canWrite }: { divisionId: Id<"divisions
       <Card title="Pistes à suivre">
         {canWrite && (
           <div className="mb-3 flex flex-col gap-2">
-            <input value={todoText} onChange={(e) => setTodoText(e.target.value)} className={inputCls} placeholder="Nouvelle piste…"
-              onKeyDown={async (e) => { if (e.key === "Enter" && todoText.trim()) { await toast.guard(addTodo({ caseId, text: todoText.trim(), assigneeId: assignee?.agentId }), "Action impossible"); setTodoText(""); setAssignee(null); } }} />
+            <div className="flex gap-2">
+              <input value={todoText} onChange={(e) => setTodoText(e.target.value)} className={inputCls} placeholder="Nouvelle piste…"
+                onKeyDown={(e) => { if (e.key === "Enter") void submitTodo(); }} />
+              <Button variant="primary" disabled={!todoText.trim()} onClick={() => void submitTodo()}><Plus className="h-4 w-4" /></Button>
+            </div>
             {assignee ? <PickedRow name={`Assigné : ${assignee.name}`} onClear={() => setAssignee(null)} /> : <AgentPicker divisionId={divisionId} onPick={setAssignee} placeholder="Assigner (optionnel)…" />}
           </div>
         )}
@@ -566,7 +582,7 @@ function EditCasePanel({ divisionId, caseId, current, onClose }: { divisionId: I
       <div className="flex flex-col gap-[14px]">
         <Field label="Titre"><input value={title} onChange={(e) => setTitle(e.target.value)} className={inputCls} /></Field>
         <div className="grid grid-cols-2 gap-[12px]">
-          <Field label="Sous-division"><select value={subDivision} onChange={(e) => setSubDivision(e.target.value)} className={selectCls}><option value="">—</option><option value="GND">GND</option><option value="HRD">HRD</option></select></Field>
+          <Field label="Sous-division"><select value={subDivision} onChange={(e) => setSubDivision(e.target.value)} className={selectCls}><option value="">-</option><option value="GND">GND</option><option value="HRD">HRD</option></select></Field>
           <Field label="Priorité"><select value={priority} onChange={(e) => setPriority(e.target.value)} className={selectCls}>{Object.entries(PRIORITY).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}</select></Field>
         </div>
         <Field label="Détective référent">{lead ? <PickedRow name={lead.name} onClear={() => setLead(null)} /> : <AgentPicker divisionId={divisionId} onPick={setLead} />}</Field>

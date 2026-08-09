@@ -7,7 +7,7 @@ import {
   requireCaseRead, requireCaseWrite, addTimeline, notify,
 } from "./lib/detectiveAccess";
 
-// Detective Bureau — enquêtes connectées (GND + HRD). Voir SPEC-DETECTIVE-BUREAU.md.
+// Detective Bureau - enquêtes connectées (GND + HRD). Voir SPEC-DETECTIVE-BUREAU.md.
 // Les helpers d'accès vivent dans ./lib/detectiveAccess (partagés avec les autres
 // modules detective*.ts).
 
@@ -98,7 +98,7 @@ export const createCase = mutation({
     });
     await addTimeline(ctx, caseId, agent, `Enquête ouverte (#${number})`);
     if (args.leadAgentId && args.leadAgentId !== agent._id) {
-      await notify(ctx, args.divisionId, args.leadAgentId, "case_lead", `Vous êtes référent de l'enquête #${number} — ${args.title.trim()}`, caseId);
+      await notify(ctx, args.divisionId, args.leadAgentId, "case_lead", `Vous êtes référent de l'enquête #${number} - ${args.title.trim()}`, caseId);
     }
     return caseId;
   },
@@ -172,7 +172,7 @@ export const addTeamMember = mutation({
     await ctx.db.insert("dbCaseTeam", { caseId, agentId });
     const a = await ctx.db.get(agentId);
     await addTimeline(ctx, caseId, agent, `${a ? agentName(a) : "Un agent"} ajouté à l'équipe`);
-    if (agentId !== agent._id) await notify(ctx, c.divisionId, agentId, "case_team", `Vous êtes assigné à l'enquête #${c.number} — ${c.title}`, caseId);
+    if (agentId !== agent._id) await notify(ctx, c.divisionId, agentId, "case_team", `Vous êtes assigné à l'enquête #${c.number} - ${c.title}`, caseId);
   },
 });
 

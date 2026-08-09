@@ -12,7 +12,8 @@ import { LosSantosMap } from "@/components/carte/LosSantosMap";
 import { DetectiveEditor } from "./DetectiveEditor";
 import { PhotoField } from "./media";
 import { PersonPicker, GangPicker } from "./pickers";
-import { ORG_TYPE, Card, Field, inputCls, selectCls } from "./ui";
+import { useDialogs } from "./dialogs";
+import { ORG_TYPE, Card, Field, inputCls, selectCls, filterSelectCls } from "./ui";
 
 export function GangsSection({ divisionId, canWrite, openGangId, onConsumeOpen }: {
   divisionId: Id<"divisions">; canWrite: boolean; openGangId?: string | null; onConsumeOpen?: () => void;
@@ -35,7 +36,7 @@ export function GangsSection({ divisionId, canWrite, openGangId, onConsumeOpen }
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-faint" />
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Rechercher une organisation…" className={`${inputCls} pl-9`} />
         </div>
-        <select value={orgType} onChange={(e) => setOrgType(e.target.value)} className={`${selectCls} w-auto`}>
+        <select value={orgType} onChange={(e) => setOrgType(e.target.value)} className={filterSelectCls}>
           <option value="">Tous types</option>
           {Object.entries(ORG_TYPE).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
         </select>
@@ -74,6 +75,7 @@ function GangDetail({ divisionId, gangId, onBack }: { divisionId: Id<"divisions"
   const removeRelation = useMutation(api.detectiveGangs.removeGangRelation);
   const territoryRemove = useMutation(api.detectiveGangs.territoryRemove);
   const toast = useToast();
+  const { confirm, prompt } = useDialogs();
   const [editing, setEditing] = useState(false);
   const [addRel, setAddRel] = useState<"RIVAL" | "ALLY" | null>(null);
   const [addTerr, setAddTerr] = useState(false);
@@ -94,13 +96,13 @@ function GangDetail({ divisionId, gangId, onBack }: { divisionId: Id<"divisions"
           <div className="text-[12px] text-muted">{ORG_TYPE[g.orgType]}{g.subDivision ? ` · ${g.subDivision}` : ""}{g.territoryText ? ` · ${g.territoryText}` : ""}</div>
         </div>
         {g.canWrite && <Button variant="secondary" onClick={() => setEditing(true)}><Pencil className="h-4 w-4" /> Modifier</Button>}
-        {g.canDelete && <Button variant="danger" onClick={async () => { if (confirm("Supprimer cette organisation ?")) { await toast.guard(remove({ gangId }), "Suppression impossible"); onBack(); } }}><Trash2 className="h-4 w-4" /></Button>}
+        {g.canDelete && <Button variant="danger" onClick={async () => { if (await confirm({ title: "Supprimer cette organisation ?", danger: true, confirmLabel: "Supprimer" })) { await toast.guard(remove({ gangId }), "Suppression impossible"); onBack(); } }}><Trash2 className="h-4 w-4" /></Button>}
       </div>
 
       <div className="grid grid-cols-1 items-start gap-[14px] lg:grid-cols-2">
         <div className="flex flex-col gap-[14px]">
           {g.description && <Card title="Présentation"><DetectiveEditor value={g.description} editable={false} divisionId={divisionId} minHeight={0} /></Card>}
-          <Card title="Organigramme" action={g.canWrite ? <Button variant="ghost" onClick={async () => { const n = prompt("Nom du grade"); if (n?.trim()) await toast.guard(rankCreate({ gangId, name: n.trim() }), "Action impossible"); }}><Plus className="h-4 w-4" /> Grade</Button> : undefined}>
+          <Card title="Organigramme" action={g.canWrite ? <Button variant="ghost" onClick={async () => { const n = await prompt({ title: "Nouveau grade", label: "Nom du grade", placeholder: "ex. Leader, Enforcer" }); if (n?.trim()) await toast.guard(rankCreate({ gangId, name: n.trim() }), "Action impossible"); }}><Plus className="h-4 w-4" /> Grade</Button> : undefined}>
             {g.ranks.length === 0 && unranked.length === 0 ? <EmptyState compact title="Aucun grade" /> : (
               <div className="flex flex-col gap-[10px]">
                 {g.ranks.map((r, i) => (
@@ -110,13 +112,13 @@ function GangDetail({ divisionId, gangId, onBack }: { divisionId: Id<"divisions"
                       {g.canWrite && <span className="flex items-center gap-1">
                         <button onClick={() => i > 0 && toast.guard(rankMove({ rankId: r._id, dir: "up" }), "")} className="text-faint hover:text-text"><ChevronUp className="h-3.5 w-3.5" /></button>
                         <button onClick={() => i < g.ranks.length - 1 && toast.guard(rankMove({ rankId: r._id, dir: "down" }), "")} className="text-faint hover:text-text"><ChevronDown className="h-3.5 w-3.5" /></button>
-                        <button onClick={async () => { const n = prompt("Renommer", r.name); if (n?.trim()) await toast.guard(rankRename({ rankId: r._id, name: n.trim() }), ""); }} className="text-faint hover:text-text"><Pencil className="h-3 w-3" /></button>
-                        <button onClick={() => confirm("Supprimer ce grade ?") && toast.guard(rankRemove({ rankId: r._id }), "")} className="text-faint hover:text-danger"><Trash2 className="h-3 w-3" /></button>
+                        <button onClick={async () => { const n = await prompt({ title: "Renommer le grade", label: "Nom", defaultValue: r.name }); if (n?.trim()) await toast.guard(rankRename({ rankId: r._id, name: n.trim() }), ""); }} className="text-faint hover:text-text"><Pencil className="h-3 w-3" /></button>
+                        <button onClick={async () => { if (await confirm({ title: "Supprimer ce grade ?", danger: true, confirmLabel: "Supprimer" })) void toast.guard(rankRemove({ rankId: r._id }), ""); }} className="text-faint hover:text-danger"><Trash2 className="h-3 w-3" /></button>
                       </span>}
                     </div>
                     <div className="flex flex-wrap gap-1.5">
                       {membersByRank(r._id).map((m) => <MemberChip key={m._id} m={m} canWrite={g.canWrite} onUnassign={() => setMemberGang({ personId: m._id, gangId: null })} />)}
-                      {membersByRank(r._id).length === 0 && <span className="text-[11px] text-faint">—</span>}
+                      {membersByRank(r._id).length === 0 && <span className="text-[11px] text-faint">-</span>}
                     </div>
                   </div>
                 ))}
@@ -306,7 +308,7 @@ function GangPanel({ divisionId, existing, onClose, onCreated }: { divisionId: I
         <Field label="Nom"><input value={name} onChange={(e) => setName(e.target.value)} className={inputCls} /></Field>
         <div className="grid grid-cols-3 gap-[12px]">
           <Field label="Type"><select value={orgType} onChange={(e) => setOrgType(e.target.value)} className={selectCls}>{Object.entries(ORG_TYPE).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Field>
-          <Field label="Sous-div."><select value={subDivision} onChange={(e) => setSubDivision(e.target.value)} className={selectCls}><option value="">—</option><option value="GND">GND</option><option value="HRD">HRD</option></select></Field>
+          <Field label="Sous-div."><select value={subDivision} onChange={(e) => setSubDivision(e.target.value)} className={selectCls}><option value="">-</option><option value="GND">GND</option><option value="HRD">HRD</option></select></Field>
           <Field label="Couleur"><input type="color" value={color} onChange={(e) => setColor(e.target.value)} className="h-10 w-full rounded-sm border border-border bg-surface-2" /></Field>
         </div>
         <Field label="Territoire (texte)"><input value={territoryText} onChange={(e) => setTerritoryText(e.target.value)} className={inputCls} placeholder="Ex. Sud de la ville" /></Field>

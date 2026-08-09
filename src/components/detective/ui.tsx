@@ -89,6 +89,8 @@ export function Field({ label, children, hint }: { label: string; children: Reac
 
 export const inputCls = "h-10 w-full rounded-sm border border-border bg-surface-2 px-3 text-[13px] outline-none focus:border-accent";
 export const selectCls = inputCls;
+// Select compact pour les barres de filtre (largeur au contenu, ne s'étire pas).
+export const filterSelectCls = "h-10 rounded-sm border border-border bg-surface-2 px-3 text-[13px] outline-none focus:border-accent";
 
 // Combobox présentationnel : le parent gère la requête + fournit les résultats.
 export type ComboItem = { id: string; label: string; sub?: string };

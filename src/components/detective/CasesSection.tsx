@@ -8,7 +8,7 @@ import { Modal } from "@/components/common/Modal";
 import { Button } from "@/components/common/Button";
 import { EmptyState } from "@/components/common/EmptyState";
 import { SkeletonRows } from "@/components/common/Skeleton";
-import { CASE_STATUS, PRIORITY, SUBDIV_LABEL, Pill, Field, inputCls, selectCls, dtShort } from "./ui";
+import { CASE_STATUS, PRIORITY, SUBDIV_LABEL, Pill, Field, inputCls, selectCls, filterSelectCls, dtShort } from "./ui";
 import { AgentPicker } from "./pickers";
 
 export function CasesSection({ divisionId, canWrite, onOpen }: {
@@ -32,11 +32,11 @@ export function CasesSection({ divisionId, canWrite, onOpen }: {
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-faint" />
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Rechercher une enquête (n° ou titre)…" className={`${inputCls} pl-9`} />
         </div>
-        <select value={status} onChange={(e) => setStatus(e.target.value)} className={`${selectCls} w-auto`}>
+        <select value={status} onChange={(e) => setStatus(e.target.value)} className={filterSelectCls}>
           <option value="">Tous statuts</option>
           {Object.entries(CASE_STATUS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
         </select>
-        <select value={subDivision} onChange={(e) => setSubDivision(e.target.value)} className={`${selectCls} w-auto`}>
+        <select value={subDivision} onChange={(e) => setSubDivision(e.target.value)} className={filterSelectCls}>
           <option value="">GND + HRD</option>
           <option value="GND">GND</option>
           <option value="HRD">HRD</option>
@@ -109,9 +109,9 @@ function CreateCasePanel({ divisionId, onClose, onCreated }: {
         <div className="grid grid-cols-2 gap-[12px]">
           <Field label="Sous-division">
             <select value={subDivision} onChange={(e) => setSubDivision(e.target.value)} className={selectCls}>
-              <option value="">—</option>
-              <option value="GND">GND — {SUBDIV_LABEL.GND}</option>
-              <option value="HRD">HRD — {SUBDIV_LABEL.HRD}</option>
+              <option value="">-</option>
+              <option value="GND">GND - {SUBDIV_LABEL.GND}</option>
+              <option value="HRD">HRD - {SUBDIV_LABEL.HRD}</option>
             </select>
           </Field>
           <Field label="Priorité">

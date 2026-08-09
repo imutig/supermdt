@@ -72,9 +72,10 @@ export function DetectiveEditor({
     }
   };
 
-  const onClickRead = (e: React.MouseEvent) => {
-    const t = (e.target as HTMLElement).closest("[data-mention]") as HTMLElement | null;
+  const onMentionClick = (e: React.MouseEvent) => {
+    const t = (e.target as HTMLElement).closest(".db-mention") as HTMLElement | null;
     if (!t) return;
+    e.preventDefault();
     const kind = t.getAttribute("data-kind");
     const id = t.getAttribute("data-id");
     if (kind && id) go(kind, id);
@@ -82,14 +83,14 @@ export function DetectiveEditor({
 
   if (!editable) {
     return (
-      <div className="prose-mdt px-1 text-[13.5px] leading-[1.55]" onClick={onClickRead}>
+      <div className="prose-mdt px-1 text-[13.5px] leading-[1.55]" onClick={onMentionClick}>
         <EditorContent editor={editor} />
       </div>
     );
   }
 
   return (
-    <div className="rounded-sm border border-border bg-surface-2">
+    <div className="rounded-sm border border-border bg-surface-2" onClick={onMentionClick}>
       <RichTextToolbar editor={editor} />
       {media && (
         <div className="flex items-center gap-2 border-b border-border px-[8px] py-[5px] text-[11.5px] text-faint">

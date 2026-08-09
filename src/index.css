@@ -257,6 +257,17 @@ body {
 .db-mention-s { font-size: 11px; color: var(--muted); flex-shrink: 0; }
 .db-mention-empty { padding: 10px; font-size: 12.5px; color: var(--faint); text-align: center; }
 
+/* Tableau d'enquête : fond ardoise (tableau à craie). */
+.db-chalkboard {
+  background-color: #22302a;
+  background-image:
+    radial-gradient(circle at 50% 40%, rgba(255,255,255,.05), transparent 60%),
+    repeating-linear-gradient(0deg, rgba(255,255,255,.015) 0 2px, transparent 2px 4px),
+    linear-gradient(160deg, #263a31, #1c2823 70%, #17201c);
+  box-shadow: inset 0 0 120px rgba(0,0,0,.55);
+}
+.db-chalkboard:active { cursor: grabbing; }
+
 /* ============ Station 13 - animations d'accès & transition d'entrée ============ */
 @keyframes s13Fade { from { opacity: 0 } to { opacity: 1 } }
 @keyframes s13Rise { from { opacity: 0; transform: translateY(12px) } to { opacity: 1; transform: none } }
