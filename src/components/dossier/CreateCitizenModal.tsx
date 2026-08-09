@@ -4,6 +4,7 @@ import { useMutation, useQuery } from "convex/react";
 import { api } from "@/lib/api";
 import { ImageUpload } from "@/components/common/ImageUpload";
 import { DateField } from "@/components/common/DateField";
+import { FEATURES, NEXUS_MSG } from "@/lib/features";
 
 const FIELD =
   "h-[46px] w-full rounded-[10px] border border-border bg-surface-2 px-[14px] text-[13px] text-text outline-none focus:border-accent";
@@ -64,6 +65,19 @@ export function CreateCitizenModal({
       {(list ?? []).map((o) => <option key={o._id} value={o.name}>{o.name}</option>)}
     </select>
   );
+
+  // Cohabitation NexusMDT : création de citoyen désactivée ici.
+  if (!FEATURES.citizenWrite) {
+    return (
+      <div onClick={onClose} className="fixed inset-0 z-[70] flex items-center justify-center p-4" style={{ background: "var(--scrim)", backdropFilter: "blur(6px)" }}>
+        <div onClick={(e) => e.stopPropagation()} className="w-[460px] max-w-[94vw] rounded-card border border-border-strong bg-elev p-6 text-center mdt-pop">
+          <div className="mb-2 text-[15px] font-bold">Indisponible sur le SuperMDT</div>
+          <p className="mb-4 text-[13px] leading-[1.5] text-muted">{NEXUS_MSG}</p>
+          <button onClick={onClose} className="rounded-sm border border-border bg-surface-2 px-4 py-2 text-[13px] font-semibold hover:border-border-strong">Fermer</button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div onClick={onClose} className="fixed inset-0 z-[70] flex justify-end" style={{ background: "var(--scrim)", backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)", animation: "mdtFade .15s ease" }}>

@@ -9,6 +9,7 @@ import { Clover } from "@/components/common/Clover";
 import { RichTextEditor } from "@/components/common/RichTextEditor";
 import { ImageGallery } from "@/components/common/ImageGallery";
 import { MultiSelect } from "@/components/common/MultiSelect";
+import { FEATURES, NEXUS_MSG } from "@/lib/features";
 
 interface Charge {
   _id: Id<"penalCharges">;
@@ -86,6 +87,21 @@ export function CalcModal() {
   }, [charges]);
 
   if (!calcOpen) return null;
+
+  // Cohabitation NexusMDT : création de casiers / dossiers d'arrestation /
+  // contraventions désactivée. Message quelle que soit l'entrée (accueil,
+  // dossier, palette).
+  if (!FEATURES.judicialWrite) {
+    return (
+      <div onClick={closeCalc} className="fixed inset-0 z-[60] flex items-center justify-center p-4" style={{ background: "var(--scrim)", backdropFilter: "blur(6px)" }}>
+        <div onClick={(e) => e.stopPropagation()} className="w-[460px] max-w-[94vw] rounded-card border border-border-strong bg-elev p-6 text-center mdt-pop">
+          <div className="mb-2 text-[15px] font-bold">Indisponible sur le SuperMDT</div>
+          <p className="mb-4 text-[13px] leading-[1.5] text-muted">{NEXUS_MSG}</p>
+          <button onClick={closeCalc} className="rounded-sm border border-border bg-surface-2 px-4 py-2 text-[13px] font-semibold hover:border-border-strong">Fermer</button>
+        </div>
+      </div>
+    );
+  }
 
   const add = (c: Charge) =>
     setRows((r) => [...r, { uid: uidSeq++, charge: c, param: c.fine.kind === "PER_UNIT" ? 1 : 0, isRecidive: false }]);

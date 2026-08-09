@@ -127,6 +127,8 @@ export function NavRail() {
   const disabledKeys = new Set<string>();
   if (!FEATURES.dispatch) disabledKeys.add("dispatch");
   if (!FEATURES.service) disabledKeys.add("services");
+  // Historique judiciaire (casiers/contraventions) : géré sur le NexusMDT.
+  if (!FEATURES.judicialWrite) disabledKeys.add("contraventions");
 
   // Masque les items sans permission de consultation (§17). Pendant le chargement des perms, on montre tout.
   const canShow = (item: NavItem) =>
