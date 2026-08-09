@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { useParams } from "react-router-dom";
 import {
-  Shield, Users, Settings, Megaphone, MessageSquare, Send, Trash2, Plus, Pin, ChevronUp, ChevronDown, ImagePlus, X, Loader2, Search,
+  Shield, Users, Settings, Megaphone, MessageSquare, Send, Trash2, Plus, Pin, ChevronUp, ChevronDown, ImagePlus, X, Loader2, Search, Fingerprint,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import type { Id } from "convex/_generated/dataModel";
@@ -14,8 +14,9 @@ import { Button } from "@/components/common/Button";
 import { Modal } from "@/components/common/Modal";
 import { RichTextEditor } from "@/components/common/RichTextEditor";
 import { fmtMatricule } from "@/components/common/AgentTag";
+import { DetectiveBureau } from "@/components/detective/DetectiveBureau";
 
-type Tab = "accueil" | "membres" | "config";
+type Tab = "accueil" | "membres" | "config" | "detective";
 const dt = (ts: number) => new Date(ts).toLocaleString("fr-FR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
 
 export function DivisionSpace() {
@@ -31,9 +32,11 @@ export function DivisionSpace() {
   const has = (p: string) => isLead || perms.includes(p);
   const canConfig = isLead || has("ranks") || has("members") || has("config") || canManageLead;
   const accent = division.color ?? "var(--accent)";
+  const hasDetective = (division.modules ?? []).includes("detective") && has("db.view");
 
   const TABS: { key: Tab; label: string; icon: typeof Shield }[] = [
     { key: "accueil", label: "Accueil", icon: Shield },
+    ...(hasDetective ? [{ key: "detective" as Tab, label: "Detective Bureau", icon: Fingerprint }] : []),
     { key: "membres", label: "Membres", icon: Users },
     ...(canConfig ? [{ key: "config" as Tab, label: "Configuration", icon: Settings }] : []),
   ];
@@ -67,6 +70,7 @@ export function DivisionSpace() {
       </div>
 
       {tab === "accueil" && <Accueil divisionId={divisionId} home={home} />}
+      {tab === "detective" && hasDetective && <DetectiveBureau divisionId={divisionId} perms={perms} isLead={isLead} />}
       {tab === "membres" && <Membres divisionId={divisionId} canManage={has("members")} />}
       {tab === "config" && canConfig && <Config divisionId={divisionId} canRanks={has("ranks")} canConfigPres={has("config")} canManageLead={canManageLead} description={division.description} logoUrl={division.logoUrl ?? undefined} />}
     </div>
@@ -292,10 +296,34 @@ function Config({ divisionId, canRanks, canConfigPres, canManageLead, descriptio
   return (
     <div className="flex flex-col gap-[16px]">
       {canManageLead && <LeadConfig divisionId={divisionId} />}
+      {canManageLead && <ModulesConfig divisionId={divisionId} />}
       {canConfigPres && <LogoConfig divisionId={divisionId} logoUrl={logoUrl} />}
       {canConfigPres && <PresentationConfig divisionId={divisionId} description={description} />}
       {canRanks && <RanksConfig divisionId={divisionId} />}
     </div>
+  );
+}
+
+function ModulesConfig({ divisionId }: { divisionId: Id<"divisions"> }) {
+  const data = useQuery(api.divisionSpace.moduleCatalog, { divisionId });
+  const setModule = useMutation(api.divisionSpace.setModule);
+  const toast = useToast();
+  if (!data) return null;
+  const active = new Set(data.active);
+  return (
+    <section className="rounded-card border border-border bg-surface p-[16px]">
+      <div className="mb-[8px] text-[11px] font-bold uppercase tracking-[0.08em] text-faint">Modules spécifiques</div>
+      <div className="mb-[10px] text-[12.5px] text-muted">Activez les outils propres à cette division. Les permissions internes du module apparaissent alors dans les grades.</div>
+      <div className="flex flex-col gap-[8px]">
+        {data.catalog.map((m) => (
+          <label key={m.slug} className="flex items-center justify-between rounded-sm border border-border bg-surface-2 px-3 py-2">
+            <span className="text-[13px] font-medium">{m.label}</span>
+            <input type="checkbox" checked={active.has(m.slug)} disabled={!data.canManage}
+              onChange={(e) => void toast.guard(setModule({ divisionId, module: m.slug, enabled: e.target.checked }), "Action impossible")} />
+          </label>
+        ))}
+      </div>
+    </section>
   );
 }
 

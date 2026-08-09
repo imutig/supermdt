@@ -371,7 +371,7 @@ export const listDrugSites = query({
     for (const d of rows) if (d.gangId && !gangs.has(d.gangId as string)) { const g = await ctx.db.get(d.gangId); if (g) gangs.set(d.gangId as string, g.name); }
     return rows.map((d) => ({
       _id: d._id, name: d.name, kind: d.kind, drugTypes: d.drugTypes ?? "", note: d.note ?? "",
-      x: d.x ?? null, y: d.y ?? null, mediaUrls: d.mediaUrls ?? [],
+      x: d.x ?? null, y: d.y ?? null, mediaUrls: d.mediaUrls ?? [], at: d.at,
       gangId: d.gangId ?? null, gangName: d.gangId ? (gangs.get(d.gangId as string) ?? null) : null,
     }));
   },
