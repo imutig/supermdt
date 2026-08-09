@@ -22,6 +22,7 @@ import {
   ShieldAlert,
   BarChart3,
   Archive as ArchiveIcon,
+  Shield,
   type LucideIcon,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -135,9 +136,16 @@ export function NavRail() {
     !disabledKeys.has(item.key)
     && (!ready || (item.anyPerm ? item.anyPerm.some((p) => can(p)) : !item.perm || can(item.perm)));
 
-  const groups = GROUPS.filter((g) => !g.commandOnly || canAdmin)
+  const base = GROUPS.filter((g) => !g.commandOnly || canAdmin)
     .map((g) => ({ ...g, items: g.items.filter(canShow) }))
     .filter((g) => g.items.length > 0);
+
+  // Divisions de l'agent : un groupe dynamique, inséré après « Opérations ».
+  const myDivisions = useQuery(api.divisionSpace.mine) ?? [];
+  const divisionGroup: NavGroup | null = myDivisions.length
+    ? { label: "Divisions", items: myDivisions.map((d) => ({ key: `div-${d._id}`, label: d.name, icon: Shield, to: `/division/${d._id}` })) }
+    : null;
+  const groups = divisionGroup ? [base[0], divisionGroup, ...base.slice(1)].filter(Boolean) as NavGroup[] : base;
 
   // ---- Rail compact : icônes seules, pas de texte ni d'expansion. ----
   // Rail compact : icônes seules, se déploie en overlay au survol (sans décaler le contenu).

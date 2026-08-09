@@ -30,6 +30,7 @@ import { Rapports } from "@/pages/Rapports";
 const RapportEditor = lazyReload(() => import("@/pages/RapportEditor").then((m) => ({ default: m.RapportEditor })));
 import { Contraventions } from "@/pages/Contraventions";
 import { Archive } from "@/pages/Archive";
+import { DivisionSpace } from "@/pages/DivisionSpace";
 const Configuration = lazyReload(() => import("@/pages/Configuration").then((m) => ({ default: m.Configuration })));
 const Statistiques = lazyReload(() => import("@/pages/Statistiques").then((m) => ({ default: m.Statistiques })));
 import { Profil } from "@/pages/Profil";
@@ -199,6 +200,7 @@ function Gated() {
         <Route path="/rapport/:id" element={<RequirePerm perm="rapports.view"><RapportEditor /></RequirePerm>} />
         <Route path="/contraventions" element={FEATURES.judicialWrite ? <RequirePerm perm="contraventions.view"><Contraventions /></RequirePerm> : <Navigate to="/" replace />} />
         <Route path="/archive" element={<RequirePerm perm="archive.view"><Archive /></RequirePerm>} />
+        <Route path="/division/:id" element={<DivisionSpace />} />
         <Route path="/statistiques" element={<RequirePerm perm="stats.view"><Statistiques /></RequirePerm>} />
         <Route path="/config" element={<RequirePerm perm="rbac.manage"><Configuration /></RequirePerm>} />
         <Route path="/admin" element={<RequirePerm perm="effectif.validate"><Admin /></RequirePerm>} />

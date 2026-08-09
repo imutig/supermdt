@@ -77,6 +77,8 @@ export default defineSchema({
   agentDivisions: defineTable({
     agentId: v.id("agents"),
     divisionId: v.id("divisions"),
+    // Grade interne de l'agent dans cette division (espace division).
+    rankId: v.optional(v.id("divisionRanks")),
   })
     .index("by_agent", ["agentId"])
     .index("by_division", ["divisionId"]),
@@ -97,7 +99,47 @@ export default defineSchema({
     name: v.string(),
     tier: v.union(v.literal("PRINCIPALE"), v.literal("SECONDAIRE")),
     color: v.optional(v.string()),
+    // Espace division : présentation + Lead (accès « owner » de la division).
+    description: v.optional(v.string()),
+    leadAgentId: v.optional(v.id("agents")),
   }),
+
+  // Grades internes à une division (échelle propre, gérée par le Lead).
+  divisionRanks: defineTable({
+    divisionId: v.id("divisions"),
+    name: v.string(),
+    position: v.number(),
+    color: v.optional(v.string()),
+  }).index("by_division", ["divisionId"]),
+
+  // Permissions internes portées par un grade de division (catalogue dédié,
+  // distinct des permissions globales ; le Lead les a toutes).
+  divisionRankPermissions: defineTable({
+    rankId: v.id("divisionRanks"),
+    perm: v.string(),
+  }).index("by_rank", ["rankId"]),
+
+  // Annonces de la division (fil épinglable, texte riche + images).
+  divisionAnnouncements: defineTable({
+    divisionId: v.id("divisions"),
+    authorId: v.optional(v.id("agents")),
+    authorName: v.string(),
+    title: v.string(),
+    body: v.string(),
+    imageUrls: v.optional(v.array(v.string())),
+    pinned: v.optional(v.boolean()),
+    at: v.number(),
+  }).index("by_division", ["divisionId"]),
+
+  // Chat interne de la division (texte riche + images).
+  divisionMessages: defineTable({
+    divisionId: v.id("divisions"),
+    authorId: v.optional(v.id("agents")),
+    authorName: v.string(),
+    body: v.string(),
+    imageUrls: v.optional(v.array(v.string())),
+    at: v.number(),
+  }).index("by_division", ["divisionId"]),
 
   // Formations et spécialités (HNT, Police Academy, MRD, Dispatcher...).
   // Attribuées par agent comme les divisions, mais purement déclaratives :
