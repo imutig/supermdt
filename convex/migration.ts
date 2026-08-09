@@ -122,17 +122,16 @@ function mapWeapon(w: any) {
   };
 }
 
-// Mapping véhicule (best-effort : noms de champs à confirmer côté API vizu).
+// Mapping véhicule (champs confirmés via HAR : marque+modele, categorie, notes,
+// proprietaire.nom = nom complet).
 function mapVehicle(v: any) {
-  const owner = v.citoyenLie
-    ? `${v.citoyenLie.prenom ?? ""} ${v.citoyenLie.nom ?? ""}`.trim()
-    : (v.proprietaire || v.owner || "");
   return {
-    plaque: (v.plaque || v.immatriculation || "").trim().toUpperCase(),
-    modele: (v.modele || v.marque || "").trim() || undefined,
+    plaque: (v.plaque || "").trim().toUpperCase(),
+    modele: [(v.marque || "").trim(), (v.modele || "").trim()].filter(Boolean).join(" ") || undefined,
     couleur: (v.couleur || "").trim() || undefined,
-    type: (v.type || v.categorie || "").trim() || undefined,
-    ownerName: owner || "",
+    type: (v.categorie || "").trim() || undefined,
+    notes: (v.notes || "").trim() || undefined,
+    ownerName: (v.proprietaire?.nom || "").trim(),
   };
 }
 
@@ -212,7 +211,7 @@ export const sync = internalAction({
 async function vizuLogin(): Promise<string> {
   const email = process.env.VIZU_EMAIL;
   const password = process.env.VIZU_PASSWORD;
-  const path = process.env.VIZU_LOGIN_PATH || "/api/auth/login";
+  const path = process.env.VIZU_LOGIN_PATH || "/auth/login";
   if (!email || !password) throw new Error("VIZU_EMAIL / VIZU_PASSWORD non configurés.");
   const res = await fetch(`${BASE}${path}`, {
     method: "POST",
@@ -346,7 +345,7 @@ export const _upsertVehicles = internalMutation({
       if (v0.ownerName && !ownerId) sansProprietaire++;
       if (dryRun) continue;
       await ctx.db.insert("vehicles", {
-        plaque: v0.plaque, modele: v0.modele, couleur: v0.couleur, type: v0.type, ownerId,
+        plaque: v0.plaque, modele: v0.modele, couleur: v0.couleur, type: v0.type, notes: v0.notes, ownerId,
         photoStorageIds: [],
         searchText: norm(`${v0.plaque} ${v0.modele ?? ""} ${v0.couleur ?? ""} ${v0.type ?? ""}`),
       });
