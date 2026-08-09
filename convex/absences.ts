@@ -9,6 +9,7 @@ export const list = query({
   handler: async (ctx) => {
     const viewer = await requireAgent(ctx);
     const isManager = await can(ctx, viewer, "absences.manage");
+    const canDelete = await can(ctx, viewer, "absences.delete");
     const rows = isManager
       ? await ctx.db.query("absences").order("desc").take(60)
       : await ctx.db
@@ -27,6 +28,7 @@ export const list = query({
         to: a.to,
         status: a.status,
         canDecide: isManager && a.status === "EN_ATTENTE",
+        canDelete,
       });
     }
     return out;
@@ -57,6 +59,16 @@ export const request = mutation({
       ],
     });
     return id;
+  },
+});
+
+export const remove = mutation({
+  args: { id: v.id("absences") },
+  handler: async (ctx, { id }) => {
+    const actor = await requireAgent(ctx);
+    await requirePermission(ctx, actor, "absences.delete");
+    await ctx.db.delete(id);
+    await writeAudit(ctx, actor, { action: "absence.delete", resourceType: "absence", resourceId: id });
   },
 });
 

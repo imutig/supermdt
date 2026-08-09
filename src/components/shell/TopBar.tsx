@@ -6,6 +6,7 @@ import { usePortals } from "@/hooks/usePortals";
 import { ServiceToggle } from "@/components/common/ServiceToggle";
 import { DispatchStatus } from "./DispatchStatus";
 import { ProfileMenu } from "./ProfileMenu";
+import { FEATURES } from "@/lib/features";
 
 // Barre unique. Elle était doublée d'une bande « dev » qui coûtait une ligne
 // entière pour un titre et un sélecteur de thème : les deux sont ici, et le
@@ -45,11 +46,13 @@ export function TopBar() {
 
       <div className="flex-1" />
 
-      <DispatchStatus />
+      {FEATURES.dispatch && <DispatchStatus />}
 
-      <div className="flex-shrink-0 rounded-[9px] border border-border bg-surface-2 px-[10px] py-[5px]">
-        <ServiceToggle onDuty={onDuty} onToggle={toggleDuty} />
-      </div>
+      {FEATURES.service && (
+        <div className="flex-shrink-0 rounded-[9px] border border-border bg-surface-2 px-[10px] py-[5px]">
+          <ServiceToggle onDuty={onDuty} onToggle={toggleDuty} />
+        </div>
+      )}
 
       {/* Bascule vers l'aiguillage des portails : n'apparaît que pour ceux qui
           ont réellement un second accès, sinon c'est un bouton mort. */}

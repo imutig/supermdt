@@ -56,7 +56,7 @@ const SessionScreen = lazyReload(() => import("@/lspa/session/SessionScreen").th
 import { usePortals } from "@/hooks/usePortals";
 import { useCan } from "@/hooks/useCan";
 import { Splash } from "@/auth/Splash";
-import { MDT_ENABLED } from "@/lib/features";
+import { MDT_ENABLED, FEATURES } from "@/lib/features";
 
 export default function App() {
   return (
@@ -189,10 +189,10 @@ function Gated() {
         <Route path="/armes" element={<RequirePerm perm="armes.view"><Armes /></RequirePerm>} />
         <Route path="/vehicules" element={<RequirePerm perm={["vehicules.view", "flotte.view"]}><Vehicules /></RequirePerm>} />
         <Route path="/saisies" element={<RequirePerm perm="saisies.view"><Saisies /></RequirePerm>} />
-        <Route path="/dispatch" element={<RequirePerm perm="dispatch.view"><Dispatch /></RequirePerm>} />
+        <Route path="/dispatch" element={FEATURES.dispatch ? <RequirePerm perm="dispatch.view"><Dispatch /></RequirePerm> : <Navigate to="/" replace />} />
         <Route path="/absences" element={<RequirePerm perm="absences.request"><Absences /></RequirePerm>} />
         <Route path="/discipline" element={<RequirePerm perm="discipline.view"><Discipline /></RequirePerm>} />
-        <Route path="/services" element={<RequirePerm perm="service.self"><Services /></RequirePerm>} />
+        <Route path="/services" element={FEATURES.service ? <RequirePerm perm="service.self"><Services /></RequirePerm> : <Navigate to="/" replace />} />
         <Route path="/codepenal" element={<RequirePerm perm="codepenal.view"><CodePenal /></RequirePerm>} />
         <Route path="/mandats" element={<RequirePerm perm="mandats.view"><MandatsPage /></RequirePerm>} />
         <Route path="/rapports" element={<RequirePerm perm="rapports.view"><Rapports /></RequirePerm>} />

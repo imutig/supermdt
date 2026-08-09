@@ -10,6 +10,7 @@ import { PageBoundary } from "./PageBoundary";
 import { SearchOverlay } from "@/components/search/SearchOverlay";
 import { CalcModal } from "@/components/calc/CalcModal";
 import { MandatModal } from "@/components/mandat/MandatModal";
+import { FEATURES } from "@/lib/features";
 
 export function AppShell() {
   const location = useLocation();
@@ -24,7 +25,7 @@ export function AppShell() {
     <div className="relative flex h-full flex-col overflow-hidden">
       <div className="flex min-h-0 flex-1 flex-col">
         {!focus && <TopBar />}
-        {!focus && <FicheBanner />}
+        {!focus && FEATURES.ficheRenseignement && <FicheBanner />}
         <div className="flex min-h-0 flex-1">
           {!focus && <NavRail />}
           <main className="min-w-0 flex-1 overflow-y-auto">

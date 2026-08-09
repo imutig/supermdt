@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { X } from "lucide-react";
 import { useMutation, useQuery } from "convex/react";
-import { api } from "@/lib/api";
+import { api, type Id } from "@/lib/api";
 import { useToast } from "@/providers/toast";
 import { EmptyState } from "@/components/common/EmptyState";
 import { SkeletonRows } from "@/components/common/Skeleton";
 import { Clover } from "@/components/common/Clover";
+import { DeleteButton } from "@/components/common/DeleteButton";
 
 const STATUS_LABEL: Record<string, { label: string; color: string }> = {
   EN_ATTENTE: { label: "En attente", color: "var(--warning)" },
@@ -17,6 +18,8 @@ const STATUS_LABEL: Record<string, { label: string; color: string }> = {
 export function Absences() {
   const list = useQuery(api.absences.list);
   const decide = useMutation(api.absences.decide);
+  const remove = useMutation(api.absences.remove);
+  const toast = useToast();
   const [modal, setModal] = useState(false);
 
   return (
@@ -45,12 +48,15 @@ export function Absences() {
                 {new Date(a.from).toLocaleDateString("fr-FR")} - {new Date(a.to).toLocaleDateString("fr-FR")}
               </span>
               <span className="text-[12px] font-semibold" style={{ color: s.color }}>{s.label}</span>
-              <span className="flex justify-end gap-2">
+              <span className="flex items-center justify-end gap-2">
                 {a.canDecide && (
                   <>
                     <button onClick={() => decide({ id: a._id, approve: true })} className="text-[12px] font-semibold text-success hover:underline">Approuver</button>
                     <button onClick={() => decide({ id: a._id, approve: false })} className="text-[12px] font-semibold text-muted hover:text-danger">Refuser</button>
                   </>
+                )}
+                {a.canDelete && (
+                  <DeleteButton onDelete={() => toast.guard(remove({ id: a._id as Id<"absences"> }), "Suppression impossible")} title="Supprimer l'absence" />
                 )}
               </span>
             </div>

@@ -9,6 +9,7 @@ import { useToast } from "@/providers/toast";
 import { fmtMatricule } from "@/components/common/AgentTag";
 import { ImageUpload } from "@/components/common/ImageUpload";
 import { FicheRenseignementModal } from "@/components/effectif/FicheRenseignementModal";
+import { FEATURES } from "@/lib/features";
 
 export function ProfileMenu() {
   const me = useMe();
@@ -63,7 +64,7 @@ export function ProfileMenu() {
           </div>
           <MenuItem icon={User} label="Mon profil" onClick={() => { navigate(inLspa ? "/lspa/profil" : "/profil"); setOpen(false); }} />
           <MenuItem icon={Camera} label="Photo de profil" onClick={() => { setPhoto(true); setOpen(false); }} />
-          {!inLspa && <MenuItem icon={IdCard} label="Fiche de renseignement" onClick={() => { setFiche(true); setOpen(false); }} />}
+          {!inLspa && FEATURES.ficheRenseignement && <MenuItem icon={IdCard} label="Fiche de renseignement" onClick={() => { setFiche(true); setOpen(false); }} />}
           <div className="border-t border-border" />
           <MenuItem icon={LogOut} label="Se déconnecter" danger onClick={() => signOut()} />
         </div>

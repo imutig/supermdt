@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery } from "convex/react";
 import { api, type Id } from "@/lib/api";
 import { useCan } from "@/hooks/useCan";
+import { FEATURES } from "@/lib/features";
 import { CasierEntryModal } from "@/components/dossier/CasierEntryModal";
 import { ContraventionModal } from "@/components/dossier/ContraventionModal";
 import { AgentTag } from "@/components/common/AgentTag";
@@ -89,10 +90,10 @@ export function Contraventions() {
       </div>
 
       {open?.kind === "casier" && (
-        <CasierEntryModal entryId={open.id as Id<"casierEntries">} canDelete={can("casier.annul")} onClose={() => setOpen(null)} />
+        <CasierEntryModal entryId={open.id as Id<"casierEntries">} canDelete={can("casier.annul") && FEATURES.judicialWrite} onClose={() => setOpen(null)} />
       )}
       {open?.kind === "citation" && (
-        <ContraventionModal citationId={open.id as Id<"citations">} canDelete={can("contraventions.annul")} onClose={() => setOpen(null)} />
+        <ContraventionModal citationId={open.id as Id<"citations">} canDelete={can("contraventions.annul") && FEATURES.judicialWrite} onClose={() => setOpen(null)} />
       )}
     </div>
   );

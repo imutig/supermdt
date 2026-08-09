@@ -31,6 +31,7 @@ import { api } from "@/lib/api";
 import { useApp } from "@/providers/app-state";
 import { useCan } from "@/hooks/useCan";
 import { usePrefs } from "@/hooks/usePrefs";
+import { FEATURES } from "@/lib/features";
 
 interface NavItem {
   key: string;
@@ -122,9 +123,15 @@ export function NavRail() {
       return location.pathname === "/" || location.pathname.startsWith("/citoyen");
     return !!item.to && location.pathname === item.to;
   };
+  // Fonctions désactivées (cohabitation NexusMDT) : retirées de la navigation.
+  const disabledKeys = new Set<string>();
+  if (!FEATURES.dispatch) disabledKeys.add("dispatch");
+  if (!FEATURES.service) disabledKeys.add("services");
+
   // Masque les items sans permission de consultation (§17). Pendant le chargement des perms, on montre tout.
   const canShow = (item: NavItem) =>
-    !ready || (item.anyPerm ? item.anyPerm.some((p) => can(p)) : !item.perm || can(item.perm));
+    !disabledKeys.has(item.key)
+    && (!ready || (item.anyPerm ? item.anyPerm.some((p) => can(p)) : !item.perm || can(item.perm)));
 
   const groups = GROUPS.filter((g) => !g.commandOnly || canAdmin)
     .map((g) => ({ ...g, items: g.items.filter(canShow) }))

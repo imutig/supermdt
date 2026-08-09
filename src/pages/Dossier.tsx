@@ -21,6 +21,7 @@ import { EmptyState } from "@/components/common/EmptyState";
 import { useCan } from "@/hooks/useCan";
 import { useToast } from "@/providers/toast";
 import { RichTextEditor } from "@/components/common/RichTextEditor";
+import { FEATURES, NEXUS_MSG } from "@/lib/features";
 
 const TABS = [
   { key: "identite", label: "Identité" },
@@ -65,15 +66,17 @@ export function Dossier() {
   // corps du grade ignorait la configuration : un Officier ne pouvait rien
   // faire même avec les droits accordés, et un gradé pouvait tout faire même
   // après les lui avoir retirés.
-  const canEditCitizen = can("citoyens.edit");
+  // Cohabitation NexusMDT : l'écriture citoyenne (identité, permis, flags) et
+  // judiciaire (casiers, contraventions) est désactivée ici. Consultation OK.
+  const canEditCitizen = can("citoyens.edit") && FEATURES.citizenWrite;
   const canCreateVehicle = can("vehicules.create");
-  const canAnnulCasier = can("casier.annul");
-  const canAnnulContravention = can("contraventions.annul");
+  const canAnnulCasier = can("casier.annul") && FEATURES.judicialWrite;
+  const canAnnulContravention = can("contraventions.annul") && FEATURES.judicialWrite;
   const canAnnulMandat = can("mandats.annul");
   const canEditVehicle = can("vehicules.edit");
-  const canManageLicenses = can("citoyens.licenses");
-  const canCasier = can("casier.create");
-  const canContravention = can("contraventions.create");
+  const canManageLicenses = can("citoyens.licenses") && FEATURES.citizenWrite;
+  const canCasier = can("casier.create") && FEATURES.judicialWrite;
+  const canContravention = can("contraventions.create") && FEATURES.judicialWrite;
   const canMandat = can("mandats.create");
   const canExecuteMandat = can("mandats.execute");
   const canPlainte = can("plaintes.create") || can("plaintes.edit") || can("plaintes.delete");
@@ -169,6 +172,13 @@ export function Dossier() {
         <span className="text-faint">/</span>
         <span>{c.prenom} {c.nom}</span>
       </div>
+
+      {!FEATURES.citizenWrite && (
+        <div className="mb-[16px] flex items-start gap-[10px] rounded-card border px-[15px] py-[12px] text-[13px]" style={{ borderColor: "color-mix(in srgb, var(--accent) 40%, transparent)", background: "var(--accent-soft)", color: "var(--text)" }}>
+          <span className="text-accent">ⓘ</span>
+          <span>{NEXUS_MSG} La consultation reste disponible ici (données synchronisées).</span>
+        </div>
+      )}
 
       {/* Header */}
       <div className="mb-[18px] flex gap-5 rounded-card border border-border bg-surface p-5">
@@ -332,11 +342,11 @@ export function Dossier() {
                   <div className="mb-[11px] mt-[18px] text-[10.5px] font-bold uppercase tracking-[0.09em] text-faint">
                     Signalements
                   </div>
-                  {citizenId && <FlagsManager citizenId={citizenId} flags={data.flags} canManage={can("citoyens.flag")} />}
+                  {citizenId && <FlagsManager citizenId={citizenId} flags={data.flags} canManage={can("citoyens.flag") && FEATURES.citizenWrite} />}
                 </div>
               </div>
             ) : tab === "famille" ? (
-              citizenId ? <FamilyTab citizenId={citizenId} canEdit={can("citoyens.edit")} onOpen={(id) => navigate(`/citoyen/${id}`)} /> : null
+              citizenId ? <FamilyTab citizenId={citizenId} canEdit={can("citoyens.edit") && FEATURES.citizenWrite} onOpen={(id) => navigate(`/citoyen/${id}`)} /> : null
             ) : tab === "vehicules" ? (
               <div>
                 <div className="flex items-center justify-between border-b border-border px-4 py-[10px]">
