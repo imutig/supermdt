@@ -122,9 +122,10 @@ const SOFT_KINDS = Object.keys(SOFT) as Exclude<Kind, "citizen" | "agent">[];
 
 async function deletedRows(ctx: QueryCtx, table: TableNames): Promise<Doc[]> {
   // Requête générique sur une table à `deletedAt` : typée librement (le type
-  // exact dépend de la table, garanti par la config SOFT).
+  // exact dépend de la table, garanti par la config SOFT). `.neq` n'existe pas
+  // sur un index range -> on parcourt l'index by_deleted et on filtre.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return await (ctx.db.query(table) as any).withIndex("by_deleted", (q: any) => q.neq("deletedAt", undefined)).collect();
+  return await (ctx.db.query(table) as any).withIndex("by_deleted").filter((q: any) => q.neq(q.field("deletedAt"), undefined)).collect();
 }
 
 export const list = query({
