@@ -1,59 +1,19 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import type { QueryCtx, MutationCtx } from "./_generated/server";
-import type { Doc, Id } from "./_generated/dataModel";
 import { requireAgent, can } from "./rbac";
 import { writeAudit } from "./lib/audit";
+import {
+  DIVISION_PERMS, DIVISION_MODULES, permCatalogFor,
+  loadDivision, membershipOf, isLeadOf, permsOf, assertMember, assertPerm, assertGlobalManage,
+} from "./lib/divisionAccess";
 
 // Espace division : chaque agent affecté à une division y accède depuis la
 // sidebar. Base commune : présentation, membres, grades internes + permissions,
 // annonces, chat interne. Le Lead a un accès « owner » sur sa division.
+// Les helpers d'accès + le catalogue de permissions internes vivent dans
+// ./lib/divisionAccess (partagés avec les modules spécifiques, cf. detective.ts).
 
-// Catalogue des permissions INTERNES à une division (distinctes des
-// permissions globales). Le Lead les a toutes.
-export const DIVISION_PERMS: { slug: string; label: string }[] = [
-  { slug: "members", label: "Gérer les membres et leurs grades" },
-  { slug: "ranks", label: "Gérer les grades internes" },
-  { slug: "announcements", label: "Publier et gérer les annonces" },
-  { slug: "chat", label: "Modérer le chat (supprimer les messages)" },
-  { slug: "config", label: "Éditer la présentation de la division" },
-];
-const ALL_PERMS = DIVISION_PERMS.map((p) => p.slug);
-
-async function loadDivision(ctx: QueryCtx | MutationCtx, divisionId: Id<"divisions">) {
-  const d = await ctx.db.get(divisionId);
-  if (!d) throw new Error("Division introuvable.");
-  return d;
-}
-async function membershipOf(ctx: QueryCtx | MutationCtx, agentId: Id<"agents">, divisionId: Id<"divisions">) {
-  return (await ctx.db.query("agentDivisions").withIndex("by_agent", (q) => q.eq("agentId", agentId)).collect())
-    .find((l) => l.divisionId === divisionId) ?? null;
-}
-function isLeadOf(agent: Doc<"agents">, division: Doc<"divisions">) {
-  return agent.isOwner || division.leadAgentId === agent._id;
-}
-async function permsOf(ctx: QueryCtx | MutationCtx, agent: Doc<"agents">, division: Doc<"divisions">): Promise<Set<string>> {
-  if (isLeadOf(agent, division)) return new Set(ALL_PERMS);
-  const m = await membershipOf(ctx, agent._id, division._id);
-  if (!m || !m.rankId) return new Set();
-  const rows = await ctx.db.query("divisionRankPermissions").withIndex("by_rank", (q) => q.eq("rankId", m.rankId!)).collect();
-  return new Set(rows.map((r) => r.perm));
-}
-// Membre de la division (ou owner) : requis pour consulter l'espace.
-async function assertMember(ctx: QueryCtx | MutationCtx, agent: Doc<"agents">, division: Doc<"divisions">) {
-  if (agent.isOwner) return;
-  if (!(await membershipOf(ctx, agent._id, division._id))) throw new Error("Vous ne faites pas partie de cette division.");
-}
-async function assertPerm(ctx: MutationCtx, agent: Doc<"agents">, division: Doc<"divisions">, slug: string) {
-  if (isLeadOf(agent, division)) return;
-  if ((await permsOf(ctx, agent, division)).has(slug)) return;
-  throw new Error("Action non autorisée dans cette division.");
-}
-// Désigner le Lead / gérer les divisions : droit global (owner / rbac.manage).
-async function assertGlobalManage(ctx: MutationCtx, agent: Doc<"agents">) {
-  if (agent.isOwner || (await can(ctx, agent, "rbac.manage"))) return;
-  throw new Error("Réservé à l'administration.");
-}
+export { DIVISION_PERMS };
 
 // ---------- Consultation ----------
 
@@ -93,7 +53,7 @@ export const home = query({
       .slice(0, 30)
       .map((a) => ({ _id: a._id, authorName: a.authorName, title: a.title, body: a.body, imageUrls: a.imageUrls ?? [], pinned: !!a.pinned, at: a.at, mine: a.authorId === agent._id }));
     return {
-      division: { _id: division._id, name: division.name, color: division.color ?? null, logoUrl: division.logoUrl ?? null, description: division.description ?? "", tier: division.tier },
+      division: { _id: division._id, name: division.name, color: division.color ?? null, logoUrl: division.logoUrl ?? null, description: division.description ?? "", tier: division.tier, modules: division.modules ?? [] },
       isLead: isLeadOf(agent, division),
       lead: lead ? { name: `${lead.prenomRP} ${lead.nomRP}`, matricule: lead.matricule ?? null } : null,
       membersCount: members.length,
@@ -146,7 +106,7 @@ export const ranks = query({
       const perms = (await ctx.db.query("divisionRankPermissions").withIndex("by_rank", (q) => q.eq("rankId", r._id)).collect()).map((p) => p.perm);
       out.push({ _id: r._id, name: r.name, color: r.color ?? null, position: r.position, perms });
     }
-    return { ranks: out, catalog: DIVISION_PERMS };
+    return { ranks: out, catalog: permCatalogFor(division) };
   },
 });
 
@@ -200,6 +160,36 @@ export const setLogo = mutation({
     const division = await loadDivision(ctx, divisionId);
     await assertPerm(ctx, agent, division, "config");
     await ctx.db.patch(divisionId, { logoUrl: url ?? undefined });
+  },
+});
+
+// Catalogue des modules activables (pour la config) + état courant.
+export const moduleCatalog = query({
+  args: { divisionId: v.id("divisions") },
+  handler: async (ctx, { divisionId }) => {
+    const agent = await requireAgent(ctx);
+    const division = await loadDivision(ctx, divisionId);
+    const canManage = agent.isOwner || (await can(ctx, agent, "rbac.manage"));
+    return {
+      canManage,
+      active: division.modules ?? [],
+      catalog: DIVISION_MODULES.map((m) => ({ slug: m.slug, label: m.label })),
+    };
+  },
+});
+
+// Activer/désactiver un module spécifique (owner / rbac.manage).
+export const setModule = mutation({
+  args: { divisionId: v.id("divisions"), module: v.string(), enabled: v.boolean() },
+  handler: async (ctx, { divisionId, module, enabled }) => {
+    const agent = await requireAgent(ctx);
+    await assertGlobalManage(ctx, agent);
+    if (!DIVISION_MODULES.some((m) => m.slug === module)) throw new Error("Module inconnu.");
+    const division = await loadDivision(ctx, divisionId);
+    const set = new Set(division.modules ?? []);
+    if (enabled) set.add(module); else set.delete(module);
+    await ctx.db.patch(divisionId, { modules: [...set] });
+    await writeAudit(ctx, agent, { action: "division.set_module", resourceType: "division", resourceId: divisionId, resourceLabel: `${division.name} · ${module}=${enabled}` });
   },
 });
 
@@ -285,7 +275,8 @@ export const setRankPerms = mutation({
     if (!rank) return;
     const division = await loadDivision(ctx, rank.divisionId);
     await assertPerm(ctx, agent, division, "ranks");
-    const wanted = new Set(perms.filter((p) => ALL_PERMS.includes(p)));
+    const allowed = new Set(permCatalogFor(division).map((p) => p.slug));
+    const wanted = new Set(perms.filter((p) => allowed.has(p)));
     const existing = await ctx.db.query("divisionRankPermissions").withIndex("by_rank", (q) => q.eq("rankId", rankId)).collect();
     for (const e of existing) { if (!wanted.has(e.perm)) await ctx.db.delete(e._id); else wanted.delete(e.perm); }
     for (const p of wanted) await ctx.db.insert("divisionRankPermissions", { rankId, perm: p });

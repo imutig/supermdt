@@ -103,6 +103,8 @@ export default defineSchema({
     description: v.optional(v.string()),
     leadAgentId: v.optional(v.id("agents")),
     logoUrl: v.optional(v.string()), // logo affiché en sidebar + en-tête
+    // Modules spécifiques activés (catalogue DIVISION_MODULES). Ex. "detective".
+    modules: v.optional(v.array(v.string())),
   }),
 
   // Grades internes à une division (échelle propre, gérée par le Lead).
@@ -141,6 +143,298 @@ export default defineSchema({
     imageUrls: v.optional(v.array(v.string())),
     at: v.number(),
   }).index("by_division", ["divisionId"]),
+
+  // ============ DETECTIVE BUREAU (module "detective") ============
+  // Voir SPEC-DETECTIVE-BUREAU.md. Espace d'enquête connecté (GND + HRD).
+
+  // Enquêtes.
+  dbCases: defineTable({
+    divisionId: v.id("divisions"),
+    number: v.number(), // n° d'affaire auto-incrémenté par division
+    title: v.string(),
+    subDivision: v.optional(v.union(v.literal("GND"), v.literal("HRD"))),
+    status: v.union(
+      v.literal("OPEN"), v.literal("IN_PROGRESS"), v.literal("SUSPENDED"),
+      v.literal("COLD"), v.literal("SOLVED"), v.literal("CLOSED"),
+    ),
+    priority: v.union(v.literal("LOW"), v.literal("MEDIUM"), v.literal("HIGH"), v.literal("CRITICAL")),
+    leadAgentId: v.optional(v.id("agents")),
+    synthesis: v.optional(v.string()), // HTML riche
+    confidential: v.optional(v.boolean()), // accès db.sensitive
+    createdBy: v.optional(v.id("agents")),
+    authorName: v.string(),
+    at: v.number(),
+    deletedAt: v.optional(v.number()),
+    deletedBy: v.optional(v.id("agents")),
+  })
+    .index("by_division", ["divisionId"])
+    .index("by_deleted", ["deletedAt"]),
+
+  dbCaseTeam: defineTable({
+    caseId: v.id("dbCases"),
+    agentId: v.id("agents"),
+  })
+    .index("by_case", ["caseId"])
+    .index("by_agent", ["agentId"]),
+
+  dbTimeline: defineTable({
+    caseId: v.id("dbCases"),
+    at: v.number(),
+    type: v.union(v.literal("event"), v.literal("auto")),
+    label: v.string(),
+    body: v.optional(v.string()), // HTML riche
+    authorId: v.optional(v.id("agents")),
+    authorName: v.string(),
+    deletedAt: v.optional(v.number()),
+    deletedBy: v.optional(v.id("agents")),
+  })
+    .index("by_case", ["caseId"])
+    .index("by_deleted", ["deletedAt"]),
+
+  dbTodos: defineTable({
+    caseId: v.id("dbCases"),
+    text: v.string(),
+    done: v.boolean(),
+    doneAt: v.optional(v.number()),
+    assigneeId: v.optional(v.id("agents")),
+    order: v.number(),
+    createdBy: v.optional(v.id("agents")),
+    at: v.number(),
+  }).index("by_case", ["caseId"]),
+
+  dbFolders: defineTable({
+    caseId: v.id("dbCases"),
+    name: v.string(),
+    order: v.number(),
+    createdBy: v.optional(v.id("agents")),
+    at: v.number(),
+  }).index("by_case", ["caseId"]),
+
+  // Pièces d'une enquête : rapports, interrogatoires, auditions, photos, lieux, notes.
+  dbItems: defineTable({
+    caseId: v.id("dbCases"),
+    folderId: v.optional(v.id("dbFolders")),
+    type: v.union(
+      v.literal("REPORT"), v.literal("INTERROGATION"), v.literal("AUDITION"),
+      v.literal("PHOTO"), v.literal("LOCATION"), v.literal("NOTE"),
+    ),
+    title: v.optional(v.string()),
+    body: v.optional(v.string()), // HTML riche
+    subjectPersonId: v.optional(v.id("dbPersons")), // interro/audition
+    mediaUrls: v.optional(v.array(v.string())),
+    locX: v.optional(v.number()), // LOCATION : coords carte 0–100
+    locY: v.optional(v.number()),
+    locNote: v.optional(v.string()),
+    createdBy: v.optional(v.id("agents")),
+    authorName: v.string(),
+    at: v.number(),
+    deletedAt: v.optional(v.number()),
+    deletedBy: v.optional(v.id("agents")),
+  })
+    .index("by_case", ["caseId"])
+    .index("by_folder", ["folderId"])
+    .index("by_deleted", ["deletedAt"]),
+
+  // Casier de preuves (rattaché à l'enquête).
+  dbEvidence: defineTable({
+    caseId: v.id("dbCases"),
+    label: v.string(),
+    evidenceType: v.optional(v.union(
+      v.literal("PHYSIQUE"), v.literal("NUMERIQUE"), v.literal("TEMOIGNAGE"), v.literal("AUTRE"),
+    )),
+    description: v.optional(v.string()), // HTML riche
+    sealNumber: v.optional(v.string()),
+    storageLoc: v.optional(v.string()),
+    mediaUrls: v.optional(v.array(v.string())),
+    createdBy: v.optional(v.id("agents")),
+    authorName: v.string(),
+    at: v.number(),
+    deletedAt: v.optional(v.number()),
+    deletedBy: v.optional(v.id("agents")),
+  })
+    .index("by_case", ["caseId"])
+    .index("by_deleted", ["deletedAt"]),
+
+  // Registre des personnes du bureau (suspects, témoins, victimes, membres de gang).
+  dbPersons: defineTable({
+    divisionId: v.id("divisions"),
+    name: v.string(),
+    alias: v.optional(v.string()),
+    citizenId: v.optional(v.id("citizens")), // lien encodage (ou saisie manuelle)
+    role: v.optional(v.union(
+      v.literal("SUSPECT"), v.literal("WITNESS"), v.literal("VICTIM"),
+      v.literal("GANG_MEMBER"), v.literal("POI"),
+    )),
+    notes: v.optional(v.string()), // HTML riche
+    photoUrl: v.optional(v.string()),
+    mediaUrls: v.optional(v.array(v.string())),
+    gangId: v.optional(v.id("dbGangs")),
+    gangRankId: v.optional(v.id("dbGangRanks")),
+    gangRoleLabel: v.optional(v.string()),
+    wantedLevel: v.optional(v.string()),
+    // Fiche victime enrichie (HRD).
+    deceased: v.optional(v.boolean()),
+    victimCause: v.optional(v.string()),
+    victimAutopsy: v.optional(v.string()), // HTML riche
+    victimNextOfKin: v.optional(v.string()),
+    createdBy: v.optional(v.id("agents")),
+    authorName: v.string(),
+    at: v.number(),
+    deletedAt: v.optional(v.number()),
+    deletedBy: v.optional(v.id("agents")),
+  })
+    .index("by_division", ["divisionId"])
+    .index("by_citizen", ["citizenId"])
+    .index("by_gang", ["gangId"])
+    .index("by_deleted", ["deletedAt"]),
+
+  dbCasePersons: defineTable({
+    caseId: v.id("dbCases"),
+    personId: v.id("dbPersons"),
+    caseRole: v.union(
+      v.literal("SUSPECT"), v.literal("VICTIM"), v.literal("WITNESS"), v.literal("POI"),
+    ),
+    note: v.optional(v.string()),
+  })
+    .index("by_case", ["caseId"])
+    .index("by_person", ["personId"]),
+
+  dbCaseVehicles: defineTable({
+    caseId: v.id("dbCases"),
+    vehicleId: v.optional(v.id("vehicles")),
+    plaque: v.optional(v.string()),
+    label: v.optional(v.string()),
+    note: v.optional(v.string()),
+  }).index("by_case", ["caseId"]),
+
+  dbCaseGangs: defineTable({
+    caseId: v.id("dbCases"),
+    gangId: v.id("dbGangs"),
+    note: v.optional(v.string()),
+  })
+    .index("by_case", ["caseId"])
+    .index("by_gang", ["gangId"]),
+
+  // Gangs / organisations (GND).
+  dbGangs: defineTable({
+    divisionId: v.id("divisions"),
+    name: v.string(),
+    orgType: v.union(
+      v.literal("GANG"), v.literal("MC"), v.literal("ORGANISATION"),
+      v.literal("PF"), v.literal("AUTRE"),
+    ),
+    subDivision: v.optional(v.union(v.literal("GND"), v.literal("HRD"))),
+    color: v.optional(v.string()),
+    logoUrl: v.optional(v.string()),
+    description: v.optional(v.string()), // HTML riche
+    territoryText: v.optional(v.string()),
+    hqX: v.optional(v.number()), // QG sur carte 0–100
+    hqY: v.optional(v.number()),
+    createdBy: v.optional(v.id("agents")),
+    authorName: v.string(),
+    at: v.number(),
+    deletedAt: v.optional(v.number()),
+    deletedBy: v.optional(v.id("agents")),
+  })
+    .index("by_division", ["divisionId"])
+    .index("by_deleted", ["deletedAt"]),
+
+  dbGangRanks: defineTable({
+    gangId: v.id("dbGangs"),
+    name: v.string(),
+    position: v.number(),
+  }).index("by_gang", ["gangId"]),
+
+  dbGangRelations: defineTable({
+    gangId: v.id("dbGangs"),
+    otherGangId: v.id("dbGangs"),
+    kind: v.union(v.literal("RIVAL"), v.literal("ALLY")),
+  }).index("by_gang", ["gangId"]),
+
+  dbGangTerritories: defineTable({
+    gangId: v.id("dbGangs"),
+    name: v.optional(v.string()),
+    points: v.array(v.object({ x: v.number(), y: v.number() })), // polygone 0–100
+    color: v.optional(v.string()),
+  }).index("by_gang", ["gangId"]),
+
+  // Stupéfiants (GND) : points de vente, labos.
+  dbDrugSites: defineTable({
+    divisionId: v.id("divisions"),
+    name: v.string(),
+    kind: v.union(v.literal("POINT_VENTE"), v.literal("LABO")),
+    gangId: v.optional(v.id("dbGangs")),
+    drugTypes: v.optional(v.string()),
+    note: v.optional(v.string()), // HTML riche
+    x: v.optional(v.number()),
+    y: v.optional(v.number()),
+    mediaUrls: v.optional(v.array(v.string())),
+    createdBy: v.optional(v.id("agents")),
+    authorName: v.string(),
+    at: v.number(),
+    deletedAt: v.optional(v.number()),
+    deletedBy: v.optional(v.id("agents")),
+  })
+    .index("by_division", ["divisionId"])
+    .index("by_gang", ["gangId"])
+    .index("by_deleted", ["deletedAt"]),
+
+  // Journal de surveillance (bureau).
+  dbSurveillance: defineTable({
+    divisionId: v.id("divisions"),
+    caseId: v.optional(v.id("dbCases")),
+    title: v.optional(v.string()),
+    members: v.array(v.id("agents")),
+    locationText: v.optional(v.string()),
+    x: v.optional(v.number()),
+    y: v.optional(v.number()),
+    date: v.number(), // date/heure de la surveillance
+    durationMin: v.optional(v.number()),
+    observations: v.optional(v.string()), // HTML riche
+    mediaUrls: v.optional(v.array(v.string())),
+    createdBy: v.optional(v.id("agents")),
+    authorName: v.string(),
+    at: v.number(),
+    deletedAt: v.optional(v.number()),
+    deletedBy: v.optional(v.id("agents")),
+  })
+    .index("by_division", ["divisionId"])
+    .index("by_case", ["caseId"])
+    .index("by_deleted", ["deletedAt"]),
+
+  // Tableau d'enquête (murder board) : nœuds + liens.
+  dbBoardNodes: defineTable({
+    caseId: v.id("dbCases"),
+    x: v.number(),
+    y: v.number(),
+    refType: v.union(
+      v.literal("PERSON"), v.literal("VEHICLE"), v.literal("ITEM"), v.literal("EVIDENCE"),
+      v.literal("GANG"), v.literal("EVENT"), v.literal("DRUGSITE"), v.literal("TEXT"),
+    ),
+    refId: v.optional(v.string()), // id de l'entité référencée
+    label: v.optional(v.string()),
+    note: v.optional(v.string()),
+    color: v.optional(v.string()),
+  }).index("by_case", ["caseId"]),
+
+  dbBoardEdges: defineTable({
+    caseId: v.id("dbCases"),
+    fromNodeId: v.id("dbBoardNodes"),
+    toNodeId: v.id("dbBoardNodes"),
+    label: v.optional(v.string()),
+    color: v.optional(v.string()),
+  }).index("by_case", ["caseId"]),
+
+  // Notifications intra-bureau.
+  dbNotifications: defineTable({
+    divisionId: v.id("divisions"),
+    agentId: v.id("agents"),
+    type: v.string(),
+    text: v.string(),
+    caseId: v.optional(v.id("dbCases")),
+    read: v.optional(v.boolean()),
+    at: v.number(),
+  }).index("by_agent", ["agentId"]),
 
   // Formations et spécialités (HNT, Police Academy, MRD, Dispatcher...).
   // Attribuées par agent comme les divisions, mais purement déclaratives :
