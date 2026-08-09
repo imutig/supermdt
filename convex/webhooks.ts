@@ -66,6 +66,7 @@ export const botConfig = query({
       dailyAt: c?.botDailyAt ?? "23:30",
       rollcallStartAt: c?.botRollcallStartAt ?? "",
       rollcallEndAt: c?.botRollcallEndAt ?? "",
+      ceremonyAt: c?.botCeremonyAt ?? "",
       rollcallPingRole: c?.botRollcallPingRole ?? "",
     };
   },
@@ -79,6 +80,7 @@ export const setBotConfig = mutation({
     dailyAt: v.optional(v.string()),
     rollcallStartAt: v.optional(v.string()),
     rollcallEndAt: v.optional(v.string()),
+    ceremonyAt: v.optional(v.string()),
     rollcallPingRole: v.optional(v.string()),
   },
   handler: async (ctx, a) => {
@@ -108,6 +110,7 @@ export const setBotConfig = mutation({
       botDailyAt: time("Récap", a.dailyAt),
       botRollcallStartAt: time("Début de l'appel", a.rollcallStartAt),
       botRollcallEndAt: time("Fin de l'appel", a.rollcallEndAt),
+      botCeremonyAt: time("Heure de la cérémonie", a.ceremonyAt),
       botRollcallPingRole: role(a.rollcallPingRole),
       updatedBy: agent._id,
       updatedAt: Date.now(),

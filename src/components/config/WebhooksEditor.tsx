@@ -115,8 +115,8 @@ function BotConfigEditor() {
   const current = useQuery(api.webhooks.botConfig);
   const save = useMutation(api.webhooks.setBotConfig);
   const toast = useToast();
-  const [f, setF] = useState<null | { presenceChannel: string; dailyChannel: string; rollcallChannel: string; dailyAt: string; rollcallStartAt: string; rollcallEndAt: string; rollcallPingRole: string }>(null);
-  const shown = f ?? current ?? { presenceChannel: "", dailyChannel: "", rollcallChannel: "", dailyAt: "23:30", rollcallStartAt: "", rollcallEndAt: "", rollcallPingRole: "" };
+  const [f, setF] = useState<null | { presenceChannel: string; dailyChannel: string; rollcallChannel: string; dailyAt: string; rollcallStartAt: string; rollcallEndAt: string; ceremonyAt: string; rollcallPingRole: string }>(null);
+  const shown = f ?? current ?? { presenceChannel: "", dailyChannel: "", rollcallChannel: "", dailyAt: "23:30", rollcallStartAt: "", rollcallEndAt: "", ceremonyAt: "", rollcallPingRole: "" };
 
   const field = "flex-1 rounded-[9px] border border-border bg-surface-2 px-[11px] py-[9px] font-data text-[12.5px] outline-none focus:border-accent";
   // `set` renvoie un gestionnaire stable de frappe ; les champs sont écrits en
@@ -143,9 +143,15 @@ function BotConfigEditor() {
             <div className="mb-[4px] text-[11px] font-bold uppercase tracking-[0.07em] text-faint">Appel ouvert à</div>
             <input value={shown.rollcallStartAt} onChange={set("rollcallStartAt")} placeholder="20:00" className={field} />
           </div>
-          <div className="w-[130px]">
-            <div className="mb-[4px] text-[11px] font-bold uppercase tracking-[0.07em] text-faint">Vote fermé à</div>
+          <div className="w-[170px]">
+            <div className="mb-[4px] text-[11px] font-bold uppercase tracking-[0.07em] text-faint">Clôture des votes à</div>
             <input value={shown.rollcallEndAt} onChange={set("rollcallEndAt")} placeholder="21:00" className={field} />
+            <div className="mt-[3px] text-[10.5px] text-faint">Heure affichée comme « Clôture des votes » dans le message. Après, plus de vote possible.</div>
+          </div>
+          <div className="w-[170px]">
+            <div className="mb-[4px] text-[11px] font-bold uppercase tracking-[0.07em] text-faint">Heure de la cérémonie</div>
+            <input value={shown.ceremonyAt} onChange={set("ceremonyAt")} placeholder="21:00" className={field} />
+            <div className="mt-[3px] text-[10.5px] text-faint">Dimanche : heure du « Rendez-vous » affichée dans le message de cérémonie.</div>
           </div>
           <button
             onClick={async () => {

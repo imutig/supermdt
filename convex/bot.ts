@@ -152,14 +152,14 @@ export const rollcallToday = query({
 });
 
 export const rollcallOpen = mutation({
-  args: { secret: v.string(), date: v.string(), channelId: v.string(), messageId: v.string(), endsAt: v.number(), ceremony: v.optional(v.boolean()) },
-  handler: async (ctx, { secret, date, channelId, messageId, endsAt, ceremony }) => {
+  args: { secret: v.string(), date: v.string(), channelId: v.string(), messageId: v.string(), endsAt: v.number(), ceremony: v.optional(v.boolean()), ceremonyTime: v.optional(v.string()) },
+  handler: async (ctx, { secret, date, channelId, messageId, endsAt, ceremony, ceremonyTime }) => {
     assertBot(secret);
     // Course éventuelle : si un appel existe déjà pour la date, on renvoie
     // l'existant, le bot supprimera son message en double.
     const existing = await ctx.db.query("rollcalls").withIndex("by_date", (q) => q.eq("date", date)).first();
     if (existing) return { _id: existing._id, duplicate: existing.messageId !== messageId };
-    const _id = await ctx.db.insert("rollcalls", { date, channelId, messageId, startedAt: Date.now(), endsAt, closed: false, ceremony });
+    const _id = await ctx.db.insert("rollcalls", { date, channelId, messageId, startedAt: Date.now(), endsAt, closed: false, ceremony, ceremonyTime });
     return { _id, duplicate: false };
   },
 });
@@ -177,6 +177,7 @@ export const rollcallState = query({
       endsAt: rc.endsAt,
       closed: rc.closed,
       ceremony: rc.ceremony ?? false,
+      ceremonyTime: rc.ceremonyTime ?? null,
       present: group("PRESENT"),
       retard: group("RETARD"),
       absent: group("ABSENT"),
@@ -230,6 +231,7 @@ export const config = query({
       dailyAt: cfg?.botDailyAt ?? "23:30",
       rollcallStartAt: cfg?.botRollcallStartAt ?? null,
       rollcallEndAt: cfg?.botRollcallEndAt ?? null,
+      ceremonyAt: cfg?.botCeremonyAt ?? null,
       rollcallPingRole: cfg?.botRollcallPingRole ?? null,
     };
   },
