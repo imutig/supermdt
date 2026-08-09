@@ -1,7 +1,9 @@
-import { internalAction, internalMutation } from "./_generated/server";
-import { internal } from "./_generated/api";
+import { internalAction, internalMutation, action, query } from "./_generated/server";
+import { internal, api } from "./_generated/api";
 import { v } from "convex/values";
+import { getAuthUserId } from "@convex-dev/auth/server";
 import type { Id } from "./_generated/dataModel";
+import { can } from "./rbac";
 
 // ============================================================================
 // Synchronisation depuis l'ancien MDT (NEXUS / vizu-world) vers Station 13.
@@ -242,6 +244,31 @@ export const autoSync = internalAction({
       console.error("[autoSync] échec :", err);
       return { ok: false, error: String(err) };
     }
+  },
+});
+
+// Autorisation de la synchro manuelle : owner ou détenteur de rbac.manage.
+export const canSync = query({
+  args: {},
+  handler: async (ctx) => {
+    const uid = await getAuthUserId(ctx);
+    if (!uid) return false;
+    const agent = await ctx.db.query("agents").withIndex("by_userId", (q) => q.eq("userId", uid)).unique();
+    if (!agent || agent.status !== "ACTIVE") return false;
+    return agent.isOwner || (await can(ctx, agent, "rbac.manage"));
+  },
+});
+
+// Synchro déclenchée à la main depuis l'Administration.
+export const runSync = action({
+  args: {},
+  handler: async (ctx): Promise<unknown> => {
+    const ok = await ctx.runQuery(api.migration.canSync, {});
+    if (!ok) throw new Error("Vous n'êtes pas autorisé à lancer la synchronisation.");
+    if (!process.env.VIZU_EMAIL || !process.env.VIZU_PASSWORD)
+      throw new Error("Identifiants Nexus non configurés (VIZU_EMAIL / VIZU_PASSWORD).");
+    const token = await vizuLogin();
+    return await ctx.runAction(internal.migration.sync, { token });
   },
 });
 

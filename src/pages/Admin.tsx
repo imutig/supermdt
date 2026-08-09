@@ -1,12 +1,13 @@
 import { Fragment, useState } from "react";
-import { Search, X } from "lucide-react";
-import { useMutation, useQuery } from "convex/react";
+import { Search, X, RefreshCw } from "lucide-react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { api, type Id } from "@/lib/api";
 import { AgentTag } from "@/components/common/AgentTag";
 import { AuditDetailModal } from "@/components/admin/AuditDetailModal";
 import { actionLabel, resourceLabel } from "@/lib/auditLabels";
 import { EmptyState } from "@/components/common/EmptyState";
 import { SkeletonRows } from "@/components/common/Skeleton";
+import { useToast } from "@/providers/toast";
 
 const TABS = [
   { key: "validation", label: "Validation" },
@@ -22,7 +23,11 @@ export function Admin() {
   const [tab, setTab] = useState<TabKey>("validation");
   return (
     <div className="p-[22px_26px]" style={{ animation: "mdtFade .2s ease" }}>
-      <h1 className="m-0 mb-[18px] text-[21px] font-bold tracking-tight">Administration</h1>
+      <div className="mb-[18px] flex flex-wrap items-center gap-3">
+        <h1 className="m-0 text-[21px] font-bold tracking-tight">Administration</h1>
+        <div className="flex-1" />
+        <NexusSyncButton />
+      </div>
       <div className="mb-[18px] flex flex-wrap gap-[2px] rounded-card border border-border bg-surface p-[5px]">
         {TABS.map((t) => (
           <button
@@ -42,6 +47,41 @@ export function Admin() {
       {tab === "defcon" && <DefconTab />}
       {tab === "audit" && <AuditTab />}
     </div>
+  );
+}
+
+/* ============ Synchronisation Nexus (données citoyens/armes/véhicules) ============ */
+function NexusSyncButton() {
+  const canSync = useQuery(api.migration.canSync);
+  const runSync = useAction(api.migration.runSync);
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  if (!canSync) return null;
+  return (
+    <button
+      disabled={busy}
+      onClick={async () => {
+        setBusy(true);
+        try {
+          const r = (await runSync({})) as {
+            ok?: boolean; error?: string;
+            citoyens?: { ajoutes: number }; armes?: { ajoutes: number }; vehicules?: { ajoutes: number } | null;
+          };
+          if (r?.ok) {
+            toast.success(`Synchronisé : +${r.citoyens?.ajoutes ?? 0} citoyens, +${r.vehicules?.ajoutes ?? 0} véhicules, +${r.armes?.ajoutes ?? 0} armes.`);
+          } else {
+            toast.error(r?.error ? `Synchronisation échouée : ${r.error}` : "Synchronisation échouée.");
+          }
+        } catch (e) {
+          toast.error(e instanceof Error ? e.message : "Synchronisation impossible.");
+        }
+        setBusy(false);
+      }}
+      className="mdt-press flex items-center gap-[7px] rounded-[9px] border border-border bg-surface-2 px-[13px] py-[8px] text-[13px] font-semibold text-text hover:border-border-strong disabled:opacity-60"
+    >
+      <RefreshCw className={`h-[15px] w-[15px] ${busy ? "animate-spin" : ""}`} />
+      {busy ? "Synchronisation…" : "Synchroniser les données depuis le Nexus"}
+    </button>
   );
 }
 

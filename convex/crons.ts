@@ -9,6 +9,6 @@ crons.hourly("expirer les mandats", { minuteUTC: 5 }, internal.mandats.expireDue
 // Synchro depuis le NexusMDT (vizu) : citoyens + armes + véhicules + code pénal.
 // Reconnexion automatique (token frais par login). Reste inerte tant que
 // VIZU_EMAIL / VIZU_PASSWORD ne sont pas configurés (voir migration.autoSync).
-crons.interval("synchro nexus", { hours: 6 }, internal.migration.autoSync, {});
+crons.interval("synchro nexus", { minutes: 30 }, internal.migration.autoSync, {});
 
 export default crons;
