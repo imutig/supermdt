@@ -25,10 +25,10 @@ function rollcallEmbed(state: RollcallState): EmbedBuilder {
   const endStamp = `<t:${Math.floor(state.endsAt / 1000)}:t>`;
   const total = state.present.length + state.retard.length + state.absent.length;
   const e = baseEmbed(state.closed ? BRAND.muted : BRAND.green)
-    .setTitle(state.closed ? "📋 Appel de présence - clos" : "📣 Appel de présence")
+    .setTitle(state.closed ? "📋 Roll call - clos" : "📣 Roll call")
     .setDescription(
       state.closed
-        ? `L'appel est terminé. **${total}** réponse${total > 1 ? "s" : ""} enregistrée${total > 1 ? "s" : ""}.`
+        ? `Le roll call est terminé. **${total}** réponse${total > 1 ? "s" : ""} enregistrée${total > 1 ? "s" : ""}.`
         : `Indiquez votre présence ci-dessous. Clôture à ${endStamp}.`,
     )
     .addFields(
@@ -57,22 +57,24 @@ async function refresh(client: Client, rollcallId: string, channelId: string, me
   await msg.edit({ embeds: [rollcallEmbed(state)], components: state.closed ? [] : buttons(rollcallId) });
 }
 
-// Ouvre l'appel du jour s'il ne l'est pas déjà. Idempotent grâce à la clé de
-// date côté Convex : un message posté en double est nettoyé.
-export async function openRollcall(client: Client, channelId: string, date: string, endsAt: number) {
+// Ouvre le roll call du jour s'il ne l'est pas déjà. Idempotent grâce à la clé
+// de date côté Convex : un message posté en double est nettoyé. `pingRoleId`
+// mentionne un rôle à l'ouverture (configuré sur le site).
+export async function openRollcall(client: Client, channelId: string, date: string, endsAt: number, pingRoleId?: string | null) {
   const chan = await channel(client, channelId);
   if (!chan) return;
   const emptyState: RollcallState = { endsAt, closed: false, present: [], retard: [], absent: [] };
-  const sent = await chan.send({ embeds: [rollcallEmbed(emptyState)], components: buttons("pending") });
+  const ping = pingRoleId ? { content: `<@&${pingRoleId}>`, allowedMentions: { roles: [pingRoleId] } } : {};
+  const sent = await chan.send({ ...ping, embeds: [rollcallEmbed(emptyState)], components: buttons("pending") });
   const res = await mdt.rollcallOpen(date, channelId, sent.id, endsAt);
   if (res.duplicate) {
-    // Un autre appel existait déjà : on retire notre message superflu.
+    // Un autre roll call existait déjà : on retire notre message superflu.
     await sent.delete().catch(() => {});
     return;
   }
-  // Réécrit les boutons avec le véritable id de l'appel.
+  // Réécrit les boutons avec le véritable id du roll call (le ping/contenu reste).
   await sent.edit({ embeds: [rollcallEmbed(emptyState)], components: buttons(res._id) });
-  console.log(`[rollcall] appel ouvert (${date}).`);
+  console.log(`[rollcall] roll call ouvert (${date}).`);
 }
 
 export async function closeRollcall(client: Client, rollcallId: string, channelId: string, messageId: string) {

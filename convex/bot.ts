@@ -229,6 +229,7 @@ export const config = query({
       dailyAt: cfg?.botDailyAt ?? "23:30",
       rollcallStartAt: cfg?.botRollcallStartAt ?? null,
       rollcallEndAt: cfg?.botRollcallEndAt ?? null,
+      rollcallPingRole: cfg?.botRollcallPingRole ?? null,
     };
   },
 });

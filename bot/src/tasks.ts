@@ -63,14 +63,14 @@ export function startTasks(client: Client) {
     const hhmm = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
     const today = now.toISOString().slice(0, 10);
 
-    // --- Appel de présence : ouverture, puis clôture à l'heure de fin ---
+    // --- Roll call : ouverture, puis clôture à l'heure de fin ---
     if (cfg.rollcallChannel && cfg.rollcallStartAt && cfg.rollcallEndAt) {
       const [eh, em] = cfg.rollcallEndAt.split(":").map(Number);
       const endsAt = new Date(now); endsAt.setHours(eh, em, 0, 0);
       const existing = await mdt.rollcallToday(today).catch(() => null);
       if (cfg.rollcallStartAt === hhmm && lastRollcallOpened !== today && !existing) {
         lastRollcallOpened = today;
-        await openRollcall(client, cfg.rollcallChannel, today, endsAt.getTime());
+        await openRollcall(client, cfg.rollcallChannel, today, endsAt.getTime(), cfg.rollcallPingRole);
       } else if (existing && !existing.closed && Date.now() >= existing.endsAt) {
         await closeRollcall(client, existing._id, existing.channelId, existing.messageId);
       }

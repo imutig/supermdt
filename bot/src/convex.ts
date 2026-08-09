@@ -36,6 +36,7 @@ type BotConfig = {
   dailyAt: string;
   rollcallStartAt: string | null;
   rollcallEndAt: string | null;
+  rollcallPingRole: string | null;
 };
 
 export type RollStatus = "PRESENT" | "ABSENT" | "RETARD";

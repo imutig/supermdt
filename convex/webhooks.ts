@@ -66,6 +66,7 @@ export const botConfig = query({
       dailyAt: c?.botDailyAt ?? "23:30",
       rollcallStartAt: c?.botRollcallStartAt ?? "",
       rollcallEndAt: c?.botRollcallEndAt ?? "",
+      rollcallPingRole: c?.botRollcallPingRole ?? "",
     };
   },
 });
@@ -78,6 +79,7 @@ export const setBotConfig = mutation({
     dailyAt: v.optional(v.string()),
     rollcallStartAt: v.optional(v.string()),
     rollcallEndAt: v.optional(v.string()),
+    rollcallPingRole: v.optional(v.string()),
   },
   handler: async (ctx, a) => {
     const agent = await requireAgent(ctx);
@@ -86,6 +88,12 @@ export const setBotConfig = mutation({
     const chan = (v?: string) => {
       const t = (v ?? "").trim();
       if (t && !/^\d{17,20}$/.test(t)) throw new Error("Identifiant de salon invalide (17 à 20 chiffres).");
+      return t || undefined;
+    };
+    // Un id de rôle Discord suit le même format (snowflake).
+    const role = (v?: string) => {
+      const t = (v ?? "").trim();
+      if (t && !/^\d{17,20}$/.test(t)) throw new Error("Identifiant de rôle invalide (17 à 20 chiffres).");
       return t || undefined;
     };
     const time = (label: string, v?: string) => {
@@ -100,6 +108,7 @@ export const setBotConfig = mutation({
       botDailyAt: time("Récap", a.dailyAt),
       botRollcallStartAt: time("Début de l'appel", a.rollcallStartAt),
       botRollcallEndAt: time("Fin de l'appel", a.rollcallEndAt),
+      botRollcallPingRole: role(a.rollcallPingRole),
       updatedBy: agent._id,
       updatedAt: Date.now(),
     };

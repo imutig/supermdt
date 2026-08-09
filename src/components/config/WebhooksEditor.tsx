@@ -115,8 +115,8 @@ function BotConfigEditor() {
   const current = useQuery(api.webhooks.botConfig);
   const save = useMutation(api.webhooks.setBotConfig);
   const toast = useToast();
-  const [f, setF] = useState<null | { presenceChannel: string; dailyChannel: string; rollcallChannel: string; dailyAt: string; rollcallStartAt: string; rollcallEndAt: string }>(null);
-  const shown = f ?? current ?? { presenceChannel: "", dailyChannel: "", rollcallChannel: "", dailyAt: "23:30", rollcallStartAt: "", rollcallEndAt: "" };
+  const [f, setF] = useState<null | { presenceChannel: string; dailyChannel: string; rollcallChannel: string; dailyAt: string; rollcallStartAt: string; rollcallEndAt: string; rollcallPingRole: string }>(null);
+  const shown = f ?? current ?? { presenceChannel: "", dailyChannel: "", rollcallChannel: "", dailyAt: "23:30", rollcallStartAt: "", rollcallEndAt: "", rollcallPingRole: "" };
 
   const field = "flex-1 rounded-[9px] border border-border bg-surface-2 px-[11px] py-[9px] font-data text-[12.5px] outline-none focus:border-accent";
   // `set` renvoie un gestionnaire stable de frappe ; les champs sont écrits en
@@ -132,7 +132,8 @@ function BotConfigEditor() {
       <div className="flex flex-col gap-[12px]">
         <ChanRow label="Salon de présence" value={shown.presenceChannel} onChange={set("presenceChannel")} cls={field} hint="Embed des agents en service, tenu à jour en continu." />
         <ChanRow label="Salon du récapitulatif" value={shown.dailyChannel} onChange={set("dailyChannel")} cls={field} hint="Bilan quotidien automatique." />
-        <ChanRow label="Salon de l'appel de présence" value={shown.rollcallChannel} onChange={set("rollcallChannel")} cls={field} hint="Appel quotidien : les agents indiquent Présent, En retard ou Absent." />
+        <ChanRow label="Salon du roll call" value={shown.rollcallChannel} onChange={set("rollcallChannel")} cls={field} hint="Roll call quotidien : les agents indiquent Présent, En retard ou Absent." />
+        <ChanRow label="Rôle à ping (roll call)" value={shown.rollcallPingRole} onChange={set("rollcallPingRole")} cls={field} hint="Identifiant du rôle mentionné à l'ouverture du roll call. Laisser vide pour ne pas ping." />
         <div className="flex flex-wrap items-end gap-3">
           <div className="w-[110px]">
             <div className="mb-[4px] text-[11px] font-bold uppercase tracking-[0.07em] text-faint">Récap à</div>
