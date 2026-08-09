@@ -122,6 +122,20 @@ function mapWeapon(w: any) {
   };
 }
 
+// Mapping véhicule (best-effort : noms de champs à confirmer côté API vizu).
+function mapVehicle(v: any) {
+  const owner = v.citoyenLie
+    ? `${v.citoyenLie.prenom ?? ""} ${v.citoyenLie.nom ?? ""}`.trim()
+    : (v.proprietaire || v.owner || "");
+  return {
+    plaque: (v.plaque || v.immatriculation || "").trim().toUpperCase(),
+    modele: (v.modele || v.marque || "").trim() || undefined,
+    couleur: (v.couleur || "").trim() || undefined,
+    type: (v.type || v.categorie || "").trim() || undefined,
+    ownerName: owner || "",
+  };
+}
+
 // ------------------------------- fetch API ----------------------------------
 async function apiGet(path: string, token: string): Promise<any> {
   const res = await fetch(`${BASE}${path}`, { headers: { Authorization: `Bearer ${token}` } });
@@ -165,6 +179,15 @@ export const sync = internalAction({
     const armesRep: WpnRep = await ctx.runMutation(internal.migration._upsertWeapons, { rows: wRows, dryRun });
     const codePenalRep: ChRep = await ctx.runMutation(internal.migration._upsertCharges, { rows: chRows, dryRun, reset: resetPenal });
 
+    // Véhicules : uniquement si l'endpoint est configuré (VIZU_VEHICLES_PATH,
+    // ex. "/api/vehicules?entity=lspd"). Clé de réponse « vehicules » à confirmer.
+    let vehiculesRep: unknown = null;
+    const vehPath = process.env.VIZU_VEHICLES_PATH;
+    if (vehPath) {
+      const vehsRaw = await fetchAllPaged(vehPath, "vehicules", tk);
+      vehiculesRep = await ctx.runMutation(internal.migration._upsertVehicles, { rows: vehsRaw.map(mapVehicle), dryRun });
+    }
+
     return {
       ok: true,
       mode: dryRun ? "APERÇU (rien écrit)" : "SYNCHRONISÉ",
@@ -172,7 +195,54 @@ export const sync = internalAction({
       citoyens: citoyensRep,
       armes: armesRep,
       codePenal: codePenalRep,
+      vehicules: vehiculesRep,
     };
+  },
+});
+
+// =============================== AUTO-SYNC ==================================
+// Reconnexion automatique : le cron obtient un token frais par login (le token
+// vizu expire après quelques heures), puis lance la synchro. Reste INERTE tant
+// que VIZU_EMAIL / VIZU_PASSWORD ne sont pas configurés.
+//
+//   npx convex env set VIZU_EMAIL "..."      (compte de service vizu)
+//   npx convex env set VIZU_PASSWORD "..."
+//   npx convex env set VIZU_LOGIN_PATH "/api/auth/login"   (à confirmer)
+//   npx convex env set VIZU_VEHICLES_PATH "/api/vehicules?entity=lspd"  (à confirmer)
+async function vizuLogin(): Promise<string> {
+  const email = process.env.VIZU_EMAIL;
+  const password = process.env.VIZU_PASSWORD;
+  const path = process.env.VIZU_LOGIN_PATH || "/api/auth/login";
+  if (!email || !password) throw new Error("VIZU_EMAIL / VIZU_PASSWORD non configurés.");
+  const res = await fetch(`${BASE}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+  if (!res.ok) throw new Error(`Login vizu échoué (${res.status}).`);
+  const j: any = await res.json();
+  // Formats tolérés ; à ajuster selon la vraie réponse de l'API vizu.
+  const token = j.token || j.accessToken || j?.state?.token || j?.data?.token || j?.data?.accessToken;
+  if (!token) throw new Error("Token introuvable dans la réponse de login vizu.");
+  return token;
+}
+
+export const autoSync = internalAction({
+  args: {},
+  handler: async (ctx): Promise<unknown> => {
+    if (!process.env.VIZU_EMAIL || !process.env.VIZU_PASSWORD) {
+      console.log("[autoSync] identifiants vizu non configurés : synchro ignorée.");
+      return { skipped: true };
+    }
+    try {
+      const token = await vizuLogin();
+      const rep = await ctx.runAction(internal.migration.sync, { token });
+      console.log("[autoSync] synchro terminée :", JSON.stringify(rep));
+      return rep;
+    } catch (err) {
+      console.error("[autoSync] échec :", err);
+      return { ok: false, error: String(err) };
+    }
   },
 });
 
@@ -251,6 +321,37 @@ export const _upsertWeapons = internalMutation({
       });
     }
     return { source: rows.length, presents: existing.length, ajoutes, proprietairesNonTrouves: sansProprietaire, originesAjoutees };
+  },
+});
+
+export const _upsertVehicles = internalMutation({
+  args: { rows: v.array(v.any()), dryRun: v.optional(v.boolean()) },
+  handler: async (ctx, { rows, dryRun }) => {
+    const existing = await ctx.db.query("vehicles").collect();
+    const plates = new Set(existing.map((x) => norm(x.plaque)));
+    const citizens = await ctx.db.query("citizens").collect();
+    const byName = new Map<string, Id<"citizens">>();
+    for (const c of citizens) {
+      byName.set(norm(`${c.prenom} ${c.nom}`), c._id);
+      byName.set(norm(`${c.nom} ${c.prenom}`), c._id);
+    }
+    let ajoutes = 0, sansProprietaire = 0;
+    const seen = new Set<string>();
+    for (const v0 of rows) {
+      const p = norm(v0.plaque);
+      if (!p || plates.has(p) || seen.has(p)) continue;
+      seen.add(p);
+      ajoutes++;
+      const ownerId = v0.ownerName ? byName.get(norm(v0.ownerName)) : undefined;
+      if (v0.ownerName && !ownerId) sansProprietaire++;
+      if (dryRun) continue;
+      await ctx.db.insert("vehicles", {
+        plaque: v0.plaque, modele: v0.modele, couleur: v0.couleur, type: v0.type, ownerId,
+        photoStorageIds: [],
+        searchText: norm(`${v0.plaque} ${v0.modele ?? ""} ${v0.couleur ?? ""} ${v0.type ?? ""}`),
+      });
+    }
+    return { source: rows.length, presents: existing.length, ajoutes, proprietairesNonTrouves: sansProprietaire };
   },
 });
 
