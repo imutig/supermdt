@@ -21,16 +21,34 @@ function list(names: string[]): string {
   return names.length === 0 ? "*-*" : names.map((n) => `• ${n}`).join("\n");
 }
 
+// Message de la cérémonie du dimanche (texte officiel dicté).
+const CEREMONY_TEXT = [
+  "Ce soir, le Roll Call habituel est remplacé par une cérémonie officielle.",
+  "",
+  "Rendez-vous à 21h00 - Étage 3.",
+  "",
+  "Tous les agents sont attendus en tenue de cérémonie complète et réglementaire.",
+  "La présence de chacun est fortement attendue.",
+  "",
+  "Merci d'être ponctuels et de respecter le protocole de la cérémonie.",
+].join("\n");
+
 function rollcallEmbed(state: RollcallState): EmbedBuilder {
   const endStamp = `<t:${Math.floor(state.endsAt / 1000)}:t>`;
   const total = state.present.length + state.retard.length + state.absent.length;
+  const title = state.ceremony
+    ? (state.closed ? "🎖️ Appel à la cérémonie - clos" : "🎖️ Appel à la cérémonie")
+    : (state.closed ? "📋 Roll call - clos" : "📣 Roll call");
+  const description = state.closed
+    ? (state.ceremony
+        ? `La cérémonie est terminée. **${total}** réponse${total > 1 ? "s" : ""} enregistrée${total > 1 ? "s" : ""}.`
+        : `Le roll call est terminé. **${total}** réponse${total > 1 ? "s" : ""} enregistrée${total > 1 ? "s" : ""}.`)
+    : (state.ceremony
+        ? `${CEREMONY_TEXT}\n\nIndiquez votre présence ci-dessous. Clôture à ${endStamp}.`
+        : `Indiquez votre présence ci-dessous. Clôture à ${endStamp}.`);
   const e = baseEmbed(state.closed ? BRAND.muted : BRAND.green)
-    .setTitle(state.closed ? "📋 Roll call - clos" : "📣 Roll call")
-    .setDescription(
-      state.closed
-        ? `Le roll call est terminé. **${total}** réponse${total > 1 ? "s" : ""} enregistrée${total > 1 ? "s" : ""}.`
-        : `Indiquez votre présence ci-dessous. Clôture à ${endStamp}.`,
-    )
+    .setTitle(title)
+    .setDescription(description)
     .addFields(
       { name: `✅ Présents - ${state.present.length}`, value: list(state.present), inline: true },
       { name: `⏰ En retard - ${state.retard.length}`, value: list(state.retard), inline: true },
@@ -60,13 +78,13 @@ async function refresh(client: Client, rollcallId: string, channelId: string, me
 // Ouvre le roll call du jour s'il ne l'est pas déjà. Idempotent grâce à la clé
 // de date côté Convex : un message posté en double est nettoyé. `pingRoleId`
 // mentionne un rôle à l'ouverture (configuré sur le site).
-export async function openRollcall(client: Client, channelId: string, date: string, endsAt: number, pingRoleId?: string | null) {
+export async function openRollcall(client: Client, channelId: string, date: string, endsAt: number, pingRoleId?: string | null, ceremony?: boolean) {
   const chan = await channel(client, channelId);
   if (!chan) return;
-  const emptyState: RollcallState = { endsAt, closed: false, present: [], retard: [], absent: [] };
+  const emptyState: RollcallState = { endsAt, closed: false, ceremony: !!ceremony, present: [], retard: [], absent: [] };
   const ping = pingRoleId ? { content: `<@&${pingRoleId}>`, allowedMentions: { roles: [pingRoleId] } } : {};
   const sent = await chan.send({ ...ping, embeds: [rollcallEmbed(emptyState)], components: buttons("pending") });
-  const res = await mdt.rollcallOpen(date, channelId, sent.id, endsAt);
+  const res = await mdt.rollcallOpen(date, channelId, sent.id, endsAt, ceremony);
   if (res.duplicate) {
     // Un autre roll call existait déjà : on retire notre message superflu.
     await sent.delete().catch(() => {});

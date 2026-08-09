@@ -1457,6 +1457,7 @@ export default defineSchema({
     startedAt: v.number(),
     endsAt: v.number(),
     closed: v.boolean(),
+    ceremony: v.optional(v.boolean()), // le dimanche : appel à la cérémonie
   }).index("by_date", ["date"]),
 
   rollcallVotes: defineTable({

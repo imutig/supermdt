@@ -70,7 +70,9 @@ export function startTasks(client: Client) {
       const existing = await mdt.rollcallToday(today).catch(() => null);
       if (cfg.rollcallStartAt === hhmm && lastRollcallOpened !== today && !existing) {
         lastRollcallOpened = today;
-        await openRollcall(client, cfg.rollcallChannel, today, endsAt.getTime(), cfg.rollcallPingRole);
+        // Le dimanche (getDay() === 0), le roll call devient un appel à la cérémonie.
+        const ceremony = now.getDay() === 0;
+        await openRollcall(client, cfg.rollcallChannel, today, endsAt.getTime(), cfg.rollcallPingRole, ceremony);
       } else if (existing && !existing.closed && Date.now() >= existing.endsAt) {
         await closeRollcall(client, existing._id, existing.channelId, existing.messageId);
       }
