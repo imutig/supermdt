@@ -1,18 +1,18 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { useParams } from "react-router-dom";
 import {
-  Shield, Users, Settings, Megaphone, MessageSquare, Send, Trash2, Plus, Pin, ChevronUp, ChevronDown, ImagePlus, X,
+  Shield, Users, Settings, Megaphone, MessageSquare, Send, Trash2, Plus, Pin, ChevronUp, ChevronDown, ImagePlus, X, Loader2, Search,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import type { Id } from "convex/_generated/dataModel";
 import { useToast } from "@/providers/toast";
+import { uploadImage } from "@/lib/uploadImage";
 import { EmptyState } from "@/components/common/EmptyState";
 import { SkeletonRows } from "@/components/common/Skeleton";
 import { Button } from "@/components/common/Button";
 import { Modal } from "@/components/common/Modal";
 import { RichTextEditor } from "@/components/common/RichTextEditor";
-import { ImageUpload } from "@/components/common/ImageUpload";
 import { fmtMatricule } from "@/components/common/AgentTag";
 
 type Tab = "accueil" | "membres" | "config";
@@ -41,9 +41,13 @@ export function DivisionSpace() {
   return (
     <div className="p-[22px_26px]" style={{ animation: "mdtFade .2s ease" }}>
       <div className="mb-[16px] flex items-center gap-[12px]">
-        <span className="flex h-[42px] w-[42px] flex-shrink-0 items-center justify-center rounded-[12px]" style={{ background: `color-mix(in srgb, ${accent} 16%, transparent)`, color: accent }}>
-          <Shield className="h-[21px] w-[21px]" />
-        </span>
+        {division.logoUrl ? (
+          <img src={division.logoUrl} alt="" className="h-[42px] w-[42px] flex-shrink-0 rounded-[12px] border border-border object-cover" />
+        ) : (
+          <span className="flex h-[42px] w-[42px] flex-shrink-0 items-center justify-center rounded-[12px]" style={{ background: `color-mix(in srgb, ${accent} 16%, transparent)`, color: accent }}>
+            <Shield className="h-[21px] w-[21px]" />
+          </span>
+        )}
         <div className="min-w-0 flex-1">
           <h1 className="m-0 text-[21px] font-bold tracking-tight">{division.name}</h1>
           <div className="mt-[2px] text-[12.5px] text-muted">
@@ -64,7 +68,7 @@ export function DivisionSpace() {
 
       {tab === "accueil" && <Accueil divisionId={divisionId} home={home} />}
       {tab === "membres" && <Membres divisionId={divisionId} canManage={has("members")} />}
-      {tab === "config" && canConfig && <Config divisionId={divisionId} canRanks={has("ranks")} canConfigPres={has("config")} canManageLead={canManageLead} description={division.description} />}
+      {tab === "config" && canConfig && <Config divisionId={divisionId} canRanks={has("ranks")} canConfigPres={has("config")} canManageLead={canManageLead} description={division.description} logoUrl={division.logoUrl ?? undefined} />}
     </div>
   );
 }
@@ -212,9 +216,19 @@ function Chat({ divisionId }: { divisionId: Id<"divisions"> }) {
   );
 }
 
-// Champ d'images multiple : miniatures + une case d'ajout.
+// Champ d'images multiple : miniatures + bouton d'ajout compact.
 function ImagesField({ images, onChange, compact }: { images: string[]; onChange: (v: string[]) => void; compact?: boolean }) {
+  const toast = useToast();
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
   const size = compact ? 40 : 64;
+  const pick = async (file?: File) => {
+    if (!file) return;
+    setBusy(true);
+    const url = await toast.guard(uploadImage(file), "Upload impossible");
+    setBusy(false);
+    if (url) onChange([...images, url]);
+  };
   return (
     <div className="flex flex-wrap items-center gap-[8px]">
       {images.map((u, i) => (
@@ -223,10 +237,16 @@ function ImagesField({ images, onChange, compact }: { images: string[]; onChange
           <button onClick={() => onChange(images.filter((_, j) => j !== i))} className="absolute -right-[6px] -top-[6px] flex h-[18px] w-[18px] items-center justify-center rounded-full border border-border bg-elev text-faint hover:text-danger"><X className="h-[11px] w-[11px]" /></button>
         </div>
       ))}
-      <div style={{ width: size, height: size }} className="flex-shrink-0" title="Ajouter une image">
-        <ImageUpload value={null} onChange={(url) => url && onChange([...images, url])} />
-      </div>
-      {!compact && <span className="text-[11px] text-faint"><ImagePlus className="mr-[3px] inline h-[12px] w-[12px]" />Images (facultatif)</span>}
+      <button
+        onClick={() => inputRef.current?.click()}
+        disabled={busy}
+        title="Ajouter une image"
+        style={{ width: size, height: size }}
+        className="flex flex-shrink-0 items-center justify-center rounded-sm border border-dashed border-border bg-surface-2 text-faint hover:border-accent hover:text-accent disabled:opacity-60"
+      >
+        {busy ? <Loader2 className="h-[16px] w-[16px] animate-spin" /> : <ImagePlus className="h-[16px] w-[16px]" />}
+      </button>
+      <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={(e) => pick(e.target.files?.[0])} />
     </div>
   );
 }
@@ -266,12 +286,13 @@ function Membres({ divisionId, canManage }: { divisionId: Id<"divisions">; canMa
 }
 
 /* ---------- Configuration : grades internes + permissions + présentation + lead ---------- */
-function Config({ divisionId, canRanks, canConfigPres, canManageLead, description }: {
-  divisionId: Id<"divisions">; canRanks: boolean; canConfigPres: boolean; canManageLead: boolean; description: string;
+function Config({ divisionId, canRanks, canConfigPres, canManageLead, description, logoUrl }: {
+  divisionId: Id<"divisions">; canRanks: boolean; canConfigPres: boolean; canManageLead: boolean; description: string; logoUrl?: string;
 }) {
   return (
     <div className="flex flex-col gap-[16px]">
       {canManageLead && <LeadConfig divisionId={divisionId} />}
+      {canConfigPres && <LogoConfig divisionId={divisionId} logoUrl={logoUrl} />}
       {canConfigPres && <PresentationConfig divisionId={divisionId} description={description} />}
       {canRanks && <RanksConfig divisionId={divisionId} />}
     </div>
@@ -283,18 +304,83 @@ function LeadConfig({ divisionId }: { divisionId: Id<"divisions"> }) {
   const home = useQuery(api.divisionSpace.home, { divisionId });
   const setLead = useMutation(api.divisionSpace.setLead);
   const toast = useToast();
+  const [q, setQ] = useState("");
+  const currentId = (home?.lead && opts?.find((o) => o.name === home.lead!.name)?._id) ?? null;
+  const currentName = home?.lead?.name ?? null;
+  const query = q.trim().toLowerCase();
+  const filtered = (opts ?? []).filter((o) => {
+    if (!query) return true;
+    return `${o.name} ${fmtMatricule(o.matricule) ?? ""}`.toLowerCase().includes(query);
+  }).slice(0, 8);
   return (
     <section className="rounded-card border border-border bg-surface p-[16px]">
       <div className="mb-[8px] text-[11px] font-bold uppercase tracking-[0.08em] text-faint">Lead de la division</div>
-      <div className="mb-[10px] text-[12.5px] text-muted">Le Lead a un accès complet à la configuration de la division. Choisis-le parmi les membres.</div>
-      <select
-        value={(home?.lead && opts?.find((o) => o.name === home.lead!.name)?._id) ?? ""}
-        onChange={(e) => void toast.guard(setLead({ divisionId, agentId: (e.target.value || null) as Id<"agents"> | null }), "Action impossible")}
-        className="h-10 w-full max-w-[360px] rounded-sm border border-border bg-surface-2 px-3 text-[13px] outline-none focus:border-accent"
-      >
-        <option value="">Aucun Lead</option>
-        {(opts ?? []).map((o) => <option key={o._id} value={o._id}>{fmtMatricule(o.matricule) ?? ""} {o.name}</option>)}
-      </select>
+      <div className="mb-[10px] text-[12.5px] text-muted">Le Lead a un accès complet à la configuration de la division. Recherche-le parmi les membres.</div>
+      {currentId && (
+        <div className="mb-[10px] flex items-center justify-between rounded-sm border border-border bg-surface-2 px-3 py-2 text-[13px]">
+          <span>Lead actuel : <b>{currentName}</b></span>
+          <button
+            onClick={() => void toast.guard(setLead({ divisionId, agentId: null }), "Action impossible")}
+            className="text-[12px] text-danger hover:underline"
+          >Retirer</button>
+        </div>
+      )}
+      <div className="relative max-w-[420px]">
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-faint" />
+        <input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Rechercher un membre…"
+          className="h-10 w-full rounded-sm border border-border bg-surface-2 pl-9 pr-3 text-[13px] outline-none focus:border-accent"
+        />
+      </div>
+      {q.trim() && (
+        <div className="mt-[8px] max-w-[420px] overflow-hidden rounded-sm border border-border">
+          {filtered.length === 0 && <div className="px-3 py-2 text-[12.5px] text-faint">Aucun membre.</div>}
+          {filtered.map((o) => (
+            <button
+              key={o._id}
+              onClick={() => { void toast.guard(setLead({ divisionId, agentId: o._id }), "Action impossible"); setQ(""); }}
+              disabled={o._id === currentId}
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] hover:bg-surface-2 disabled:opacity-50"
+            >
+              <span className="text-faint">{fmtMatricule(o.matricule) ?? ""}</span>
+              <span>{o.name}</span>
+              {o._id === currentId && <span className="ml-auto text-[11px] text-accent">Lead</span>}
+            </button>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function LogoConfig({ divisionId, logoUrl }: { divisionId: Id<"divisions">; logoUrl?: string }) {
+  const setLogo = useMutation(api.divisionSpace.setLogo);
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const pick = async (file: File) => {
+    setBusy(true);
+    try {
+      const url = await uploadImage(file);
+      await toast.guard(setLogo({ divisionId, url }), "Enregistrement impossible");
+    } finally { setBusy(false); }
+  };
+  return (
+    <section className="rounded-card border border-border bg-surface p-[16px]">
+      <div className="mb-[8px] text-[11px] font-bold uppercase tracking-[0.08em] text-faint">Logo de la division</div>
+      <div className="mb-[10px] text-[12.5px] text-muted">Remplace l'icône par défaut dans la barre latérale et l'en-tête.</div>
+      <div className="flex items-center gap-3">
+        {logoUrl ? (
+          <img src={logoUrl} alt="" className="h-14 w-14 rounded-[12px] border border-border object-cover" />
+        ) : (
+          <span className="flex h-14 w-14 items-center justify-center rounded-[12px] border border-border bg-surface-2 text-faint"><Shield className="h-6 w-6" /></span>
+        )}
+        <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) void pick(f); e.target.value = ""; }} />
+        <Button variant="secondary" loading={busy} onClick={() => inputRef.current?.click()}>{logoUrl ? "Changer" : "Ajouter un logo"}</Button>
+        {logoUrl && <Button variant="ghost" onClick={() => void toast.guard(setLogo({ divisionId, url: null }), "Action impossible")}>Retirer</Button>}
+      </div>
     </section>
   );
 }

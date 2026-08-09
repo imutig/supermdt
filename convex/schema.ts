@@ -102,6 +102,7 @@ export default defineSchema({
     // Espace division : présentation + Lead (accès « owner » de la division).
     description: v.optional(v.string()),
     leadAgentId: v.optional(v.id("agents")),
+    logoUrl: v.optional(v.string()), // logo affiché en sidebar + en-tête
   }),
 
   // Grades internes à une division (échelle propre, gérée par le Lead).

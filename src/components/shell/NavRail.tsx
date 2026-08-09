@@ -43,6 +43,7 @@ interface NavItem {
   admin?: boolean;
   perm?: string; // permission de consultation requise (masque l'item sinon)
   anyPerm?: string[]; // ... ou l'une de ces permissions suffit
+  logoUrl?: string; // logo custom (divisions) rendu à la place de l'icône
 }
 interface NavGroup {
   label: string;
@@ -143,7 +144,7 @@ export function NavRail() {
   // Divisions de l'agent : un groupe dynamique, inséré après « Opérations ».
   const myDivisions = useQuery(api.divisionSpace.mine) ?? [];
   const divisionGroup: NavGroup | null = myDivisions.length
-    ? { label: "Divisions", items: myDivisions.map((d) => ({ key: `div-${d._id}`, label: d.name, icon: Shield, to: `/division/${d._id}` })) }
+    ? { label: "Divisions", items: myDivisions.map((d) => ({ key: `div-${d._id}`, label: d.name, icon: Shield, to: `/division/${d._id}`, logoUrl: d.logoUrl ?? undefined })) }
     : null;
   const groups = divisionGroup ? [base[0], divisionGroup, ...base.slice(1)].filter(Boolean) as NavGroup[] : base;
 
@@ -177,7 +178,11 @@ export function NavRail() {
                     }`}
                     style={active ? { background: "var(--accent-soft)" } : undefined}
                   >
-                    <Icon className="h-5 w-5 flex-shrink-0" strokeWidth={2} style={{ color: active ? "var(--accent)" : "var(--faint)" }} />
+                    {item.logoUrl ? (
+                      <img src={item.logoUrl} alt="" className="h-5 w-5 flex-shrink-0 rounded object-cover" />
+                    ) : (
+                      <Icon className="h-5 w-5 flex-shrink-0" strokeWidth={2} style={{ color: active ? "var(--accent)" : "var(--faint)" }} />
+                    )}
                     {sidebarHoverExpand && (
                       <span
                         className="max-w-0 overflow-hidden whitespace-nowrap text-[13px] opacity-0 transition-all duration-200 group-hover:max-w-[160px] group-hover:opacity-100"
@@ -219,11 +224,15 @@ export function NavRail() {
                     : { color: "var(--muted)", fontWeight: 500 }
                 }
               >
-                <Icon
-                  className="h-5 w-5 flex-shrink-0"
-                  strokeWidth={2}
-                  style={{ color: active ? "var(--accent)" : "var(--faint)" }}
-                />
+                {item.logoUrl ? (
+                  <img src={item.logoUrl} alt="" className="h-5 w-5 flex-shrink-0 rounded object-cover" />
+                ) : (
+                  <Icon
+                    className="h-5 w-5 flex-shrink-0"
+                    strokeWidth={2}
+                    style={{ color: active ? "var(--accent)" : "var(--faint)" }}
+                  />
+                )}
                 <span className="flex-1 text-[13px]">{item.label}</span>
                 {item.admin && (
                   <span className="rounded-[4px] border border-border px-1 py-px text-[9px] font-bold tracking-[0.08em] text-faint">

@@ -66,13 +66,13 @@ export const mine = query({
     const out = [];
     for (const l of links) {
       const d = await ctx.db.get(l.divisionId);
-      if (d) out.push({ _id: d._id, name: d.name, color: d.color ?? null });
+      if (d) out.push({ _id: d._id, name: d.name, color: d.color ?? null, logoUrl: d.logoUrl ?? null });
     }
     // L'owner voit toutes les divisions pour pouvoir administrer.
     if (agent.isOwner) {
       const have = new Set(out.map((d) => d._id as string));
       for (const d of await ctx.db.query("divisions").collect()) {
-        if (!have.has(d._id as string)) out.push({ _id: d._id, name: d.name, color: d.color ?? null });
+        if (!have.has(d._id as string)) out.push({ _id: d._id, name: d.name, color: d.color ?? null, logoUrl: d.logoUrl ?? null });
       }
     }
     return out.sort((a, b) => a.name.localeCompare(b.name, "fr"));
@@ -93,7 +93,7 @@ export const home = query({
       .slice(0, 30)
       .map((a) => ({ _id: a._id, authorName: a.authorName, title: a.title, body: a.body, imageUrls: a.imageUrls ?? [], pinned: !!a.pinned, at: a.at, mine: a.authorId === agent._id }));
     return {
-      division: { _id: division._id, name: division.name, color: division.color ?? null, description: division.description ?? "", tier: division.tier },
+      division: { _id: division._id, name: division.name, color: division.color ?? null, logoUrl: division.logoUrl ?? null, description: division.description ?? "", tier: division.tier },
       isLead: isLeadOf(agent, division),
       lead: lead ? { name: `${lead.prenomRP} ${lead.nomRP}`, matricule: lead.matricule ?? null } : null,
       membersCount: members.length,
@@ -190,6 +190,16 @@ export const setDescription = mutation({
     const division = await loadDivision(ctx, divisionId);
     await assertPerm(ctx, agent, division, "config");
     await ctx.db.patch(divisionId, { description: description.trim() || undefined });
+  },
+});
+
+export const setLogo = mutation({
+  args: { divisionId: v.id("divisions"), url: v.union(v.string(), v.null()) },
+  handler: async (ctx, { divisionId, url }) => {
+    const agent = await requireAgent(ctx);
+    const division = await loadDivision(ctx, divisionId);
+    await assertPerm(ctx, agent, division, "config");
+    await ctx.db.patch(divisionId, { logoUrl: url ?? undefined });
   },
 });
 
