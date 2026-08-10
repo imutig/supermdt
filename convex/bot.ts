@@ -512,6 +512,7 @@ function ticketDefaults(cfg: Doc<"ticketConfig"> | null) {
     importantInfo: cfg?.importantInfo ?? DEFAULT_IMPORTANT,
     conditionsRP: cfg?.conditionsRP ?? DEFAULT_CONDITIONS,
     announceEmbed: cfg?.announceEmbed ?? defaultAnnounceEmbed(cfg),
+    statusCategories: cfg?.statusCategories ?? [],
   };
 }
 
@@ -548,6 +549,7 @@ export const ticketConfigSet = mutation({
       announceEmbed: v.optional(richEmbedArg),
       announceText: v.optional(v.string()),
       announceItems: v.optional(v.string()),
+      statusCategories: v.optional(v.array(v.object({ status: v.string(), categoryId: v.string() }))),
     }),
   },
   handler: async (ctx, { secret, patch }) => {
@@ -613,7 +615,7 @@ export const ticketCreate = mutation({
       channelId: a.channelId, ownerId: a.ownerId, ownerName: a.ownerName,
       prenom: a.prenom, nom: a.nom, dateNaissance: a.dateNaissance,
       motivations: a.motivations, experiences: a.experiences,
-      status: "OPEN", createdAt: Date.now(),
+      status: "OPEN", integrationStatus: "NEW", createdAt: Date.now(),
       events: [{ at: Date.now(), type: "created", label: `Candidature ouverte par ${a.ownerName}`, by: a.ownerName }],
     });
   },
@@ -649,7 +651,7 @@ export const ticketByChannel = query({
   handler: async (ctx, { secret, channelId }) => {
     assertBot(secret);
     const t = await ctx.db.query("tickets").withIndex("by_channel", (q) => q.eq("channelId", channelId)).first();
-    return t ? { ownerId: t.ownerId, ownerName: t.ownerName, prenom: t.prenom, nom: t.nom, status: t.status, integrationStatus: t.integrationStatus ?? null } : null;
+    return t ? { ownerId: t.ownerId, ownerName: t.ownerName, prenom: t.prenom, nom: t.nom, status: t.status, integrationStatus: t.integrationStatus ?? null, interviewAt: t.interviewAt ?? null, interviewMsgId: t.interviewMsgId ?? null, voteMsgId: t.voteMsgId ?? null } : null;
   },
 });
 
@@ -734,17 +736,74 @@ export const ticketByOwner = query({
   },
 });
 
-const STATUS_LABELS: Record<string, string> = { EVALUATING: "En évaluation", FAILED: "Entretien raté", PASSED: "Entretien réussi", PASSED_ABSENT: "Réussi mais absent" };
+const STATUS_LABELS: Record<string, string> = {
+  NEW: "Nouvelle candidature", VOTE: "Vote en cours", ACCEPTED: "Acceptée · en attente d'entretien",
+  INTERVIEW: "Entretien programmé", PASSED: "Entretien réussi · en attente d'académie",
+  ACADEMY: "Retenu pour la prochaine académie", REJECTED: "Refusée / entretien raté",
+  // Anciennes valeurs.
+  EVALUATING: "En évaluation", FAILED: "Entretien raté", PASSED_ABSENT: "Réussi mais absent",
+};
+const TICKET_STATUS = v.union(
+  v.literal("NEW"), v.literal("VOTE"), v.literal("ACCEPTED"), v.literal("INTERVIEW"),
+  v.literal("PASSED"), v.literal("ACADEMY"), v.literal("REJECTED"),
+);
 export const ticketSetStatus = mutation({
-  args: { secret: v.string(), channelId: v.string(), status: v.union(v.literal("EVALUATING"), v.literal("FAILED"), v.literal("PASSED"), v.literal("PASSED_ABSENT")), by: v.optional(v.string()) },
-  handler: async (ctx, { secret, channelId, status, by }) => {
+  args: { secret: v.string(), channelId: v.string(), status: TICKET_STATUS, by: v.optional(v.string()), interviewAt: v.optional(v.union(v.number(), v.null())) },
+  handler: async (ctx, { secret, channelId, status, by, interviewAt }) => {
     assertBot(secret);
     const t = await ctx.db.query("tickets").withIndex("by_channel", (q) => q.eq("channelId", channelId)).first();
     if (t) {
-      await ctx.db.patch(t._id, { integrationStatus: status });
-      await logEvent(ctx, t, { type: "status", label: `Statut : ${STATUS_LABELS[status] ?? status}`, by });
+      const patch: Record<string, unknown> = { integrationStatus: status };
+      if (interviewAt !== undefined) patch.interviewAt = interviewAt ?? undefined;
+      await ctx.db.patch(t._id, patch);
+      const suffix = status === "INTERVIEW" && interviewAt ? ` (${new Date(interviewAt).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" })})` : "";
+      await logEvent(ctx, t, { type: "status", label: `Statut : ${STATUS_LABELS[status] ?? status}${suffix}`, by });
     }
     return t ? { prenom: t.prenom, nom: t.nom } : null;
+  },
+});
+
+export const ticketSetVoteMsg = mutation({
+  args: { secret: v.string(), channelId: v.string(), messageId: v.string() },
+  handler: async (ctx, { secret, channelId, messageId }) => {
+    assertBot(secret);
+    const t = await ctx.db.query("tickets").withIndex("by_channel", (q) => q.eq("channelId", channelId)).first();
+    if (t) await ctx.db.patch(t._id, { voteMsgId: messageId });
+  },
+});
+
+export const ticketSetInterviewMsg = mutation({
+  args: { secret: v.string(), channelId: v.string(), messageId: v.string() },
+  handler: async (ctx, { secret, channelId, messageId }) => {
+    assertBot(secret);
+    const t = await ctx.db.query("tickets").withIndex("by_channel", (q) => q.eq("channelId", channelId)).first();
+    if (t) await ctx.db.patch(t._id, { interviewMsgId: messageId });
+  },
+});
+
+// Vote pour/contre d'une candidature : un vote par personne (modifiable).
+export const ticketVote = mutation({
+  args: { secret: v.string(), channelId: v.string(), discordUserId: v.string(), discordName: v.string(), choice: v.union(v.literal("FOR"), v.literal("AGAINST")) },
+  handler: async (ctx, { secret, channelId, discordUserId, discordName, choice }) => {
+    assertBot(secret);
+    const t = await ctx.db.query("tickets").withIndex("by_channel", (q) => q.eq("channelId", channelId)).first();
+    if (!t) return { ok: false as const };
+    const existing = await ctx.db.query("ticketVotes").withIndex("by_ticket_user", (q) => q.eq("ticketId", t._id).eq("discordUserId", discordUserId)).first();
+    if (existing) await ctx.db.patch(existing._id, { choice, discordName, at: Date.now() });
+    else await ctx.db.insert("ticketVotes", { ticketId: t._id, discordUserId, discordName, choice, at: Date.now() });
+    return { ok: true as const };
+  },
+});
+
+export const ticketVoteState = query({
+  args: { secret: v.string(), channelId: v.string() },
+  handler: async (ctx, { secret, channelId }) => {
+    assertBot(secret);
+    const t = await ctx.db.query("tickets").withIndex("by_channel", (q) => q.eq("channelId", channelId)).first();
+    if (!t) return null;
+    const votes = await ctx.db.query("ticketVotes").withIndex("by_ticket", (q) => q.eq("ticketId", t._id)).collect();
+    const pick = (c: string) => votes.filter((v) => v.choice === c).sort((a, b) => a.at - b.at).map((v) => v.discordName);
+    return { for: pick("FOR"), against: pick("AGAINST") };
   },
 });
 

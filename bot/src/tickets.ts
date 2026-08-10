@@ -10,10 +10,20 @@ import {
 import { mdt, type TicketConfig, type TicketTemplate, type IntegStatus, type RichEmbed, type EmbedField, type ArchiveMessage } from "./convex.js";
 import { baseEmbed, BRAND } from "./theme.js";
 
-// Cercles de statut d'un candidat intégré.
-const STATUS_EMOJI: Record<IntegStatus, string> = { EVALUATING: "🟡", FAILED: "🔴", PASSED: "🟢", PASSED_ABSENT: "🟠" };
-const STATUS_LABEL: Record<IntegStatus, string> = { EVALUATING: "En évaluation", FAILED: "Entretien raté", PASSED: "Entretien réussi", PASSED_ABSENT: "Réussi mais absent" };
-const CIRCLES = "🟡🔴🟠🟢";
+// Statuts d'une candidature (cycle de vie). Le nom du salon est préfixé de
+// l'emoji pour lire le statut d'un coup d'œil dans la liste des salons.
+const STATUS_EMOJI: Record<IntegStatus, string> = { NEW: "🆕", VOTE: "🗳️", ACCEPTED: "📋", INTERVIEW: "📅", PASSED: "🎓", ACADEMY: "⭐", REJECTED: "❌" };
+const STATUS_LABEL: Record<IntegStatus, string> = {
+  NEW: "Nouvelle candidature", VOTE: "Vote en cours", ACCEPTED: "Acceptée · en attente d'entretien",
+  INTERVIEW: "Entretien programmé", PASSED: "Entretien réussi · en attente d'académie",
+  ACADEMY: "Retenu pour la prochaine académie", REJECTED: "Refusée / entretien raté",
+};
+const STATUS_HEX: Record<IntegStatus, string> = { NEW: "#8a929c", VOTE: "#3b82f6", ACCEPTED: "#22b8cf", INTERVIEW: "#e0a030", PASSED: "#49a24a", ACADEMY: "#e6c84a", REJECTED: "#d94040" };
+const STATUS_ORDER: IntegStatus[] = ["NEW", "VOTE", "ACCEPTED", "INTERVIEW", "PASSED", "ACADEMY", "REJECTED"];
+// Code points des emojis de préfixe (actuels + anciens) à retirer du nom du salon.
+const PREFIX_CPS = new Set<string>([..."🆕🗳️📋📅🎓⭐❌🟡🔴🟠🟢️"]);
+const label = (s: IntegStatus | string | null): string => (s && STATUS_LABEL[s as IntegStatus]) || "-";
+const emoji = (s: IntegStatus | string | null): string => (s && STATUS_EMOJI[s as IntegStatus]) || "";
 
 const EPH = MessageFlags.Ephemeral;
 
@@ -106,6 +116,7 @@ function hubComponents(cfg: TicketConfig) {
   const row3 = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder().setCustomId("tk|hub|roles").setLabel("Rôles").setEmoji("👥").setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId("tk|hub|conditions").setLabel("Conditions & infos").setEmoji("📋").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId("tk|hub|statcats").setLabel("Catégories par statut").setEmoji("🗂️").setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId("tk|hub|annoncetxt").setLabel("Texte de l'annonce").setStyle(ButtonStyle.Secondary),
   );
   return [category, row1, row2, row3];
@@ -135,6 +146,39 @@ async function renderRoles(interaction: ButtonInteraction | AnySelectMenuInterac
       { name: "Accès aux promos", value: cfg.promoRoleIds.length ? cfg.promoRoleIds.map((r) => `<@&${r}>`).join(" ") : "*aucun*" },
     );
   await interaction.update({ embeds: [embed], components: rolesComponents(cfg) });
+}
+
+// Catégorie Discord par statut : le ticket y est déplacé quand on choisit ce
+// statut. Vide = reste dans la catégorie d'arrivée.
+async function renderStatusCategories(interaction: ButtonInteraction | AnySelectMenuInteraction, editStatus?: string) {
+  const cfg = await mdt.ticketConfigGet();
+  const mapOf = (s: string) => cfg.statusCategories.find((x) => x.status === s)?.categoryId ?? null;
+  const embed = baseEmbed(BRAND.info).setTitle("🗂️ Catégories par statut")
+    .setDescription("Par défaut, tout reste dans la catégorie d'arrivée. Choisis un statut, puis sa catégorie de destination.")
+    .addFields({ name: "Correspondances", value: STATUS_ORDER.map((s) => `${STATUS_EMOJI[s]} ${STATUS_LABEL[s]} → ${mapOf(s) ? `<#${mapOf(s)}>` : "*arrivée*"}`).join("\n") });
+  const pick = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+    new StringSelectMenuBuilder().setCustomId("tk|statcat|pick").setPlaceholder("Choisir un statut à configurer…")
+      .addOptions(...STATUS_ORDER.map((s) => ({ label: STATUS_LABEL[s], value: s, emoji: STATUS_EMOJI[s], default: editStatus === s }))),
+  );
+  const rows: ActionRowBuilder<StringSelectMenuBuilder | ChannelSelectMenuBuilder | ButtonBuilder>[] = [pick];
+  if (editStatus) {
+    rows.push(new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(
+      new ChannelSelectMenuBuilder().setCustomId(`tk|statcat|set|${editStatus}`).setPlaceholder(`Catégorie pour « ${STATUS_LABEL[editStatus as IntegStatus] ?? editStatus} »`).addChannelTypes(ChannelType.GuildCategory),
+    ));
+    rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId(`tk|statcat|clear|${editStatus}`).setLabel("Remettre en catégorie d'arrivée").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId("tk|hub|back").setLabel("Retour").setStyle(ButtonStyle.Secondary),
+    ));
+  } else {
+    rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId("tk|hub|back").setLabel("Retour").setStyle(ButtonStyle.Secondary)));
+  }
+  await interaction.update({ embeds: [embed], components: rows });
+}
+async function setStatusCategory(status: string, categoryId: string | null) {
+  const cfg = await mdt.ticketConfigGet();
+  const arr = cfg.statusCategories.filter((s) => s.status !== status);
+  if (categoryId) arr.push({ status, categoryId });
+  await mdt.ticketConfigSet({ statusCategories: arr });
 }
 
 function hubEmbed(cfg: TicketConfig, templateCount: number): EmbedBuilder {
@@ -477,6 +521,7 @@ async function createCandidatureTicket(client: Client, user: User, state: CandSt
   );
   await channel.send({ embeds: [embed], components: [controls] });
   await mdt.ticketCreate({ channelId: channel.id, ownerId: user.id, ownerName: `${state.prenom} ${state.nom}`, prenom: state.prenom, nom: state.nom, dateNaissance: state.naissance || undefined });
+  await renameStatus(client, channel.id, "NEW"); // 🆕 préfixe le salon dès l'ouverture
   state.channelId = channel.id;
   return channel.id;
 }
@@ -852,11 +897,8 @@ async function handlePresence(interaction: ButtonInteraction, present: boolean) 
     await mdt.ticketLogEvent(ticket.channelId, { type: "presence", label: "Présence confirmée à la PA", by: interaction.user.username });
     await interaction.reply({ content: `✅ Présence enregistrée. Ton ticket rejoint la promotion.`, flags: EPH });
   } else {
-    // Absence : un candidat reçu passe en « réussi mais absent ».
-    if (ticket.integrationStatus === "PASSED") {
-      await mdt.ticketSetStatus(ticket.channelId, "PASSED_ABSENT", interaction.user.username);
-      await renameStatus(interaction.client, ticket.channelId, "PASSED_ABSENT");
-    }
+    // Absence signalée : on garde une trace dans le journal (le statut reste
+    // géré à la main via le menu « Statut du candidat »).
     await mdt.ticketLogEvent(ticket.channelId, { type: "absence", label: "Absence signalée pour la PA", by: interaction.user.username });
     await interaction.reply({ content: "🚫 Absence notée. Pense à préciser la raison dans ton ticket.", flags: EPH });
   }
@@ -864,37 +906,46 @@ async function handlePresence(interaction: ButtonInteraction, present: boolean) 
 
 // ---------- Intégration d'un candidat (cercles de statut) ----------
 
-function stripCircle(name: string): string {
+function stripPrefix(name: string): string {
   const chars = [...name];
   let i = 0;
-  while (i < chars.length && CIRCLES.includes(chars[i])) i++;
+  while (i < chars.length && PREFIX_CPS.has(chars[i])) i++;
   return chars.slice(i).join("").replace(/^[-\s]+/, "");
 }
 async function renameStatus(client: Client, channelId: string, status: IntegStatus | null) {
   try {
     const chan = await client.channels.fetch(channelId);
     if (!chan || chan.type !== ChannelType.GuildText) return;
-    const base = stripCircle((chan as TextChannel).name);
+    const base = stripPrefix((chan as TextChannel).name);
     await (chan as TextChannel).setName(status ? `${STATUS_EMOJI[status]}${base}` : base);
+  } catch { /* rien */ }
+}
+
+// Déplace le salon vers la catégorie configurée pour ce statut, sinon vers la
+// catégorie d'arrivée (par défaut, tout reste dans la même catégorie).
+async function moveToStatusCategory(client: Client, channelId: string, status: IntegStatus, cfg: TicketConfig) {
+  const target = cfg.statusCategories.find((s) => s.status === status)?.categoryId ?? cfg.categoryId;
+  if (!target) return;
+  try {
+    const chan = await client.channels.fetch(channelId);
+    if (chan && chan.type === ChannelType.GuildText && (chan as TextChannel).parentId !== target) {
+      await (chan as TextChannel).setParent(target, { lockPermissions: false });
+    }
   } catch { /* rien */ }
 }
 
 // Panneau de statut, ÉPHÉMÈRE (jamais visible du candidat) : un menu déroulant.
 function statusPanel(current: IntegStatus | null) {
-  const embed = baseEmbed(current ? hexToInt(STATUS_HEX[current]) : BRAND.muted).setTitle("🎓 Statut du candidat")
-    .setDescription(current ? `Statut actuel : ${STATUS_EMOJI[current]} **${STATUS_LABEL[current]}**.` : "Ce candidat n'est pas encore intégré. Choisis un statut pour l'intégrer à la Police Academy.")
-    .addFields({ name: "Légende", value: "🟡 en évaluation · 🟢 réussi · 🟠 réussi mais absent · 🔴 raté" });
+  const embed = baseEmbed(current ? hexToInt(STATUS_HEX[current as IntegStatus] ?? "#8a929c") : BRAND.muted).setTitle("🎓 Statut du candidat")
+    .setDescription(current ? `Statut actuel : ${emoji(current)} **${label(current)}**.` : "Choisis le statut de cette candidature.")
+    .addFields({ name: "Cycle de vie", value: STATUS_ORDER.map((s) => `${STATUS_EMOJI[s]} ${STATUS_LABEL[s]}`).join("\n") });
   const select = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
     new StringSelectMenuBuilder().setCustomId("tk|stsel").setPlaceholder("Définir le statut…").addOptions(
-      { label: "En évaluation", value: "EVALUATING", emoji: "🟡", default: current === "EVALUATING" },
-      { label: "Entretien réussi", value: "PASSED", emoji: "🟢", default: current === "PASSED" },
-      { label: "Réussi mais absent", value: "PASSED_ABSENT", emoji: "🟠", default: current === "PASSED_ABSENT" },
-      { label: "Entretien raté", value: "FAILED", emoji: "🔴", default: current === "FAILED" },
+      ...STATUS_ORDER.map((s) => ({ label: STATUS_LABEL[s], value: s, emoji: STATUS_EMOJI[s], default: current === s })),
     ),
   );
   return { embeds: [embed], components: [select] };
 }
-const STATUS_HEX: Record<IntegStatus, string> = { EVALUATING: "#e6c84a", FAILED: "#d94040", PASSED: "#49a24a", PASSED_ABSENT: "#e0a030" };
 
 // Réservé au staff : la config d'un ticket ne doit jamais être manipulable par
 // le candidat.
@@ -915,12 +966,101 @@ async function openStatusPanel(interaction: ButtonInteraction | ChatInputCommand
 async function applyStatusFromSelect(interaction: AnySelectMenuInteraction) {
   if (!isStaff(interaction)) { await interaction.reply({ content: "Réservé à l'encadrement.", flags: EPH }); return; }
   const status = interaction.values[0] as IntegStatus;
-  if (!interaction.channel || interaction.channel.type !== ChannelType.GuildText) return;
-  await mdt.ticketSetStatus(interaction.channel.id, status, interaction.user.username);
-  await renameStatus(interaction.client, interaction.channel.id, status);
+  const channel = interaction.channel;
+  if (!channel || channel.type !== ChannelType.GuildText) return;
+  // Entretien programmé : on demande la date + l'heure via une modale.
+  if (status === "INTERVIEW") { await interaction.showModal(interviewModal()); return; }
+  await mdt.ticketSetStatus(channel.id, status, interaction.user.username);
+  await renameStatus(interaction.client, channel.id, status);
+  const cfg = await mdt.ticketConfigGet();
+  await moveToStatusCategory(interaction.client, channel.id, status, cfg);
+  // Vote en cours : ouvre le vote pour/contre sous la candidature.
+  if (status === "VOTE") await openVote(interaction.client, channel as TextChannel);
   await interaction.update(statusPanel(status));
-  // Le rôle Cadet n'est PLUS attribué automatiquement au statut : il l'est
-  // uniquement par la commande /validation (geste explicite du recruteur).
+  // Le rôle Cadet n'est PLUS attribué automatiquement : il l'est via /validation.
+}
+
+// ---------- Entretien programmé (date + heure) ----------
+
+function trow(input: TextInputBuilder) { return new ActionRowBuilder<TextInputBuilder>().addComponents(input); }
+function interviewModal(): ModalBuilder {
+  return new ModalBuilder().setCustomId("tk|imodal").setTitle("Entretien programmé").addComponents(
+    trow(new TextInputBuilder().setCustomId("date").setLabel("Date (JJ/MM/AAAA)").setStyle(TextInputStyle.Short).setPlaceholder("25/12/2026").setRequired(true)),
+    trow(new TextInputBuilder().setCustomId("heure").setLabel("Heure (HH:MM)").setStyle(TextInputStyle.Short).setPlaceholder("21:00").setRequired(true)),
+  );
+}
+function parseDateTime(d: string, h: string): number | null {
+  const dm = d.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  const hm = h.match(/^(\d{1,2}):(\d{2})$/);
+  if (!dm || !hm) return null;
+  const [day, mon, year, hr, min] = [+dm[1], +dm[2], +dm[3], +hm[1], +hm[2]];
+  if (mon < 1 || mon > 12 || day < 1 || day > 31 || hr > 23 || min > 59) return null;
+  const dt = new Date(year, mon - 1, day, hr, min, 0, 0);
+  return isNaN(dt.getTime()) ? null : dt.getTime();
+}
+function interviewEmbed(at: number): EmbedBuilder {
+  const sec = Math.floor(at / 1000);
+  return baseEmbed(hexToInt(STATUS_HEX.INTERVIEW)).setTitle("📅 Entretien programmé")
+    .setDescription(`Entretien fixé au **<t:${sec}:F>** (<t:${sec}:R>).\nMerci d'être présent(e) à l'heure, en tenue réglementaire.`);
+}
+async function postInterviewMessage(client: Client, channel: TextChannel, at: number) {
+  const embed = interviewEmbed(at);
+  const t = await mdt.ticketByChannel(channel.id);
+  const existing = t?.interviewMsgId ? await channel.messages.fetch(t.interviewMsgId).catch(() => null) : null;
+  if (existing) { await existing.edit({ embeds: [embed] }); return; }
+  const sent = await channel.send({ embeds: [embed] });
+  await mdt.ticketSetInterviewMsg(channel.id, sent.id);
+}
+async function handleInterviewModal(interaction: ModalSubmitInteraction) {
+  const channel = interaction.channel;
+  if (!channel || channel.type !== ChannelType.GuildText) { await interaction.reply({ content: "À utiliser dans un ticket.", flags: EPH }); return; }
+  const at = parseDateTime(interaction.fields.getTextInputValue("date").trim(), interaction.fields.getTextInputValue("heure").trim());
+  if (at === null) { await interaction.reply({ content: "Date/heure invalide. Formats attendus : JJ/MM/AAAA et HH:MM.", flags: EPH }); return; }
+  await mdt.ticketSetStatus(channel.id, "INTERVIEW", interaction.user.username, at);
+  await renameStatus(interaction.client, channel.id, "INTERVIEW");
+  const cfg = await mdt.ticketConfigGet();
+  await moveToStatusCategory(interaction.client, channel.id, "INTERVIEW", cfg);
+  await postInterviewMessage(interaction.client, channel as TextChannel, at);
+  try { await (channel as TextChannel).setTopic(`Entretien : ${new Date(at).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" })}`); } catch { /* rien */ }
+  await interaction.reply({ content: `📅 Entretien programmé au **${new Date(at).toLocaleString("fr-FR", { dateStyle: "long", timeStyle: "short" })}**.`, flags: EPH });
+}
+
+// ---------- Vote pour / contre (statut « Vote en cours ») ----------
+
+function voteEmbed(state: { for: string[]; against: string[] }): EmbedBuilder {
+  const li = (a: string[]) => (a.length ? a.map((n) => `• ${n}`).join("\n") : "*-*");
+  return baseEmbed(hexToInt(STATUS_HEX.VOTE)).setTitle("🗳️ Vote d'intégration")
+    .setDescription("Recruteurs : votez pour ou contre cette candidature. Un vote par personne, modifiable.")
+    .addFields(
+      { name: `✅ Pour - ${state.for.length}`, value: li(state.for), inline: true },
+      { name: `❌ Contre - ${state.against.length}`, value: li(state.against), inline: true },
+    );
+}
+function voteButtons() {
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId("tk|vote|FOR").setLabel("Pour").setEmoji("✅").setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId("tk|vote|AGAINST").setLabel("Contre").setEmoji("❌").setStyle(ButtonStyle.Danger),
+  );
+}
+async function openVote(client: Client, channel: TextChannel) {
+  const t = await mdt.ticketByChannel(channel.id);
+  const existing = t?.voteMsgId ? await channel.messages.fetch(t.voteMsgId).catch(() => null) : null;
+  const state = (await mdt.ticketVoteState(channel.id)) ?? { for: [], against: [] };
+  if (existing) { await existing.edit({ embeds: [voteEmbed(state)], components: [voteButtons()] }); return; }
+  const sent = await channel.send({ embeds: [voteEmbed(state)], components: [voteButtons()] });
+  await mdt.ticketSetVoteMsg(channel.id, sent.id);
+}
+async function handleVoteButton(interaction: ButtonInteraction) {
+  if (!interaction.channel || interaction.channel.type !== ChannelType.GuildText) return;
+  // Le salon est réservé aux recruteurs ; on interdit seulement au candidat de
+  // voter pour lui-même.
+  const t = await mdt.ticketByChannel(interaction.channel.id);
+  if (t && t.ownerId === interaction.user.id) { await interaction.reply({ content: "Vous ne pouvez pas voter sur votre propre candidature.", flags: EPH }); return; }
+  const choice = interaction.customId.split("|")[2] as "FOR" | "AGAINST";
+  const name = (interaction.member && "displayName" in interaction.member ? interaction.member.displayName : null) ?? interaction.user.username;
+  await mdt.ticketVote(interaction.channel.id, interaction.user.id, name, choice);
+  const state = (await mdt.ticketVoteState(interaction.channel.id)) ?? { for: [], against: [] };
+  if (interaction.message) await interaction.update({ embeds: [voteEmbed(state)], components: [voteButtons()] });
 }
 
 // Réconciliation : crée les catégories manquantes (promos créées sur le site).
@@ -1067,6 +1207,8 @@ export async function handleTicketInteraction(interaction: Interaction) {
       if (id === "tk|hub|nomen") { await interaction.showModal(nomenModal(await mdt.ticketConfigGet())); return; }
       if (id === "tk|hub|conditions") { await interaction.showModal(conditionsModal(await mdt.ticketConfigGet())); return; }
       if (id === "tk|hub|roles") { await renderRoles(interaction); return; }
+      if (id === "tk|hub|statcats") { await renderStatusCategories(interaction); return; }
+      if (id.startsWith("tk|statcat|clear|")) { const st = id.split("|")[3]; await setStatusCategory(st, null); await renderStatusCategories(interaction, st); return; }
       if (id === "tk|hub|annoncetxt") {
         const cfg = await mdt.ticketConfigGet();
         const d: Draft = { target: "announce", name: "", pingOwner: false, embed: structuredClone(cfg.announceEmbed) };
@@ -1075,6 +1217,7 @@ export async function handleTicketInteraction(interaction: Interaction) {
       if (id.startsWith("tk|pres|")) { await handlePresence(interaction, true); return; }
       if (id.startsWith("tk|abs|")) { await handlePresence(interaction, false); return; }
       if (id === "tk|manage") { await openStatusPanel(interaction); return; }
+      if (id.startsWith("tk|vote|")) { await handleVoteButton(interaction); return; }
       if (id === "tk|tpl|new") { const d = newTemplateDraft(); drafts.set(interaction.user.id, d); await renderBuilder(interaction, d); return; }
 
       // --- Constructeur d'embed ---
@@ -1111,6 +1254,11 @@ export async function handleTicketInteraction(interaction: Interaction) {
       await mdt.ticketConfigSet({ categoryId: interaction.values[0] });
       await renderHub(interaction, true); return;
     }
+    if (interaction.isChannelSelectMenu() && interaction.customId.startsWith("tk|statcat|set|")) {
+      const st = interaction.customId.split("|")[3];
+      await setStatusCategory(st, interaction.values[0] ?? null);
+      await renderStatusCategories(interaction, st); return;
+    }
     if (interaction.isRoleSelectMenu()) {
       if (interaction.customId === "tk|cfg|promoroles") { await mdt.ticketConfigSet({ promoRoleIds: [...interaction.values] }); await renderRoles(interaction); return; }
       if (interaction.customId === "tk|cfg|recruiterroles") { await mdt.ticketConfigSet({ recruiterRoleIds: [...interaction.values] }); await renderRoles(interaction); return; }
@@ -1118,6 +1266,7 @@ export async function handleTicketInteraction(interaction: Interaction) {
     }
     if (interaction.isStringSelectMenu()) {
       if (interaction.customId === "tk|stsel") { await applyStatusFromSelect(interaction); return; }
+      if (interaction.customId === "tk|statcat|pick") { await renderStatusCategories(interaction, interaction.values[0]); return; }
       if (interaction.customId === "tk|b|color") { const d = drafts.get(interaction.user.id); if (d) { d.embed.color = interaction.values[0]; await renderBuilder(interaction, d); } return; }
       if (interaction.customId === "tk|bf|pick") {
         const d = drafts.get(interaction.user.id);
@@ -1144,6 +1293,7 @@ export async function handleTicketInteraction(interaction: Interaction) {
       const id = interaction.customId;
       if (id === "tk|cand|m1") { await handleIdentityModal(interaction); return; }
       if (id === "tk|cand|m2") { await handleDossierModal(interaction); return; }
+      if (id === "tk|imodal") { await handleInterviewModal(interaction); return; }
       if (id === "tk|m|close") { await softCloseTicket(interaction); return; }
       if (id === "tk|m|nomen") { await mdt.ticketConfigSet({ nomenclature: interaction.fields.getTextInputValue("nomen") }); await renderHub(interaction, true); return; }
       if (id === "tk|m|conditions") {

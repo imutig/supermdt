@@ -1714,8 +1714,23 @@ export default defineSchema({
     // Anciens champs à plat de l'annonce (compat, `announceEmbed` prime).
     announceText: v.optional(v.string()),
     announceItems: v.optional(v.string()), // « à prévoir », une ligne par item
+    // Catégorie Discord par statut (déplacement du salon). Sans entrée pour un
+    // statut : le ticket reste dans la catégorie d'arrivée (categoryId).
+    statusCategories: v.optional(v.array(v.object({ status: v.string(), categoryId: v.string() }))),
     updatedAt: v.number(),
   }),
+
+  // Votes pour/contre sous une candidature (statut « Vote en cours »). Un vote
+  // par personne, modifiable ; on garde le nom pour l'afficher.
+  ticketVotes: defineTable({
+    ticketId: v.id("tickets"),
+    discordUserId: v.string(),
+    discordName: v.string(),
+    choice: v.union(v.literal("FOR"), v.literal("AGAINST")),
+    at: v.number(),
+  })
+    .index("by_ticket", ["ticketId"])
+    .index("by_ticket_user", ["ticketId", "discordUserId"]),
 
   // Modèles de message (embeds) à envoyer dans un ticket.
   ticketTemplates: defineTable({
@@ -1740,8 +1755,17 @@ export default defineSchema({
     motivations: v.optional(v.string()),
     experiences: v.optional(v.string()), // expériences professionnelles RP
     status: v.union(v.literal("OPEN"), v.literal("CLOSED")),
-    // Intégration à la PA : EVALUATING 🟡 · FAILED 🔴 · PASSED 🟢 · PASSED_ABSENT 🟠
-    integrationStatus: v.optional(v.union(v.literal("EVALUATING"), v.literal("FAILED"), v.literal("PASSED"), v.literal("PASSED_ABSENT"))),
+    // Statut de la candidature (cycle de vie) : NEW 🆕 · VOTE 🗳️ · ACCEPTED 📋 ·
+    // INTERVIEW 📅 · PASSED 🎓 · ACADEMY ⭐ · REJECTED ❌.
+    // (EVALUATING / FAILED / PASSED_ABSENT : anciennes valeurs, conservées pour l'existant.)
+    integrationStatus: v.optional(v.union(
+      v.literal("NEW"), v.literal("VOTE"), v.literal("ACCEPTED"), v.literal("INTERVIEW"),
+      v.literal("PASSED"), v.literal("ACADEMY"), v.literal("REJECTED"),
+      v.literal("EVALUATING"), v.literal("FAILED"), v.literal("PASSED_ABSENT"),
+    )),
+    interviewAt: v.optional(v.number()), // date/heure d'entretien (statut INTERVIEW)
+    interviewMsgId: v.optional(v.string()), // message d'entretien dans le ticket
+    voteMsgId: v.optional(v.string()), // message de vote pour/contre (statut VOTE)
     promotionId: v.optional(v.id("promotions")), // promo rejointe (après « Présent »)
     createdAt: v.number(),
     // Journal du ticket + raison de fermeture (repris dans l'archive).

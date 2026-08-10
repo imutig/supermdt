@@ -99,7 +99,11 @@ export const mdt = {
   ticketArchiveSave: (channelId: string, channelName: string, messages: ArchiveMessage[]) =>
     client.mutation(anyApi.bot.ticketArchiveSave, { secret: env.botSecret, channelId, channelName, messages }) as Promise<void>,
   ticketByOwner: (ownerId: string) => client.query(anyApi.bot.ticketByOwner, { secret: env.botSecret, ownerId }) as Promise<{ channelId: string; prenom: string; nom: string; integrationStatus: IntegStatus | null } | null>,
-  ticketSetStatus: (channelId: string, status: IntegStatus, by?: string) => client.mutation(anyApi.bot.ticketSetStatus, { secret: env.botSecret, channelId, status, by }) as Promise<{ prenom: string; nom: string } | null>,
+  ticketSetStatus: (channelId: string, status: IntegStatus, by?: string, interviewAt?: number | null) => client.mutation(anyApi.bot.ticketSetStatus, { secret: env.botSecret, channelId, status, by, interviewAt: interviewAt ?? undefined }) as Promise<{ prenom: string; nom: string } | null>,
+  ticketSetVoteMsg: (channelId: string, messageId: string) => client.mutation(anyApi.bot.ticketSetVoteMsg, { secret: env.botSecret, channelId, messageId }) as Promise<void>,
+  ticketSetInterviewMsg: (channelId: string, messageId: string) => client.mutation(anyApi.bot.ticketSetInterviewMsg, { secret: env.botSecret, channelId, messageId }) as Promise<void>,
+  ticketVote: (channelId: string, discordUserId: string, discordName: string, choice: "FOR" | "AGAINST") => client.mutation(anyApi.bot.ticketVote, { secret: env.botSecret, channelId, discordUserId, discordName, choice }) as Promise<{ ok: boolean }>,
+  ticketVoteState: (channelId: string) => client.query(anyApi.bot.ticketVoteState, { secret: env.botSecret, channelId }) as Promise<{ for: string[]; against: string[] } | null>,
   ticketSetPromotion: (channelId: string, promotionId: string) => client.mutation(anyApi.bot.ticketSetPromotion, { secret: env.botSecret, channelId, promotionId }) as Promise<void>,
 
   promoUpsertByDate: (paDate: number, name: string | undefined, paTime: string | undefined, paPlace: string | undefined) =>
@@ -121,7 +125,7 @@ export type TicketFull = {
   events: TicketEvent[]; createdAt: number;
 };
 
-export type IntegStatus = "EVALUATING" | "FAILED" | "PASSED" | "PASSED_ABSENT";
+export type IntegStatus = "NEW" | "VOTE" | "ACCEPTED" | "INTERVIEW" | "PASSED" | "ACADEMY" | "REJECTED";
 export type EmbedField = { name: string; value: string; inline?: boolean };
 export type RichEmbed = {
   authorName?: string; authorIcon?: string;
@@ -139,8 +143,9 @@ export type TicketConfig = {
   recruiterRoleIds: string[];
   importantInfo: string; conditionsRP: string;
   announceEmbed: RichEmbed;
+  statusCategories: { status: string; categoryId: string }[];
 };
 export type TicketTemplate = { _id: string; name: string; pingOwner: boolean; embed: RichEmbed };
-export type TicketOwner = { ownerId: string; ownerName: string; prenom: string; nom: string; status: string; integrationStatus: IntegStatus | null };
+export type TicketOwner = { ownerId: string; ownerName: string; prenom: string; nom: string; status: string; integrationStatus: IntegStatus | null; interviewAt: number | null; interviewMsgId: string | null; voteMsgId: string | null };
 
 export type { OnDutyAgent, DayStats, Overview, BotConfig, WeeklyHours, RollcallState, VehicleInfo, CasierInfo };
