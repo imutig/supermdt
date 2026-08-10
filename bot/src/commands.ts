@@ -34,9 +34,10 @@ export const commands = [
     .addStringOption((o) => o.setName("du").setDescription("Date de début (JJ/MM/AAAA)").setRequired(true))
     .addStringOption((o) => o.setName("au").setDescription("Date de fin (JJ/MM/AAAA)").setRequired(true))
     .addStringOption((o) => o.setName("motif").setDescription("Motif de l'absence").setRequired(true)),
-  // Système de candidatures : hub central, réservé au staff (Gérer le serveur).
-  new SlashCommandBuilder().setName("candidatures").setDescription("Configurer le système de candidatures de l'académie")
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+  // Système de candidatures : hub central. Visible de tous (pour que le rôle
+  // habilité y accède même sans « Gérer le serveur ») mais l'accès réel est
+  // filtré dans openHub (administrateur OU rôle CANDIDATURES_ADMIN_ROLE).
+  new SlashCommandBuilder().setName("candidatures").setDescription("Configurer le système de candidatures de l'académie"),
   new SlashCommandBuilder().setName("template").setDescription("Templates de message des tickets")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
     .addSubcommand((s) => s.setName("send").setDescription("Envoyer un template dans ce ticket")

@@ -1116,7 +1116,20 @@ export function isTicketInteraction(id: string): boolean {
   return id.startsWith("tk|");
 }
 
+// Rôle habilité à configurer les candidatures, en plus des administrateurs.
+const CANDIDATURES_ADMIN_ROLE = "1434397651465539636";
+function canConfigCandidatures(interaction: ChatInputCommandInteraction): boolean {
+  if (interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) return true;
+  const roles = interaction.member && "roles" in interaction.member ? interaction.member.roles : null;
+  if (roles && "cache" in roles) return roles.cache.has(CANDIDATURES_ADMIN_ROLE);
+  if (Array.isArray(roles)) return roles.includes(CANDIDATURES_ADMIN_ROLE);
+  return false;
+}
 export async function openHub(interaction: ChatInputCommandInteraction) {
+  if (!canConfigCandidatures(interaction)) {
+    await interaction.reply({ content: "Réservé aux administrateurs et au rôle habilité.", flags: EPH });
+    return;
+  }
   await renderHub(interaction, false);
 }
 
