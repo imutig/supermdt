@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import {
-  Plus, Settings, X, Trash2, ChevronUp, ChevronDown, MessageSquare, Dices, Info, ClipboardCheck,
+  Plus, Settings, X, Trash2, ChevronUp, ChevronDown, MessageSquare, Dices, Info, ClipboardCheck, FileImage,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import type { Id } from "convex/_generated/dataModel";
@@ -12,6 +12,7 @@ import { EmptyState } from "@/components/common/EmptyState";
 import { SkeletonRows } from "@/components/common/Skeleton";
 import { Button } from "@/components/common/Button";
 import { Modal } from "@/components/common/Modal";
+import { EntretienReport } from "./EntretienReport";
 
 type Snap = { text: string; explanation?: string; note?: number };
 
@@ -126,6 +127,7 @@ function InterviewPanel({ id, onClose }: { id: Id<"interviews">; onClose: () => 
   const [scenario, setScenario] = useState<Snap | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [report, setReport] = useState(false);
 
   useEffect(() => {
     if (data && !loaded) {
@@ -194,11 +196,21 @@ function InterviewPanel({ id, onClose }: { id: Id<"interviews">; onClose: () => 
                 className="flex h-[34px] w-[34px] items-center justify-center rounded-sm border border-border bg-surface-2 text-faint hover:text-danger" title="Supprimer"
               ><Trash2 className="h-[15px] w-[15px]" /></button>
               <div className="flex-1" />
+              <Button variant="secondary" onClick={() => setReport(true)}><FileImage className="h-[15px] w-[15px]" /> Rapport (image)</Button>
               <Button variant="primary" loading={busy} onClick={persist}>Enregistrer</Button>
             </div>
           </>
         )}
       </div>
+
+      {report && data && (
+        <EntretienReport
+          id={id} prenom={prenom} nom={nom} dob={dob}
+          questions={questions} scenario={scenario} score={score}
+          createdByName={data.createdByName} createdAt={data.createdAt}
+          onClose={() => setReport(false)}
+        />
+      )}
     </div>
   );
 }
