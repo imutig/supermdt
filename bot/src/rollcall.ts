@@ -37,6 +37,22 @@ function ceremonyText(time: string | null): string {
   ].join("\n");
 }
 
+const hm = (t: string | null): string | null => (t && /^\d{1,2}:\d{2}$/.test(t)) ? t.replace(":", "h") : null;
+
+// Message d'un roll call ordinaire : date, heure et lieu, puis les consignes.
+function rollcallText(state: RollcallState, endStamp: string): string {
+  const dateStamp = `<t:${Math.floor(state.endsAt / 1000)}:D>`;
+  const start = hm(state.startTime);
+  return [
+    `📅 ${dateStamp}${start ? `  ·  🕘 ${start}` : ""}  ·  📍 3ème étage, Poste de Vespucci`,
+    "",
+    "Présentez-vous en avance et en tenue de patrouille. À défaut, notez-vous « En retard ».",
+    "Toute absence de plus de 72h doit être signalée.",
+    "",
+    `Indiquez votre présence ci-dessous. Clôture des votes à ${endStamp}.`,
+  ].join("\n");
+}
+
 function rollcallEmbed(state: RollcallState): EmbedBuilder {
   const endStamp = `<t:${Math.floor(state.endsAt / 1000)}:t>`;
   const total = state.present.length + state.retard.length + state.absent.length;
@@ -49,7 +65,7 @@ function rollcallEmbed(state: RollcallState): EmbedBuilder {
         : `Le roll call est terminé. **${total}** réponse${total > 1 ? "s" : ""} enregistrée${total > 1 ? "s" : ""}.`)
     : (state.ceremony
         ? `${ceremonyText(state.ceremonyTime)}\n\nIndiquez votre présence ci-dessous. Clôture des votes à ${endStamp}.`
-        : `Indiquez votre présence ci-dessous. Clôture des votes à ${endStamp}.`);
+        : rollcallText(state, endStamp));
   const e = baseEmbed(state.closed ? BRAND.muted : BRAND.green)
     .setTitle(title)
     .setDescription(description)
@@ -82,13 +98,16 @@ async function refresh(client: Client, rollcallId: string, channelId: string, me
 // Ouvre le roll call du jour s'il ne l'est pas déjà. Idempotent grâce à la clé
 // de date côté Convex : un message posté en double est nettoyé. `pingRoleId`
 // mentionne un rôle à l'ouverture (configuré sur le site).
-export async function openRollcall(client: Client, channelId: string, date: string, endsAt: number, pingRoleId?: string | null, ceremony?: boolean, ceremonyTime?: string | null) {
+export async function openRollcall(client: Client, channelId: string, date: string, endsAt: number, pingRoleId?: string | null, ceremony?: boolean, ceremonyTime?: string | null, startTime?: string | null) {
   const chan = await channel(client, channelId);
   if (!chan) return;
-  const emptyState: RollcallState = { endsAt, closed: false, ceremony: !!ceremony, ceremonyTime: ceremonyTime ?? null, present: [], retard: [], absent: [] };
+  // Roll call précédent : on supprimera son message Discord une fois le nouveau
+  // posté (les présences restent en base pour l'historique).
+  const prev = await mdt.rollcallPrevious(date).catch(() => null);
+  const emptyState: RollcallState = { endsAt, closed: false, ceremony: !!ceremony, ceremonyTime: ceremonyTime ?? null, startTime: startTime ?? null, present: [], retard: [], absent: [] };
   const ping = pingRoleId ? { content: `<@&${pingRoleId}>`, allowedMentions: { roles: [pingRoleId] } } : {};
   const sent = await chan.send({ ...ping, embeds: [rollcallEmbed(emptyState)], components: buttons("pending") });
-  const res = await mdt.rollcallOpen(date, channelId, sent.id, endsAt, ceremony, ceremonyTime);
+  const res = await mdt.rollcallOpen(date, channelId, sent.id, endsAt, ceremony, ceremonyTime, startTime);
   if (res.duplicate) {
     // Un autre roll call existait déjà : on retire notre message superflu.
     await sent.delete().catch(() => {});
@@ -96,6 +115,12 @@ export async function openRollcall(client: Client, channelId: string, date: stri
   }
   // Réécrit les boutons avec le véritable id du roll call (le ping/contenu reste).
   await sent.edit({ embeds: [rollcallEmbed(emptyState)], components: buttons(res._id) });
+  // Supprime le message du roll call précédent (l'historique reste en base).
+  if (prev && prev.messageId !== sent.id) {
+    const prevChan = await channel(client, prev.channelId);
+    const prevMsg = prevChan ? await prevChan.messages.fetch(prev.messageId).catch(() => null) : null;
+    await prevMsg?.delete().catch(() => {});
+  }
   console.log(`[rollcall] roll call ouvert (${date}).`);
 }
 

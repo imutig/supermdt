@@ -1460,6 +1460,7 @@ export default defineSchema({
     closed: v.boolean(),
     ceremony: v.optional(v.boolean()), // le dimanche : appel à la cérémonie
     ceremonyTime: v.optional(v.string()), // heure affichée dans le message de cérémonie
+    startTime: v.optional(v.string()), // heure prévue du roll call (affichée dans le message)
   }).index("by_date", ["date"]),
 
   rollcallVotes: defineTable({

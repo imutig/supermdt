@@ -151,15 +151,29 @@ export const rollcallToday = query({
   },
 });
 
+// Roll call précédent (message Discord à supprimer quand le nouveau est posté ;
+// les présences restent en base). On garde l'historique, on ne retire que le
+// message le plus récent qui précède la date donnée.
+export const rollcallPrevious = query({
+  args: { secret: v.string(), date: v.string() },
+  handler: async (ctx, { secret, date }) => {
+    assertBot(secret);
+    const prev = (await ctx.db.query("rollcalls").collect())
+      .filter((r) => r.date < date)
+      .sort((a, b) => b.date.localeCompare(a.date))[0];
+    return prev ? { channelId: prev.channelId, messageId: prev.messageId } : null;
+  },
+});
+
 export const rollcallOpen = mutation({
-  args: { secret: v.string(), date: v.string(), channelId: v.string(), messageId: v.string(), endsAt: v.number(), ceremony: v.optional(v.boolean()), ceremonyTime: v.optional(v.string()) },
-  handler: async (ctx, { secret, date, channelId, messageId, endsAt, ceremony, ceremonyTime }) => {
+  args: { secret: v.string(), date: v.string(), channelId: v.string(), messageId: v.string(), endsAt: v.number(), ceremony: v.optional(v.boolean()), ceremonyTime: v.optional(v.string()), startTime: v.optional(v.string()) },
+  handler: async (ctx, { secret, date, channelId, messageId, endsAt, ceremony, ceremonyTime, startTime }) => {
     assertBot(secret);
     // Course éventuelle : si un appel existe déjà pour la date, on renvoie
     // l'existant, le bot supprimera son message en double.
     const existing = await ctx.db.query("rollcalls").withIndex("by_date", (q) => q.eq("date", date)).first();
     if (existing) return { _id: existing._id, duplicate: existing.messageId !== messageId };
-    const _id = await ctx.db.insert("rollcalls", { date, channelId, messageId, startedAt: Date.now(), endsAt, closed: false, ceremony, ceremonyTime });
+    const _id = await ctx.db.insert("rollcalls", { date, channelId, messageId, startedAt: Date.now(), endsAt, closed: false, ceremony, ceremonyTime, startTime });
     return { _id, duplicate: false };
   },
 });
@@ -178,6 +192,7 @@ export const rollcallState = query({
       closed: rc.closed,
       ceremony: rc.ceremony ?? false,
       ceremonyTime: rc.ceremonyTime ?? null,
+      startTime: rc.startTime ?? null,
       present: group("PRESENT"),
       retard: group("RETARD"),
       absent: group("ABSENT"),

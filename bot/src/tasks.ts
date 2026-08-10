@@ -68,11 +68,18 @@ export function startTasks(client: Client) {
       const [eh, em] = cfg.rollcallEndAt.split(":").map(Number);
       const endsAt = new Date(now); endsAt.setHours(eh, em, 0, 0);
       const existing = await mdt.rollcallToday(today).catch(() => null);
-      if (cfg.rollcallStartAt === hhmm && lastRollcallOpened !== today && !existing) {
+      // Rattrapage : on ouvre dès que l'heure de début est atteinte OU dépassée,
+      // tant que la clôture n'est pas passée et qu'aucun appel n'existe pour le
+      // jour. Ainsi, configurer/déployer après l'heure poste quand même l'appel.
+      // Comparaison en minutes (robuste aux heures non zéro-préfixées, ex. "9:00").
+      const [sh, sm] = cfg.rollcallStartAt.split(":").map(Number);
+      const nowMin = now.getHours() * 60 + now.getMinutes();
+      const inWindow = nowMin >= sh * 60 + sm && Date.now() < endsAt.getTime();
+      if (inWindow && lastRollcallOpened !== today && !existing) {
         lastRollcallOpened = today;
         // Le dimanche (getDay() === 0), le roll call devient un appel à la cérémonie.
         const ceremony = now.getDay() === 0;
-        await openRollcall(client, cfg.rollcallChannel, today, endsAt.getTime(), cfg.rollcallPingRole, ceremony, cfg.ceremonyAt);
+        await openRollcall(client, cfg.rollcallChannel, today, endsAt.getTime(), cfg.rollcallPingRole, ceremony, cfg.ceremonyAt, cfg.rollcallStartAt);
       } else if (existing && !existing.closed && Date.now() >= existing.endsAt) {
         await closeRollcall(client, existing._id, existing.channelId, existing.messageId);
       }
