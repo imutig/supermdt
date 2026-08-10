@@ -79,7 +79,13 @@ export function startTasks(client: Client) {
         lastRollcallOpened = today;
         // Le dimanche (getDay() === 0), le roll call devient un appel à la cérémonie.
         const ceremony = now.getDay() === 0;
-        await openRollcall(client, cfg.rollcallChannel, today, endsAt.getTime(), cfg.rollcallPingRole, ceremony, cfg.ceremonyAt, cfg.rollcallStartAt);
+        await openRollcall(client, {
+          channelId: cfg.rollcallChannel, date: today, endsAt: endsAt.getTime(),
+          pingRoleId: cfg.rollcallPingRole, pingEnabled: cfg.rollcallPingEnabled,
+          ceremony, ceremonyTime: cfg.ceremonyAt,
+          // L'heure de présence affichée = l'heure de clôture des votes.
+          displayTime: cfg.rollcallEndAt,
+        });
       } else if (existing && !existing.closed && Date.now() >= existing.endsAt) {
         await closeRollcall(client, existing._id, existing.channelId, existing.messageId);
       }

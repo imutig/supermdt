@@ -42,9 +42,9 @@ const hm = (t: string | null): string | null => (t && /^\d{1,2}:\d{2}$/.test(t))
 // Message d'un roll call ordinaire : date, heure et lieu, puis les consignes.
 function rollcallText(state: RollcallState, endStamp: string): string {
   const dateStamp = `<t:${Math.floor(state.endsAt / 1000)}:D>`;
-  const start = hm(state.startTime);
+  const heure = hm(state.displayTime);
   return [
-    `📅 ${dateStamp}${start ? `  ·  🕘 ${start}` : ""}  ·  📍 3ème étage, Poste de Vespucci`,
+    `📅 ${dateStamp}${heure ? `  ·  🕘 ${heure}` : ""}  ·  📍 3ème étage, Poste de Vespucci`,
     "",
     "Présentez-vous en avance et en tenue de patrouille. À défaut, notez-vous « En retard ».",
     "Toute absence de plus de 72h doit être signalée.",
@@ -95,28 +95,28 @@ async function refresh(client: Client, rollcallId: string, channelId: string, me
   await msg.edit({ embeds: [rollcallEmbed(state)], components: state.closed ? [] : buttons(rollcallId) });
 }
 
-// Ouvre le roll call du jour s'il ne l'est pas déjà. Idempotent grâce à la clé
-// de date côté Convex : un message posté en double est nettoyé. `pingRoleId`
-// mentionne un rôle à l'ouverture (configuré sur le site).
-export async function openRollcall(client: Client, channelId: string, date: string, endsAt: number, pingRoleId?: string | null, ceremony?: boolean, ceremonyTime?: string | null, startTime?: string | null) {
+// Ouvre le roll call du jour. Idempotent : on RÉSERVE le créneau en base avant
+// de poster (une seule instance/tick gagne l'insertion), ce qui évite tout
+// envoi en double, y compris pendant un redéploiement (deux instances).
+export async function openRollcall(client: Client, opts: {
+  channelId: string; date: string; endsAt: number;
+  pingRoleId?: string | null; pingEnabled?: boolean;
+  ceremony?: boolean; ceremonyTime?: string | null; displayTime?: string | null;
+}) {
+  const { channelId, date, endsAt, pingRoleId, pingEnabled, ceremony, ceremonyTime, displayTime } = opts;
   const chan = await channel(client, channelId);
   if (!chan) return;
-  // Roll call précédent : on supprimera son message Discord une fois le nouveau
-  // posté (les présences restent en base pour l'historique).
+  // Réservation atomique : si un autre a déjà ouvert le roll call du jour, on
+  // n'envoie rien.
+  const res = await mdt.rollcallReserve(date, channelId, endsAt, ceremony, ceremonyTime, displayTime).catch(() => null);
+  if (!res || !res.created) return;
   const prev = await mdt.rollcallPrevious(date).catch(() => null);
-  const emptyState: RollcallState = { endsAt, closed: false, ceremony: !!ceremony, ceremonyTime: ceremonyTime ?? null, startTime: startTime ?? null, present: [], retard: [], absent: [] };
-  const ping = pingRoleId ? { content: `<@&${pingRoleId}>`, allowedMentions: { roles: [pingRoleId] } } : {};
-  const sent = await chan.send({ ...ping, embeds: [rollcallEmbed(emptyState)], components: buttons("pending") });
-  const res = await mdt.rollcallOpen(date, channelId, sent.id, endsAt, ceremony, ceremonyTime, startTime);
-  if (res.duplicate) {
-    // Un autre roll call existait déjà : on retire notre message superflu.
-    await sent.delete().catch(() => {});
-    return;
-  }
-  // Réécrit les boutons avec le véritable id du roll call (le ping/contenu reste).
-  await sent.edit({ embeds: [rollcallEmbed(emptyState)], components: buttons(res._id) });
+  const state: RollcallState = { endsAt, closed: false, ceremony: !!ceremony, ceremonyTime: ceremonyTime ?? null, displayTime: displayTime ?? null, present: [], retard: [], absent: [] };
+  const ping = (pingEnabled && pingRoleId) ? { content: `<@&${pingRoleId}>`, allowedMentions: { roles: [pingRoleId] } } : {};
+  const sent = await chan.send({ ...ping, embeds: [rollcallEmbed(state)], components: buttons(res._id) });
+  await mdt.rollcallSetMessage(res._id, sent.id).catch(() => {});
   // Supprime le message du roll call précédent (l'historique reste en base).
-  if (prev && prev.messageId !== sent.id) {
+  if (prev && prev.messageId && prev.messageId !== sent.id) {
     const prevChan = await channel(client, prev.channelId);
     const prevMsg = prevChan ? await prevChan.messages.fetch(prev.messageId).catch(() => null) : null;
     await prevMsg?.delete().catch(() => {});

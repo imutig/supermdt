@@ -1435,6 +1435,7 @@ export default defineSchema({
     botRollcallEndAt: v.optional(v.string()), // clôture : plus de vote possible (heure affichée dans le message)
     botCeremonyAt: v.optional(v.string()), // heure de la cérémonie du dimanche (affichée dans le message)
     botRollcallPingRole: v.optional(v.string()), // rôle Discord ping à l'ouverture du roll call
+    botRollcallPingEnabled: v.optional(v.boolean()), // active le ping du rôle (désactivé par défaut)
     botPresenceMessageId: v.optional(v.string()), // message de présence édité en boucle
     updatedBy: v.optional(v.id("agents")),
     updatedAt: v.number(),
@@ -1460,7 +1461,8 @@ export default defineSchema({
     closed: v.boolean(),
     ceremony: v.optional(v.boolean()), // le dimanche : appel à la cérémonie
     ceremonyTime: v.optional(v.string()), // heure affichée dans le message de cérémonie
-    startTime: v.optional(v.string()), // heure prévue du roll call (affichée dans le message)
+    startTime: v.optional(v.string()), // (déprécié) ancienne heure d'ouverture affichée
+    displayTime: v.optional(v.string()), // heure de présence affichée (= clôture des votes)
   }).index("by_date", ["date"]),
 
   rollcallVotes: defineTable({

@@ -38,11 +38,12 @@ type BotConfig = {
   rollcallEndAt: string | null;
   ceremonyAt: string | null;
   rollcallPingRole: string | null;
+  rollcallPingEnabled: boolean;
 };
 
 export type RollStatus = "PRESENT" | "ABSENT" | "RETARD";
 type RollcallRef = { _id: string; channelId: string; messageId: string; endsAt: number; closed: boolean };
-type RollcallState = { endsAt: number; closed: boolean; ceremony: boolean; ceremonyTime: string | null; startTime: string | null; present: string[]; retard: string[]; absent: string[] };
+type RollcallState = { endsAt: number; closed: boolean; ceremony: boolean; ceremonyTime: string | null; displayTime: string | null; present: string[]; retard: string[]; absent: string[] };
 
 type VehicleInfo = { plaque: string; modele: string; couleur: string; type: string; owner: string | null; notes: string | null; flags: string[] };
 type CasierInfo =
@@ -62,8 +63,10 @@ export const mdt = {
 
   rollcallToday: (date: string) => client.query(anyApi.bot.rollcallToday, { secret: env.botSecret, date }) as Promise<RollcallRef | null>,
   rollcallPrevious: (date: string) => client.query(anyApi.bot.rollcallPrevious, { secret: env.botSecret, date }) as Promise<{ channelId: string; messageId: string } | null>,
-  rollcallOpen: (date: string, channelId: string, messageId: string, endsAt: number, ceremony?: boolean, ceremonyTime?: string | null, startTime?: string | null) =>
-    client.mutation(anyApi.bot.rollcallOpen, { secret: env.botSecret, date, channelId, messageId, endsAt, ceremony, ceremonyTime: ceremonyTime ?? undefined, startTime: startTime ?? undefined }) as Promise<{ _id: string; duplicate: boolean }>,
+  rollcallReserve: (date: string, channelId: string, endsAt: number, ceremony?: boolean, ceremonyTime?: string | null, displayTime?: string | null) =>
+    client.mutation(anyApi.bot.rollcallReserve, { secret: env.botSecret, date, channelId, endsAt, ceremony, ceremonyTime: ceremonyTime ?? undefined, displayTime: displayTime ?? undefined }) as Promise<{ _id: string; created: boolean }>,
+  rollcallSetMessage: (rollcallId: string, messageId: string) =>
+    client.mutation(anyApi.bot.rollcallSetMessage, { secret: env.botSecret, rollcallId, messageId }) as Promise<void>,
   rollcallState: (rollcallId: string) => client.query(anyApi.bot.rollcallState, { secret: env.botSecret, rollcallId }) as Promise<RollcallState | null>,
   rollcallVote: (rollcallId: string, discordUserId: string, discordName: string, status: RollStatus) =>
     client.mutation(anyApi.bot.rollcallVote, { secret: env.botSecret, rollcallId, discordUserId, discordName, status }) as Promise<{ ok: boolean; reason?: string }>,

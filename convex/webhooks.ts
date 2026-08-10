@@ -68,6 +68,7 @@ export const botConfig = query({
       rollcallEndAt: c?.botRollcallEndAt ?? "",
       ceremonyAt: c?.botCeremonyAt ?? "",
       rollcallPingRole: c?.botRollcallPingRole ?? "",
+      rollcallPingEnabled: c?.botRollcallPingEnabled ?? false,
     };
   },
 });
@@ -82,6 +83,7 @@ export const setBotConfig = mutation({
     rollcallEndAt: v.optional(v.string()),
     ceremonyAt: v.optional(v.string()),
     rollcallPingRole: v.optional(v.string()),
+    rollcallPingEnabled: v.optional(v.boolean()),
   },
   handler: async (ctx, a) => {
     const agent = await requireAgent(ctx);
@@ -112,6 +114,7 @@ export const setBotConfig = mutation({
       botRollcallEndAt: time("Fin de l'appel", a.rollcallEndAt),
       botCeremonyAt: time("Heure de la cérémonie", a.ceremonyAt),
       botRollcallPingRole: role(a.rollcallPingRole),
+      botRollcallPingEnabled: a.rollcallPingEnabled ?? false,
       updatedBy: agent._id,
       updatedAt: Date.now(),
     };

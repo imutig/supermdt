@@ -165,16 +165,26 @@ export const rollcallPrevious = query({
   },
 });
 
-export const rollcallOpen = mutation({
-  args: { secret: v.string(), date: v.string(), channelId: v.string(), messageId: v.string(), endsAt: v.number(), ceremony: v.optional(v.boolean()), ceremonyTime: v.optional(v.string()), startTime: v.optional(v.string()) },
-  handler: async (ctx, { secret, date, channelId, messageId, endsAt, ceremony, ceremonyTime, startTime }) => {
+// Réserve atomiquement le roll call du jour AVANT de poster le message : une
+// seule instance/tick gagne l'insertion (created:true) et poste ; les autres
+// reçoivent created:false et ne postent rien. Évite les envois en double.
+export const rollcallReserve = mutation({
+  args: { secret: v.string(), date: v.string(), channelId: v.string(), endsAt: v.number(), ceremony: v.optional(v.boolean()), ceremonyTime: v.optional(v.string()), displayTime: v.optional(v.string()) },
+  handler: async (ctx, { secret, date, channelId, endsAt, ceremony, ceremonyTime, displayTime }) => {
     assertBot(secret);
-    // Course éventuelle : si un appel existe déjà pour la date, on renvoie
-    // l'existant, le bot supprimera son message en double.
     const existing = await ctx.db.query("rollcalls").withIndex("by_date", (q) => q.eq("date", date)).first();
-    if (existing) return { _id: existing._id, duplicate: existing.messageId !== messageId };
-    const _id = await ctx.db.insert("rollcalls", { date, channelId, messageId, startedAt: Date.now(), endsAt, closed: false, ceremony, ceremonyTime, startTime });
-    return { _id, duplicate: false };
+    if (existing) return { _id: existing._id, created: false };
+    const _id = await ctx.db.insert("rollcalls", { date, channelId, messageId: "", startedAt: Date.now(), endsAt, closed: false, ceremony, ceremonyTime, displayTime });
+    return { _id, created: true };
+  },
+});
+
+// Enregistre l'id du message Discord une fois posté.
+export const rollcallSetMessage = mutation({
+  args: { secret: v.string(), rollcallId: v.id("rollcalls"), messageId: v.string() },
+  handler: async (ctx, { secret, rollcallId, messageId }) => {
+    assertBot(secret);
+    await ctx.db.patch(rollcallId, { messageId });
   },
 });
 
@@ -192,7 +202,7 @@ export const rollcallState = query({
       closed: rc.closed,
       ceremony: rc.ceremony ?? false,
       ceremonyTime: rc.ceremonyTime ?? null,
-      startTime: rc.startTime ?? null,
+      displayTime: rc.displayTime ?? null,
       present: group("PRESENT"),
       retard: group("RETARD"),
       absent: group("ABSENT"),
@@ -248,6 +258,7 @@ export const config = query({
       rollcallEndAt: cfg?.botRollcallEndAt ?? null,
       ceremonyAt: cfg?.botCeremonyAt ?? null,
       rollcallPingRole: cfg?.botRollcallPingRole ?? null,
+      rollcallPingEnabled: cfg?.botRollcallPingEnabled ?? false,
     };
   },
 });
