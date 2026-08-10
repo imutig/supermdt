@@ -118,10 +118,10 @@ export function EntretienReport({
               <div className="mt-1">{noted.length}/{questions.length} question(s) notée(s) · Fait à Los Santos, le {new Date().toLocaleDateString("fr-FR")}</div>
             </div>
             <div className="relative flex items-end gap-4">
-              <div className="text-center">
-                <div className="leading-none" style={{ fontFamily: "'Dancing Script',cursive", fontSize: 30, fontWeight: 700, color: "#12233b" }}>{createdByName}</div>
-                <div className="mt-1 h-[1px] w-[170px]" style={{ background: "#cfd4db" }} />
-                <div className="mt-1 text-[10px] uppercase tracking-[0.08em]" style={{ color: "#98a0ab" }}>Signature de l'instructeur</div>
+              <div className="flex flex-col items-center">
+                <div style={{ fontFamily: "'Dancing Script',cursive", fontSize: 28, fontWeight: 700, color: "#12233b", lineHeight: 1.15, whiteSpace: "nowrap" }}>{createdByName}</div>
+                <div className="mt-1 h-[1px]" style={{ background: "#cfd4db", width: "max(170px, 100%)" }} />
+                <div className="mt-1 whitespace-nowrap text-[10px] uppercase tracking-[0.08em]" style={{ color: "#98a0ab" }}>Signature de l'instructeur</div>
               </div>
               <Stamp />
             </div>
