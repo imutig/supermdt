@@ -781,7 +781,9 @@ export async function templateAutocomplete(interaction: Interaction) {
   if (!interaction.isAutocomplete()) return;
   const focused = interaction.options.getFocused().toLowerCase();
   const templates = await mdt.ticketTemplateList().catch(() => []);
-  await interaction.respond(templates.filter((t) => t.name.toLowerCase().includes(focused)).slice(0, 25).map((t) => ({ name: t.name, value: t.name })));
+  // Si la réponse arrive après le délai de Discord (requête Convex lente), le
+  // token a expiré : on ignore l'erreur au lieu de faire crasher le client.
+  await interaction.respond(templates.filter((t) => t.name.toLowerCase().includes(focused)).slice(0, 25).map((t) => ({ name: t.name, value: t.name }))).catch(() => {});
 }
 
 // ---------- Annonce officielle ----------
@@ -1041,15 +1043,23 @@ async function handleInterviewModal(interaction: ModalSubmitInteraction) {
   // On enregistre + on répond TOUT DE SUITE (Discord expire l'interaction après
   // 3 s). Les opérations lentes (renommage/déplacement/topic, très limitées par
   // Discord) se font ensuite, hors du délai de l'interaction.
+  const ticket = await mdt.ticketByChannel(channel.id);
   await mdt.ticketSetStatus(channel.id, "INTERVIEW", interaction.user.username, at, interaction.user.id);
-  await interaction.reply({ content: `📅 Entretien programmé au **${parisStr(at, { dateStyle: "long", timeStyle: "short" })}** (heure de Paris).`, flags: EPH });
-  try {
-    await renameStatus(interaction.client, channel.id, "INTERVIEW");
-    const cfg = await mdt.ticketConfigGet();
-    await moveToStatusCategory(interaction.client, channel.id, "INTERVIEW", cfg);
-    await postInterviewMessage(interaction.client, channel as TextChannel, at);
-    await (channel as TextChannel).setTopic(`Entretien : ${parisStr(at, { dateStyle: "short", timeStyle: "short" })}`);
-  } catch (err) { console.error("[interview] finalisation :", err); }
+  await interaction.reply({ content: `📅 Entretien programmé au **${parisStr(at, { dateStyle: "long", timeStyle: "short" })}** (heure de Paris). Le candidat a été prévenu en MP.`, flags: EPH });
+  // Importants d'abord (rapides), puis renommage/déplacement (lents et limités
+  // par Discord) en best-effort, chacun isolé pour ne pas se bloquer l'un l'autre.
+  try { await postInterviewMessage(interaction.client, channel as TextChannel, at); } catch (err) { console.error("[interview] message ticket :", err); }
+  if (ticket) {
+    try {
+      const cand = await interaction.client.users.fetch(ticket.ownerId);
+      const sec = Math.floor(at / 1000);
+      await cand.send({ embeds: [baseEmbed(BRAND.green).setTitle("📅 Entretien programmé")
+        .setDescription(`Ta candidature avance ! Un entretien de recrutement est **programmé le <t:${sec}:F>** (heure de Paris).\nMerci d'être ponctuel(le) et en tenue réglementaire. Tu recevras un rappel 15 minutes avant.`)] });
+    } catch (err) { console.error("[interview] MP candidat :", err); }
+  }
+  try { await renameStatus(interaction.client, channel.id, "INTERVIEW"); } catch (err) { console.error("[interview] renommage :", err); }
+  try { const cfg = await mdt.ticketConfigGet(); await moveToStatusCategory(interaction.client, channel.id, "INTERVIEW", cfg); } catch (err) { console.error("[interview] déplacement :", err); }
+  try { await (channel as TextChannel).setTopic(`Entretien : ${parisStr(at, { dateStyle: "short", timeStyle: "short" })}`); } catch (err) { console.error("[interview] topic :", err); }
 }
 
 // ---------- Vote pour / contre (statut « Vote en cours ») ----------
