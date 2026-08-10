@@ -99,7 +99,9 @@ export const mdt = {
   ticketArchiveSave: (channelId: string, channelName: string, messages: ArchiveMessage[]) =>
     client.mutation(anyApi.bot.ticketArchiveSave, { secret: env.botSecret, channelId, channelName, messages }) as Promise<void>,
   ticketByOwner: (ownerId: string) => client.query(anyApi.bot.ticketByOwner, { secret: env.botSecret, ownerId }) as Promise<{ channelId: string; prenom: string; nom: string; integrationStatus: IntegStatus | null } | null>,
-  ticketSetStatus: (channelId: string, status: IntegStatus, by?: string, interviewAt?: number | null) => client.mutation(anyApi.bot.ticketSetStatus, { secret: env.botSecret, channelId, status, by, interviewAt: interviewAt ?? undefined }) as Promise<{ prenom: string; nom: string } | null>,
+  ticketSetStatus: (channelId: string, status: IntegStatus, by?: string, interviewAt?: number | null, byId?: string) => client.mutation(anyApi.bot.ticketSetStatus, { secret: env.botSecret, channelId, status, by, byId, interviewAt: interviewAt ?? undefined }) as Promise<{ prenom: string; nom: string } | null>,
+  interviewReminders: (now: number) => client.query(anyApi.bot.interviewReminders, { secret: env.botSecret, now }) as Promise<{ channelId: string; ownerId: string; interviewById: string | null; interviewAt: number; prenom: string; nom: string }[]>,
+  markInterviewReminded: (channelId: string) => client.mutation(anyApi.bot.markInterviewReminded, { secret: env.botSecret, channelId }) as Promise<void>,
   ticketSetVoteMsg: (channelId: string, messageId: string) => client.mutation(anyApi.bot.ticketSetVoteMsg, { secret: env.botSecret, channelId, messageId }) as Promise<void>,
   ticketSetInterviewMsg: (channelId: string, messageId: string) => client.mutation(anyApi.bot.ticketSetInterviewMsg, { secret: env.botSecret, channelId, messageId }) as Promise<void>,
   ticketVote: (channelId: string, discordUserId: string, discordName: string, choice: "FOR" | "AGAINST") => client.mutation(anyApi.bot.ticketVote, { secret: env.botSecret, channelId, discordUserId, discordName, choice }) as Promise<{ ok: boolean }>,

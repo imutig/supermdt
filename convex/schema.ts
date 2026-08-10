@@ -1763,7 +1763,9 @@ export default defineSchema({
       v.literal("PASSED"), v.literal("ACADEMY"), v.literal("REJECTED"),
       v.literal("EVALUATING"), v.literal("FAILED"), v.literal("PASSED_ABSENT"),
     )),
-    interviewAt: v.optional(v.number()), // date/heure d'entretien (statut INTERVIEW)
+    interviewAt: v.optional(v.number()), // date/heure d'entretien (statut INTERVIEW), epoch UTC
+    interviewById: v.optional(v.string()), // id Discord de l'instructeur qui a programmé l'entretien
+    interviewRemindedFor: v.optional(v.number()), // interviewAt déjà rappelé (anti-doublon)
     interviewMsgId: v.optional(v.string()), // message d'entretien dans le ticket
     voteMsgId: v.optional(v.string()), // message de vote pour/contre (statut VOTE)
     promotionId: v.optional(v.id("promotions")), // promo rejointe (après « Présent »)

@@ -3,6 +3,7 @@ import { mdt } from "./convex.js";
 import { presenceEmbed, dailyEmbed } from "./embeds.js";
 import { openRollcall, closeRollcall } from "./rollcall.js";
 import { reconcilePromoCategories, reconcilePromoDeletions } from "./tickets.js";
+import { baseEmbed, BRAND } from "./theme.js";
 
 // Les salons et l'heure du récap sont lus depuis le MDT (page Configuration),
 // pas depuis l'environnement : un changement sur le site prend effet sans
@@ -94,6 +95,27 @@ export function startTasks(client: Client) {
     // --- Catégories de promo : crée celles qui manquent, nettoie les supprimées ---
     await reconcilePromoCategories(client).catch(() => {});
     await reconcilePromoDeletions(client).catch(() => {});
+
+    // --- Rappels d'entretien : 15 min avant, MP au candidat + ping instructeur ---
+    try {
+      const due = await mdt.interviewReminders(Date.now());
+      for (const it of due) {
+        const whenParis = new Date(it.interviewAt).toLocaleString("fr-FR", { timeZone: "Europe/Paris", dateStyle: "short", timeStyle: "short" });
+        const sec = Math.floor(it.interviewAt / 1000);
+        // MP au candidat (il n'est pas dans le salon recruteur).
+        const cand = await client.users.fetch(it.ownerId).catch(() => null);
+        if (cand) {
+          await cand.send({ embeds: [baseEmbed(BRAND.green).setTitle("📅 Rappel d'entretien")
+            .setDescription(`Ton entretien de recrutement a lieu **dans 15 minutes** (<t:${sec}:t>, heure de Paris).\nMerci d'être ponctuel(le) et en tenue réglementaire.`)] }).catch(() => {});
+        }
+        // Ping de l'instructeur qui a pris en charge, dans le salon du ticket.
+        const chan = await channel(client, it.channelId);
+        if (chan && it.interviewById) {
+          await chan.send({ content: `<@${it.interviewById}> Rappel : entretien de **${it.prenom} ${it.nom}** dans 15 minutes (${whenParis}).`, allowedMentions: { users: [it.interviewById] } }).catch(() => {});
+        }
+        await mdt.markInterviewReminded(it.channelId);
+      }
+    } catch (err) { console.error("[interview] rappels :", err); }
 
     // --- Récapitulatif quotidien ---
     if (cfg.dailyChannel && cfg.dailyAt === hhmm && lastDailySent !== today) {

@@ -748,18 +748,48 @@ const TICKET_STATUS = v.union(
   v.literal("PASSED"), v.literal("ACADEMY"), v.literal("REJECTED"),
 );
 export const ticketSetStatus = mutation({
-  args: { secret: v.string(), channelId: v.string(), status: TICKET_STATUS, by: v.optional(v.string()), interviewAt: v.optional(v.union(v.number(), v.null())) },
-  handler: async (ctx, { secret, channelId, status, by, interviewAt }) => {
+  args: { secret: v.string(), channelId: v.string(), status: TICKET_STATUS, by: v.optional(v.string()), byId: v.optional(v.string()), interviewAt: v.optional(v.union(v.number(), v.null())) },
+  handler: async (ctx, { secret, channelId, status, by, byId, interviewAt }) => {
     assertBot(secret);
     const t = await ctx.db.query("tickets").withIndex("by_channel", (q) => q.eq("channelId", channelId)).first();
     if (t) {
       const patch: Record<string, unknown> = { integrationStatus: status };
-      if (interviewAt !== undefined) patch.interviewAt = interviewAt ?? undefined;
+      if (interviewAt !== undefined) {
+        patch.interviewAt = interviewAt ?? undefined;
+        // Re-programmer réarme le rappel + mémorise l'instructeur qui prend en charge.
+        patch.interviewRemindedFor = undefined;
+        if (status === "INTERVIEW") patch.interviewById = byId ?? undefined;
+      }
       await ctx.db.patch(t._id, patch);
-      const suffix = status === "INTERVIEW" && interviewAt ? ` (${new Date(interviewAt).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" })})` : "";
+      const suffix = status === "INTERVIEW" && interviewAt ? ` (${new Date(interviewAt).toLocaleString("fr-FR", { timeZone: "Europe/Paris", dateStyle: "short", timeStyle: "short" })})` : "";
       await logEvent(ctx, t, { type: "status", label: `Statut : ${STATUS_LABELS[status] ?? status}${suffix}`, by });
     }
     return t ? { prenom: t.prenom, nom: t.nom } : null;
+  },
+});
+
+// Entretiens dont le rappel (15 min avant) doit partir : programmés, pas encore
+// rappelés, et l'instant présent est dans la fenêtre [entretien-15min, entretien[.
+export const interviewReminders = query({
+  args: { secret: v.string(), now: v.number() },
+  handler: async (ctx, { secret, now }) => {
+    assertBot(secret);
+    const tickets = await ctx.db.query("tickets").collect();
+    const due = tickets.filter((t) =>
+      t.integrationStatus === "INTERVIEW" && t.status === "OPEN" && t.interviewAt != null &&
+      t.interviewRemindedFor !== t.interviewAt &&
+      now >= t.interviewAt - 15 * 60_000 && now < t.interviewAt,
+    );
+    return due.map((t) => ({ channelId: t.channelId, ownerId: t.ownerId, interviewById: t.interviewById ?? null, interviewAt: t.interviewAt!, prenom: t.prenom, nom: t.nom }));
+  },
+});
+
+export const markInterviewReminded = mutation({
+  args: { secret: v.string(), channelId: v.string() },
+  handler: async (ctx, { secret, channelId }) => {
+    assertBot(secret);
+    const t = await ctx.db.query("tickets").withIndex("by_channel", (q) => q.eq("channelId", channelId)).first();
+    if (t && t.interviewAt != null) await ctx.db.patch(t._id, { interviewRemindedFor: t.interviewAt });
   },
 });
 

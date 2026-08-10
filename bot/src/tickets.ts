@@ -970,13 +970,17 @@ async function applyStatusFromSelect(interaction: AnySelectMenuInteraction) {
   if (!channel || channel.type !== ChannelType.GuildText) return;
   // Entretien programmé : on demande la date + l'heure via une modale.
   if (status === "INTERVIEW") { await interaction.showModal(interviewModal()); return; }
+  // On enregistre + on accuse réception (update du panneau) TOUT DE SUITE, puis
+  // on fait les opérations lentes (renommage/déplacement de salon) : celles-ci
+  // sont fortement limitées par Discord et dépasseraient le délai de 3 s.
   await mdt.ticketSetStatus(channel.id, status, interaction.user.username);
-  await renameStatus(interaction.client, channel.id, status);
-  const cfg = await mdt.ticketConfigGet();
-  await moveToStatusCategory(interaction.client, channel.id, status, cfg);
-  // Vote en cours : ouvre le vote pour/contre sous la candidature.
-  if (status === "VOTE") await openVote(interaction.client, channel as TextChannel);
   await interaction.update(statusPanel(status));
+  try {
+    await renameStatus(interaction.client, channel.id, status);
+    const cfg = await mdt.ticketConfigGet();
+    await moveToStatusCategory(interaction.client, channel.id, status, cfg);
+    if (status === "VOTE") await openVote(interaction.client, channel as TextChannel);
+  } catch (err) { console.error("[status] finalisation :", err); }
   // Le rôle Cadet n'est PLUS attribué automatiquement : il l'est via /validation.
 }
 
@@ -989,15 +993,33 @@ function interviewModal(): ModalBuilder {
     trow(new TextInputBuilder().setCustomId("heure").setLabel("Heure (HH:MM)").setStyle(TextInputStyle.Short).setPlaceholder("21:00").setRequired(true)),
   );
 }
+// Décalage (ms) du fuseau `tz` à l'instant `utcMs`.
+function tzOffsetMs(tz: string, utcMs: number): number {
+  const dtf = new Intl.DateTimeFormat("en-US", { timeZone: tz, hour12: false, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  const p: Record<string, string> = {};
+  for (const part of dtf.formatToParts(new Date(utcMs))) p[part.type] = part.value;
+  const asUTC = Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour === 24 ? 0 : +p.hour, +p.minute, +p.second);
+  return asUTC - utcMs;
+}
+// L'heure saisie est une heure « murale » de Paris → epoch UTC correspondant.
+function parisWallToEpoch(year: number, mon: number, day: number, hr: number, min: number): number {
+  const guess = Date.UTC(year, mon - 1, day, hr, min);
+  let epoch = guess - tzOffsetMs("Europe/Paris", guess);
+  const off2 = tzOffsetMs("Europe/Paris", epoch); // correction DST
+  const epoch2 = guess - off2;
+  if (epoch2 !== epoch) epoch = epoch2;
+  return epoch;
+}
 function parseDateTime(d: string, h: string): number | null {
   const dm = d.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
   const hm = h.match(/^(\d{1,2}):(\d{2})$/);
   if (!dm || !hm) return null;
   const [day, mon, year, hr, min] = [+dm[1], +dm[2], +dm[3], +hm[1], +hm[2]];
   if (mon < 1 || mon > 12 || day < 1 || day > 31 || hr > 23 || min > 59) return null;
-  const dt = new Date(year, mon - 1, day, hr, min, 0, 0);
-  return isNaN(dt.getTime()) ? null : dt.getTime();
+  const epoch = parisWallToEpoch(year, mon, day, hr, min);
+  return isNaN(epoch) ? null : epoch;
 }
+const parisStr = (at: number, opts: Intl.DateTimeFormatOptions) => new Date(at).toLocaleString("fr-FR", { timeZone: "Europe/Paris", ...opts });
 function interviewEmbed(at: number): EmbedBuilder {
   const sec = Math.floor(at / 1000);
   return baseEmbed(hexToInt(STATUS_HEX.INTERVIEW)).setTitle("📅 Entretien programmé")
@@ -1016,13 +1038,18 @@ async function handleInterviewModal(interaction: ModalSubmitInteraction) {
   if (!channel || channel.type !== ChannelType.GuildText) { await interaction.reply({ content: "À utiliser dans un ticket.", flags: EPH }); return; }
   const at = parseDateTime(interaction.fields.getTextInputValue("date").trim(), interaction.fields.getTextInputValue("heure").trim());
   if (at === null) { await interaction.reply({ content: "Date/heure invalide. Formats attendus : JJ/MM/AAAA et HH:MM.", flags: EPH }); return; }
-  await mdt.ticketSetStatus(channel.id, "INTERVIEW", interaction.user.username, at);
-  await renameStatus(interaction.client, channel.id, "INTERVIEW");
-  const cfg = await mdt.ticketConfigGet();
-  await moveToStatusCategory(interaction.client, channel.id, "INTERVIEW", cfg);
-  await postInterviewMessage(interaction.client, channel as TextChannel, at);
-  try { await (channel as TextChannel).setTopic(`Entretien : ${new Date(at).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" })}`); } catch { /* rien */ }
-  await interaction.reply({ content: `📅 Entretien programmé au **${new Date(at).toLocaleString("fr-FR", { dateStyle: "long", timeStyle: "short" })}**.`, flags: EPH });
+  // On enregistre + on répond TOUT DE SUITE (Discord expire l'interaction après
+  // 3 s). Les opérations lentes (renommage/déplacement/topic, très limitées par
+  // Discord) se font ensuite, hors du délai de l'interaction.
+  await mdt.ticketSetStatus(channel.id, "INTERVIEW", interaction.user.username, at, interaction.user.id);
+  await interaction.reply({ content: `📅 Entretien programmé au **${parisStr(at, { dateStyle: "long", timeStyle: "short" })}** (heure de Paris).`, flags: EPH });
+  try {
+    await renameStatus(interaction.client, channel.id, "INTERVIEW");
+    const cfg = await mdt.ticketConfigGet();
+    await moveToStatusCategory(interaction.client, channel.id, "INTERVIEW", cfg);
+    await postInterviewMessage(interaction.client, channel as TextChannel, at);
+    await (channel as TextChannel).setTopic(`Entretien : ${parisStr(at, { dateStyle: "short", timeStyle: "short" })}`);
+  } catch (err) { console.error("[interview] finalisation :", err); }
 }
 
 // ---------- Vote pour / contre (statut « Vote en cours ») ----------
