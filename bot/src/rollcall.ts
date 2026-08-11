@@ -7,6 +7,10 @@ import { baseEmbed, BRAND } from "./theme.js";
 
 const LABELS: Record<RollStatus, string> = { PRESENT: "Présent", RETARD: "En retard", ABSENT: "Absent" };
 
+// Rôle LSPD : mentionné à la publication du roll call, et base des relances
+// (on ne re-ping que ses membres n'ayant pas encore voté).
+const LSPD_ROLE = "1434397107086692452";
+
 // Boutons de vote, préfixés du rollcall pour survivre à un redémarrage du bot.
 function buttons(rollcallId: string) {
   const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
@@ -100,10 +104,9 @@ async function refresh(client: Client, rollcallId: string, channelId: string, me
 // envoi en double, y compris pendant un redéploiement (deux instances).
 export async function openRollcall(client: Client, opts: {
   channelId: string; date: string; endsAt: number;
-  pingRoleId?: string | null; pingEnabled?: boolean;
   ceremony?: boolean; ceremonyTime?: string | null; displayTime?: string | null;
 }) {
-  const { channelId, date, endsAt, pingRoleId, pingEnabled, ceremony, ceremonyTime, displayTime } = opts;
+  const { channelId, date, endsAt, ceremony, ceremonyTime, displayTime } = opts;
   const chan = await channel(client, channelId);
   if (!chan) return;
   // Réservation atomique : si un autre a déjà ouvert le roll call du jour, on
@@ -112,7 +115,8 @@ export async function openRollcall(client: Client, opts: {
   if (!res || !res.created) return;
   const prev = await mdt.rollcallPrevious(date).catch(() => null);
   const state: RollcallState = { endsAt, closed: false, ceremony: !!ceremony, ceremonyTime: ceremonyTime ?? null, displayTime: displayTime ?? null, present: [], retard: [], absent: [] };
-  const ping = (pingEnabled && pingRoleId) ? { content: `<@&${pingRoleId}>`, allowedMentions: { roles: [pingRoleId] } } : {};
+  // Première mention : le rôle LSPD à la publication.
+  const ping = { content: `<@&${LSPD_ROLE}>`, allowedMentions: { roles: [LSPD_ROLE] } };
   const sent = await chan.send({ ...ping, embeds: [rollcallEmbed(state)], components: buttons(res._id) });
   await mdt.rollcallSetMessage(res._id, sent.id).catch(() => {});
   // Supprime le message du roll call précédent (l'historique reste en base).
@@ -122,6 +126,31 @@ export async function openRollcall(client: Client, opts: {
     await prevMsg?.delete().catch(() => {});
   }
   console.log(`[rollcall] roll call ouvert (${date}).`);
+}
+
+// Relance : mentionne les membres du rôle LSPD qui n'ont PAS encore voté au
+// roll call du jour (ceux qui ont voté ne sont plus ping).
+export async function remindNonVoters(client: Client, rc: { _id: string; channelId: string; messageId: string }) {
+  const guild = client.guilds.cache.first();
+  if (!guild) return;
+  let members;
+  try { members = await guild.members.fetch(); }
+  catch (e) { console.error("[rollcall] énumération des membres impossible (active « Server Members Intent » ?) :", e); return; }
+  const lspd = [...members.values()].filter((m) => !m.user.bot && m.roles.cache.has(LSPD_ROLE));
+  if (lspd.length === 0) return;
+  const voters = new Set(await mdt.rollcallVoters(rc._id).catch(() => [] as string[]));
+  const nonVoters = lspd.filter((m) => !voters.has(m.id)).map((m) => m.id);
+  if (nonVoters.length === 0) return; // tout le monde a voté : rien à relancer.
+  const chan = await channel(client, rc.channelId);
+  if (!chan) return;
+  const link = `https://discord.com/channels/${guild.id}/${rc.channelId}/${rc.messageId}`;
+  // Discord limite le nombre de mentions par message : on découpe par 90.
+  for (let i = 0; i < nonVoters.length; i += 90) {
+    const chunk = nonVoters.slice(i, i + 90);
+    const head = i === 0 ? `📣 **Roll call** - vous n'avez pas encore indiqué votre présence. Merci de voter : ${link}\n` : "";
+    await chan.send({ content: `${head}${chunk.map((id) => `<@${id}>`).join(" ")}`, allowedMentions: { users: chunk } }).catch(() => {});
+  }
+  console.log(`[rollcall] relance envoyée à ${nonVoters.length} non-votant(s).`);
 }
 
 export async function closeRollcall(client: Client, rollcallId: string, channelId: string, messageId: string) {

@@ -16,6 +16,9 @@ const client = new Client({
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.DirectMessages,
     GatewayIntentBits.MessageContent,
+    // Requiert « Server Members Intent » activé dans le portail développeur :
+    // sert à énumérer les membres du rôle LSPD pour relancer les non-votants.
+    GatewayIntentBits.GuildMembers,
   ],
   partials: [Partials.Channel, Partials.Message],
 });

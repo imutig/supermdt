@@ -1463,6 +1463,7 @@ export default defineSchema({
     ceremonyTime: v.optional(v.string()), // heure affichée dans le message de cérémonie
     startTime: v.optional(v.string()), // (déprécié) ancienne heure d'ouverture affichée
     displayTime: v.optional(v.string()), // heure de présence affichée (= clôture des votes)
+    remindersSent: v.optional(v.array(v.string())), // créneaux de relance déjà envoyés ("HH:MM")
   }).index("by_date", ["date"]),
 
   rollcallVotes: defineTable({

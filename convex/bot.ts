@@ -147,7 +147,29 @@ export const rollcallToday = query({
     assertBot(secret);
     const rc = await ctx.db.query("rollcalls").withIndex("by_date", (q) => q.eq("date", date)).first();
     if (!rc) return null;
-    return { _id: rc._id, channelId: rc.channelId, messageId: rc.messageId, endsAt: rc.endsAt, closed: rc.closed };
+    return { _id: rc._id, channelId: rc.channelId, messageId: rc.messageId, endsAt: rc.endsAt, closed: rc.closed, remindersSent: rc.remindersSent ?? [] };
+  },
+});
+
+// Ids Discord des agents ayant déjà voté au roll call (tout statut confondu).
+export const rollcallVoters = query({
+  args: { secret: v.string(), rollcallId: v.id("rollcalls") },
+  handler: async (ctx, { secret, rollcallId }) => {
+    assertBot(secret);
+    const votes = await ctx.db.query("rollcallVotes").withIndex("by_rollcall", (q) => q.eq("rollcallId", rollcallId)).collect();
+    return [...new Set(votes.map((v) => v.discordUserId))];
+  },
+});
+
+// Marque des créneaux de relance ("HH:MM") comme envoyés (anti-doublon).
+export const rollcallMarkReminders = mutation({
+  args: { secret: v.string(), rollcallId: v.id("rollcalls"), slots: v.array(v.string()) },
+  handler: async (ctx, { secret, rollcallId, slots }) => {
+    assertBot(secret);
+    const rc = await ctx.db.get(rollcallId);
+    if (!rc) return;
+    const set = new Set([...(rc.remindersSent ?? []), ...slots]);
+    await ctx.db.patch(rollcallId, { remindersSent: [...set] });
   },
 });
 

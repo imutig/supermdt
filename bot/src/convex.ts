@@ -42,7 +42,7 @@ type BotConfig = {
 };
 
 export type RollStatus = "PRESENT" | "ABSENT" | "RETARD";
-type RollcallRef = { _id: string; channelId: string; messageId: string; endsAt: number; closed: boolean };
+type RollcallRef = { _id: string; channelId: string; messageId: string; endsAt: number; closed: boolean; remindersSent: string[] };
 type RollcallState = { endsAt: number; closed: boolean; ceremony: boolean; ceremonyTime: string | null; displayTime: string | null; present: string[]; retard: string[]; absent: string[] };
 
 type VehicleInfo = { plaque: string; modele: string; couleur: string; type: string; owner: string | null; notes: string | null; flags: string[] };
@@ -71,6 +71,8 @@ export const mdt = {
   rollcallVote: (rollcallId: string, discordUserId: string, discordName: string, status: RollStatus) =>
     client.mutation(anyApi.bot.rollcallVote, { secret: env.botSecret, rollcallId, discordUserId, discordName, status }) as Promise<{ ok: boolean; reason?: string }>,
   rollcallClose: (rollcallId: string) => client.mutation(anyApi.bot.rollcallClose, { secret: env.botSecret, rollcallId }) as Promise<void>,
+  rollcallVoters: (rollcallId: string) => client.query(anyApi.bot.rollcallVoters, { secret: env.botSecret, rollcallId }) as Promise<string[]>,
+  rollcallMarkReminders: (rollcallId: string, slots: string[]) => client.mutation(anyApi.bot.rollcallMarkReminders, { secret: env.botSecret, rollcallId, slots }) as Promise<void>,
 
   vehicleByPlate: (plaque: string) => client.query(anyApi.bot.vehicleByPlate, { secret: env.botSecret, plaque }) as Promise<VehicleInfo | null>,
   casierByName: (query: string) => client.query(anyApi.bot.casierByName, { secret: env.botSecret, query }) as Promise<CasierInfo>,

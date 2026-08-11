@@ -1,13 +1,24 @@
 import { type Client, type TextChannel } from "discord.js";
 import { mdt } from "./convex.js";
 import { presenceEmbed, dailyEmbed } from "./embeds.js";
-import { openRollcall, closeRollcall } from "./rollcall.js";
+import { openRollcall, closeRollcall, remindNonVoters } from "./rollcall.js";
 import { reconcilePromoCategories, reconcilePromoDeletions, deprogramInterview } from "./tickets.js";
 import { baseEmbed, BRAND } from "./theme.js";
 
 // Les salons et l'heure du récap sont lus depuis le MDT (page Configuration),
 // pas depuis l'environnement : un changement sur le site prend effet sans
 // redémarrer le bot. Une seule boucle chaque minute pilote tout.
+
+const toMin = (s: string) => { const [h, m] = s.split(":").map(Number); return h * 60 + m; };
+const pad2 = (n: number) => String(n).padStart(2, "0");
+// Créneaux de relance : toutes les 2 h après l'ouverture, avant la clôture.
+// Ex. début 14:00, fin 21:00 -> ["16:00", "18:00", "20:00"].
+function reminderSlots(start: string, end: string): string[] {
+  const s = toMin(start), e = toMin(end);
+  const out: string[] = [];
+  for (let t = s + 120; t < e; t += 120) out.push(`${pad2(Math.floor(t / 60))}:${pad2(t % 60)}`);
+  return out;
+}
 
 async function channel(client: Client, id: string | null): Promise<TextChannel | null> {
   if (!id) return null;
@@ -82,13 +93,21 @@ export function startTasks(client: Client) {
         const ceremony = now.getDay() === 0;
         await openRollcall(client, {
           channelId: cfg.rollcallChannel, date: today, endsAt: endsAt.getTime(),
-          pingRoleId: cfg.rollcallPingRole, pingEnabled: cfg.rollcallPingEnabled,
           ceremony, ceremonyTime: cfg.ceremonyAt,
           // L'heure de présence affichée = l'heure de clôture des votes.
           displayTime: cfg.rollcallEndAt,
         });
       } else if (existing && !existing.closed && Date.now() >= existing.endsAt) {
         await closeRollcall(client, existing._id, existing.channelId, existing.messageId);
+      } else if (existing && !existing.closed) {
+        // Relances toutes les 2 h (16h, 18h, 20h…) : re-ping les LSPD non-votants.
+        const slots = reminderSlots(cfg.rollcallStartAt, cfg.rollcallEndAt);
+        const endMin = toMin(cfg.rollcallEndAt);
+        const due = slots.filter((s) => nowMin >= toMin(s) && nowMin < endMin && !existing.remindersSent.includes(s));
+        if (due.length) {
+          await remindNonVoters(client, existing);
+          await mdt.rollcallMarkReminders(existing._id, due); // marque tous les créneaux passés (pas de rafale)
+        }
       }
     }
 
