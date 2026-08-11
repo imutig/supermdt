@@ -1766,6 +1766,7 @@ export default defineSchema({
     interviewAt: v.optional(v.number()), // date/heure d'entretien (statut INTERVIEW), epoch UTC
     interviewById: v.optional(v.string()), // id Discord de l'instructeur qui a programmé l'entretien
     interviewRemindedFor: v.optional(v.number()), // interviewAt déjà rappelé (anti-doublon)
+    interviewPresence: v.optional(v.union(v.literal("CONFIRMED"), v.literal("DECLINED"))), // réponse du candidat
     interviewMsgId: v.optional(v.string()), // message d'entretien dans le ticket
     voteMsgId: v.optional(v.string()), // message de vote pour/contre (statut VOTE)
     promotionId: v.optional(v.id("promotions")), // promo rejointe (après « Présent »)

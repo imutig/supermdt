@@ -449,7 +449,8 @@ function bulletList(text: string): string {
 async function startCandidatureDM(user: User): Promise<boolean> {
   const embed = baseEmbed(BRAND.green).setTitle("🎓 Candidature - Police Academy")
     .setDescription("Bienvenue. Tu t'apprêtes à déposer ta candidature à la Los Santos Police Academy. Clique sur le bouton ci-dessous pour commencer.")
-    .setFooter({ text: "Tes échanges avec les recruteurs se feront ici, en message privé." });
+    .addFields({ name: "💬 Comment nous parler", value: "**Écris-moi directement ici, en message privé**, quand tu veux : je transmets tes messages aux recruteurs, et ils te répondront de la même façon." })
+    .setFooter({ text: "Tous tes échanges avec les recruteurs se font ici, en message privé." });
   const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder().setCustomId("tk|cand|start").setLabel("Commencer ma candidature").setEmoji("📝").setStyle(ButtonStyle.Success),
   );
@@ -482,6 +483,19 @@ function conditionsMessage(cfg: TicketConfig) {
   const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder().setCustomId("tk|cand|accept").setLabel("J'accepte et je postule").setEmoji("✅").setStyle(ButtonStyle.Success),
     new ButtonBuilder().setCustomId("tk|cand|cancel").setLabel("Annuler").setStyle(ButtonStyle.Secondary),
+  );
+  return { embeds: [embed], components: [row] };
+}
+
+// Étape « dossier » : un BOUTON ouvre la modale (2/2). Ainsi, si le candidat
+// ferme la fenêtre par erreur, il peut la rouvrir en recliquant.
+function dossierStepMessage() {
+  const embed = baseEmbed(BRAND.green).setTitle("✅ Conditions acceptées")
+    .setDescription("Dernière étape : remplis ton **dossier de candidature** (motivations, expériences) en cliquant sur le bouton ci-dessous.")
+    .addFields({ name: "💬 Besoin de nous parler ?", value: "Tu peux aussi **m'écrire directement ici, en message privé**, à tout moment : tes messages sont transmis aux recruteurs." })
+    .setFooter({ text: "Si la fenêtre du dossier se ferme, reclique simplement sur le bouton." });
+  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId("tk|cand|dossier").setLabel("Remplir mon dossier").setEmoji("📄").setStyle(ButtonStyle.Success),
   );
   return { embeds: [embed], components: [row] };
 }
@@ -989,11 +1003,12 @@ async function applyStatusFromSelect(interaction: AnySelectMenuInteraction) {
 // ---------- Entretien programmé (date + heure) ----------
 
 function trow(input: TextInputBuilder) { return new ActionRowBuilder<TextInputBuilder>().addComponents(input); }
-function interviewModal(): ModalBuilder {
-  return new ModalBuilder().setCustomId("tk|imodal").setTitle("Entretien programmé").addComponents(
-    trow(new TextInputBuilder().setCustomId("date").setLabel("Date (JJ/MM/AAAA)").setStyle(TextInputStyle.Short).setPlaceholder("25/12/2026").setRequired(true)),
-    trow(new TextInputBuilder().setCustomId("heure").setLabel("Heure (HH:MM)").setStyle(TextInputStyle.Short).setPlaceholder("21:00").setRequired(true)),
-  );
+function interviewModal(prefillDate?: string, prefillHeure?: string): ModalBuilder {
+  const dateInput = new TextInputBuilder().setCustomId("date").setLabel("Date (JJ/MM/AAAA)").setStyle(TextInputStyle.Short).setPlaceholder("25/12/2026").setRequired(true);
+  const heureInput = new TextInputBuilder().setCustomId("heure").setLabel("Heure (HH:MM)").setStyle(TextInputStyle.Short).setPlaceholder("21:00").setRequired(true);
+  if (prefillDate) dateInput.setValue(prefillDate);
+  if (prefillHeure) heureInput.setValue(prefillHeure);
+  return new ModalBuilder().setCustomId("tk|imodal").setTitle("Entretien programmé").addComponents(trow(dateInput), trow(heureInput));
 }
 // Décalage (ms) du fuseau `tz` à l'instant `utcMs`.
 function tzOffsetMs(tz: string, utcMs: number): number {
@@ -1022,18 +1037,101 @@ function parseDateTime(d: string, h: string): number | null {
   return isNaN(epoch) ? null : epoch;
 }
 const parisStr = (at: number, opts: Intl.DateTimeFormatOptions) => new Date(at).toLocaleString("fr-FR", { timeZone: "Europe/Paris", ...opts });
-function interviewEmbed(at: number): EmbedBuilder {
+// Champs date/heure « murale Paris » pré-remplis pour reprogrammer.
+function parisDateHeure(at: number): { date: string; heure: string } {
+  return { date: parisStr(at, { day: "2-digit", month: "2-digit", year: "numeric" }).replace(/\//g, "/"), heure: parisStr(at, { hour: "2-digit", minute: "2-digit" }).replace("h", ":") };
+}
+const PRESENCE_LABEL: Record<string, string> = { CONFIRMED: "✅ Présence confirmée par le candidat", DECLINED: "❌ Le candidat s'est déclaré indisponible" };
+function interviewEmbed(at: number, presence: string | null): EmbedBuilder {
   const sec = Math.floor(at / 1000);
   return baseEmbed(hexToInt(STATUS_HEX.INTERVIEW)).setTitle("📅 Entretien programmé")
-    .setDescription(`Entretien fixé au **<t:${sec}:F>** (<t:${sec}:R>).\nMerci d'être présent(e) à l'heure, en tenue réglementaire.`);
+    .setDescription(`Entretien fixé au **<t:${sec}:F>** (<t:${sec}:R>).\nMerci d'être présent(e) à l'heure, en tenue réglementaire.`)
+    .addFields({ name: "Présence du candidat", value: presence ? PRESENCE_LABEL[presence] : "⏳ En attente de confirmation" });
+}
+// Boutons instructeur sur la programmation.
+function interviewButtons() {
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId("tk|iresched").setLabel("Reprogrammer").setEmoji("🔁").setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId("tk|icancel").setLabel("Annuler l'entretien").setEmoji("✖️").setStyle(ButtonStyle.Danger),
+  );
+}
+// Boutons de confirmation envoyés au candidat en MP.
+function candidateInterviewButtons() {
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId("tk|iyes").setLabel("Je confirme ma présence").setEmoji("✅").setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId("tk|ino").setLabel("Je ne serai pas disponible").setEmoji("❌").setStyle(ButtonStyle.Danger),
+  );
 }
 async function postInterviewMessage(client: Client, channel: TextChannel, at: number) {
-  const embed = interviewEmbed(at);
   const t = await mdt.ticketByChannel(channel.id);
+  const embed = interviewEmbed(at, t?.interviewPresence ?? null);
   const existing = t?.interviewMsgId ? await channel.messages.fetch(t.interviewMsgId).catch(() => null) : null;
-  if (existing) { await existing.edit({ embeds: [embed] }); return; }
-  const sent = await channel.send({ embeds: [embed] });
+  if (existing) { await existing.edit({ embeds: [embed], components: [interviewButtons()] }); return; }
+  const sent = await channel.send({ embeds: [embed], components: [interviewButtons()] });
   await mdt.ticketSetInterviewMsg(channel.id, sent.id);
+}
+// Re-render la programmation dans le ticket (après une réponse de présence).
+async function refreshInterviewMessage(client: Client, channelId: string) {
+  const t = await mdt.ticketByChannel(channelId);
+  if (!t || t.interviewAt == null || !t.interviewMsgId) return;
+  const chan = await client.channels.fetch(channelId).catch(() => null);
+  if (!chan || chan.type !== ChannelType.GuildText) return;
+  const msg = await (chan as TextChannel).messages.fetch(t.interviewMsgId).catch(() => null);
+  if (msg) await msg.edit({ embeds: [interviewEmbed(t.interviewAt, t.interviewPresence ?? null)], components: [interviewButtons()] });
+}
+
+// Instructeur : reprogrammer (ouvre la modale pré-remplie avec la date actuelle).
+async function handleReschedule(interaction: ButtonInteraction) {
+  if (!isStaff(interaction)) { await interaction.reply({ content: "Réservé à l'encadrement.", flags: EPH }); return; }
+  if (!interaction.channel || interaction.channel.type !== ChannelType.GuildText) return;
+  const t = await mdt.ticketByChannel(interaction.channel.id);
+  const pre = t?.interviewAt ? parisDateHeure(t.interviewAt) : undefined;
+  await interaction.showModal(interviewModal(pre?.date, pre?.heure));
+}
+
+// Instructeur : annuler l'entretien -> retour « en attente d'entretien ».
+async function handleCancelInterview(interaction: ButtonInteraction) {
+  if (!isStaff(interaction)) { await interaction.reply({ content: "Réservé à l'encadrement.", flags: EPH }); return; }
+  const channel = interaction.channel;
+  if (!channel || channel.type !== ChannelType.GuildText) return;
+  const res = await mdt.ticketCancelInterview(channel.id, interaction.user.username);
+  await interaction.reply({ content: "Entretien annulé. La candidature repasse en **attente d'entretien**.", flags: EPH });
+  if (!res) return;
+  // Retire les boutons + marque le message comme annulé.
+  if (res.interviewMsgId) {
+    const msg = await (channel as TextChannel).messages.fetch(res.interviewMsgId).catch(() => null);
+    if (msg) await msg.edit({ embeds: [baseEmbed(BRAND.muted).setTitle("✖️ Entretien annulé").setDescription("L'entretien a été annulé. La candidature est de nouveau en attente d'entretien.")], components: [] }).catch(() => {});
+  }
+  try { await renameStatus(interaction.client, channel.id, "ACCEPTED"); } catch { /* rien */ }
+  try { const cfg = await mdt.ticketConfigGet(); await moveToStatusCategory(interaction.client, channel.id, "ACCEPTED", cfg); } catch { /* rien */ }
+  try { await (channel as TextChannel).setTopic(""); } catch { /* rien */ }
+  // MP au candidat.
+  try {
+    const cand = await interaction.client.users.fetch(res.ownerId);
+    await cand.send({ embeds: [baseEmbed(BRAND.warning).setTitle("Entretien annulé")
+      .setDescription("Ton entretien a été annulé. Ne t'inquiète pas : ta candidature reste en cours, une nouvelle date te sera proposée prochainement.")] });
+  } catch { /* rien */ }
+}
+
+// Candidat : confirme (ou décline) sa présence depuis son MP.
+async function handlePresenceButton(interaction: ButtonInteraction, presence: "CONFIRMED" | "DECLINED") {
+  const res = await mdt.ticketSetPresence(interaction.user.id, presence);
+  if (!res) { await interaction.update({ components: [] }).catch(() => {}); await interaction.followUp({ content: "Cet entretien n'est plus programmé.", flags: EPH }).catch(() => {}); return; }
+  const sec = Math.floor(res.interviewAt / 1000);
+  const embed = presence === "CONFIRMED"
+    ? baseEmbed(BRAND.green).setTitle("✅ Présence confirmée").setDescription(`Merci ! Ta présence est confirmée pour l'entretien du <t:${sec}:F>. À très vite.`)
+    : baseEmbed(BRAND.warning).setTitle("Indisponibilité notée").setDescription("C'est noté. Les recruteurs ont été prévenus et te proposeront une autre date.");
+  await interaction.update({ embeds: [embed], components: [] }).catch(() => {});
+  await refreshInterviewMessage(interaction.client, res.channelId).catch(() => {});
+  // Note dans le ticket (ping l'instructeur si indisponible).
+  const chan = await interaction.client.channels.fetch(res.channelId).catch(() => null);
+  if (chan && chan.type === ChannelType.GuildText) {
+    if (presence === "CONFIRMED") {
+      await (chan as TextChannel).send({ embeds: [baseEmbed(BRAND.green).setDescription(`✅ **${res.prenom} ${res.nom}** a confirmé sa présence à l'entretien.`)] }).catch(() => {});
+    } else {
+      await (chan as TextChannel).send({ content: res.interviewById ? `<@${res.interviewById}>` : undefined, embeds: [baseEmbed(BRAND.danger).setDescription(`❌ **${res.prenom} ${res.nom}** a signalé être **indisponible** pour l'entretien. Pense à reprogrammer.`)], allowedMentions: res.interviewById ? { users: [res.interviewById] } : undefined }).catch(() => {});
+    }
+  }
 }
 async function handleInterviewModal(interaction: ModalSubmitInteraction) {
   const channel = interaction.channel;
@@ -1054,7 +1152,7 @@ async function handleInterviewModal(interaction: ModalSubmitInteraction) {
       const cand = await interaction.client.users.fetch(ticket.ownerId);
       const sec = Math.floor(at / 1000);
       await cand.send({ embeds: [baseEmbed(BRAND.green).setTitle("📅 Entretien programmé")
-        .setDescription(`Ta candidature avance ! Un entretien de recrutement est **programmé le <t:${sec}:F>** (heure de Paris).\nMerci d'être ponctuel(le) et en tenue réglementaire. Tu recevras un rappel 15 minutes avant.`)] });
+        .setDescription(`Ta candidature avance ! Un entretien de recrutement est **programmé le <t:${sec}:F>** (heure de Paris).\nMerci d'être ponctuel(le) et en tenue réglementaire. Tu recevras un rappel 15 minutes avant.\n\n**Merci de confirmer ta présence** ci-dessous.`)], components: [candidateInterviewButtons()] });
     } catch (err) { console.error("[interview] MP candidat :", err); }
   }
   try { await renameStatus(interaction.client, channel.id, "INTERVIEW"); } catch (err) { console.error("[interview] renommage :", err); }
@@ -1221,12 +1319,13 @@ export async function handleTicketInteraction(interaction: Interaction) {
         if (!state) { await interaction.reply({ content: "Ta session a expiré. Renvoie-moi **Candidature** pour recommencer.", flags: EPH }); return; }
         const existing = await mdt.ticketByOwner(interaction.user.id);
         if (existing) { await interaction.reply({ content: "Tu as déjà une candidature en cours.", flags: EPH }); return; }
-        // showModal doit être la réponse : on lance la création du ticket juste
-        // après (elle se termine avant que le candidat n'envoie la modale 2).
-        await interaction.showModal(dossierModal());
+        // On affiche l'étape « dossier » (bouton), et on crée le ticket en fond.
+        await interaction.update(dossierStepMessage());
         state.ticketPromise = createCandidatureTicket(interaction.client, interaction.user, state);
         return;
       }
+      // (Re)ouvre la modale du dossier : récupérable si la fenêtre a été fermée.
+      if (id === "tk|cand|dossier") { await interaction.showModal(dossierModal()); return; }
       if (id === "tk|close") { await interaction.showModal(closeModal()); return; }
       if (id === "tk|reopen") { await reopenTicket(interaction); return; }
       if (id === "tk|delete") { await deleteTicket(interaction); return; }
@@ -1268,6 +1367,10 @@ export async function handleTicketInteraction(interaction: Interaction) {
       if (id.startsWith("tk|abs|")) { await handlePresence(interaction, false); return; }
       if (id === "tk|manage") { await openStatusPanel(interaction); return; }
       if (id.startsWith("tk|vote|")) { await handleVoteButton(interaction); return; }
+      if (id === "tk|iresched") { await handleReschedule(interaction); return; }
+      if (id === "tk|icancel") { await handleCancelInterview(interaction); return; }
+      if (id === "tk|iyes") { await handlePresenceButton(interaction, "CONFIRMED"); return; }
+      if (id === "tk|ino") { await handlePresenceButton(interaction, "DECLINED"); return; }
       if (id === "tk|tpl|new") { const d = newTemplateDraft(); drafts.set(interaction.user.id, d); await renderBuilder(interaction, d); return; }
 
       // --- Constructeur d'embed ---

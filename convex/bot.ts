@@ -651,7 +651,7 @@ export const ticketByChannel = query({
   handler: async (ctx, { secret, channelId }) => {
     assertBot(secret);
     const t = await ctx.db.query("tickets").withIndex("by_channel", (q) => q.eq("channelId", channelId)).first();
-    return t ? { ownerId: t.ownerId, ownerName: t.ownerName, prenom: t.prenom, nom: t.nom, status: t.status, integrationStatus: t.integrationStatus ?? null, interviewAt: t.interviewAt ?? null, interviewMsgId: t.interviewMsgId ?? null, voteMsgId: t.voteMsgId ?? null } : null;
+    return t ? { ownerId: t.ownerId, ownerName: t.ownerName, prenom: t.prenom, nom: t.nom, status: t.status, integrationStatus: t.integrationStatus ?? null, interviewAt: t.interviewAt ?? null, interviewById: t.interviewById ?? null, interviewPresence: t.interviewPresence ?? null, interviewMsgId: t.interviewMsgId ?? null, voteMsgId: t.voteMsgId ?? null } : null;
   },
 });
 
@@ -756,8 +756,9 @@ export const ticketSetStatus = mutation({
       const patch: Record<string, unknown> = { integrationStatus: status };
       if (interviewAt !== undefined) {
         patch.interviewAt = interviewAt ?? undefined;
-        // Re-programmer réarme le rappel + mémorise l'instructeur qui prend en charge.
+        // Re-programmer réarme le rappel + la confirmation + mémorise l'instructeur.
         patch.interviewRemindedFor = undefined;
+        patch.interviewPresence = undefined;
         if (status === "INTERVIEW") patch.interviewById = byId ?? undefined;
       }
       await ctx.db.patch(t._id, patch);
@@ -790,6 +791,35 @@ export const markInterviewReminded = mutation({
     assertBot(secret);
     const t = await ctx.db.query("tickets").withIndex("by_channel", (q) => q.eq("channelId", channelId)).first();
     if (t && t.interviewAt != null) await ctx.db.patch(t._id, { interviewRemindedFor: t.interviewAt });
+  },
+});
+
+// Le candidat confirme (ou décline) sa présence à l'entretien (depuis son MP).
+export const ticketSetPresence = mutation({
+  args: { secret: v.string(), ownerId: v.string(), presence: v.union(v.literal("CONFIRMED"), v.literal("DECLINED")) },
+  handler: async (ctx, { secret, ownerId, presence }) => {
+    assertBot(secret);
+    const t = await ctx.db.query("tickets").withIndex("by_owner", (q) => q.eq("ownerId", ownerId)).first();
+    if (!t || t.integrationStatus !== "INTERVIEW" || t.interviewAt == null) return null;
+    await ctx.db.patch(t._id, { interviewPresence: presence });
+    await logEvent(ctx, t, { type: "status", label: presence === "CONFIRMED" ? "Présence à l'entretien confirmée par le candidat" : "Le candidat a signalé être indisponible" });
+    return { channelId: t.channelId, interviewById: t.interviewById ?? null, interviewAt: t.interviewAt, prenom: t.prenom, nom: t.nom };
+  },
+});
+
+// L'instructeur annule l'entretien : retour « en attente d'entretien » (ACCEPTED).
+export const ticketCancelInterview = mutation({
+  args: { secret: v.string(), channelId: v.string(), by: v.optional(v.string()) },
+  handler: async (ctx, { secret, channelId, by }) => {
+    assertBot(secret);
+    const t = await ctx.db.query("tickets").withIndex("by_channel", (q) => q.eq("channelId", channelId)).first();
+    if (!t) return null;
+    await ctx.db.patch(t._id, {
+      integrationStatus: "ACCEPTED", interviewAt: undefined, interviewPresence: undefined,
+      interviewRemindedFor: undefined, interviewById: undefined, interviewMsgId: undefined,
+    });
+    await logEvent(ctx, t, { type: "status", label: "Entretien annulé : retour en attente d'entretien", by });
+    return { ownerId: t.ownerId, prenom: t.prenom, nom: t.nom, interviewMsgId: t.interviewMsgId ?? null };
   },
 });
 

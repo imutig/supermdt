@@ -102,6 +102,8 @@ export const mdt = {
   ticketSetStatus: (channelId: string, status: IntegStatus, by?: string, interviewAt?: number | null, byId?: string) => client.mutation(anyApi.bot.ticketSetStatus, { secret: env.botSecret, channelId, status, by, byId, interviewAt: interviewAt ?? undefined }) as Promise<{ prenom: string; nom: string } | null>,
   interviewReminders: (now: number) => client.query(anyApi.bot.interviewReminders, { secret: env.botSecret, now }) as Promise<{ channelId: string; ownerId: string; interviewById: string | null; interviewAt: number; prenom: string; nom: string }[]>,
   markInterviewReminded: (channelId: string) => client.mutation(anyApi.bot.markInterviewReminded, { secret: env.botSecret, channelId }) as Promise<void>,
+  ticketSetPresence: (ownerId: string, presence: "CONFIRMED" | "DECLINED") => client.mutation(anyApi.bot.ticketSetPresence, { secret: env.botSecret, ownerId, presence }) as Promise<{ channelId: string; interviewById: string | null; interviewAt: number; prenom: string; nom: string } | null>,
+  ticketCancelInterview: (channelId: string, by?: string) => client.mutation(anyApi.bot.ticketCancelInterview, { secret: env.botSecret, channelId, by }) as Promise<{ ownerId: string; prenom: string; nom: string; interviewMsgId: string | null } | null>,
   ticketSetVoteMsg: (channelId: string, messageId: string) => client.mutation(anyApi.bot.ticketSetVoteMsg, { secret: env.botSecret, channelId, messageId }) as Promise<void>,
   ticketSetInterviewMsg: (channelId: string, messageId: string) => client.mutation(anyApi.bot.ticketSetInterviewMsg, { secret: env.botSecret, channelId, messageId }) as Promise<void>,
   ticketVote: (channelId: string, discordUserId: string, discordName: string, choice: "FOR" | "AGAINST") => client.mutation(anyApi.bot.ticketVote, { secret: env.botSecret, channelId, discordUserId, discordName, choice }) as Promise<{ ok: boolean }>,
@@ -148,6 +150,6 @@ export type TicketConfig = {
   statusCategories: { status: string; categoryId: string }[];
 };
 export type TicketTemplate = { _id: string; name: string; pingOwner: boolean; embed: RichEmbed };
-export type TicketOwner = { ownerId: string; ownerName: string; prenom: string; nom: string; status: string; integrationStatus: IntegStatus | null; interviewAt: number | null; interviewMsgId: string | null; voteMsgId: string | null };
+export type TicketOwner = { ownerId: string; ownerName: string; prenom: string; nom: string; status: string; integrationStatus: IntegStatus | null; interviewAt: number | null; interviewById: string | null; interviewPresence: "CONFIRMED" | "DECLINED" | null; interviewMsgId: string | null; voteMsgId: string | null };
 
 export type { OnDutyAgent, DayStats, Overview, BotConfig, WeeklyHours, RollcallState, VehicleInfo, CasierInfo };
