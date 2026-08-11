@@ -2,7 +2,7 @@ import { type Client, type TextChannel } from "discord.js";
 import { mdt } from "./convex.js";
 import { presenceEmbed, dailyEmbed } from "./embeds.js";
 import { openRollcall, closeRollcall } from "./rollcall.js";
-import { reconcilePromoCategories, reconcilePromoDeletions } from "./tickets.js";
+import { reconcilePromoCategories, reconcilePromoDeletions, deprogramInterview } from "./tickets.js";
 import { baseEmbed, BRAND } from "./theme.js";
 
 // Les salons et l'heure du récap sont lus depuis le MDT (page Configuration),
@@ -96,19 +96,23 @@ export function startTasks(client: Client) {
     await reconcilePromoCategories(client).catch(() => {});
     await reconcilePromoDeletions(client).catch(() => {});
 
-    // --- Rappels d'entretien : 15 min avant, MP au candidat + ping instructeur ---
+    // --- Entretiens à T-15 min ---
+    // Confirmé : rappel (MP candidat + ping instructeur). Non confirmé :
+    // déprogrammation automatique (le candidat n'a pas validé sa présence).
     try {
       const due = await mdt.interviewReminders(Date.now());
       for (const it of due) {
+        if (it.interviewPresence !== "CONFIRMED") {
+          await deprogramInterview(client, it.channelId, { auto: true });
+          continue; // l'annulation efface interviewAt : ne réapparaîtra plus.
+        }
         const whenParis = new Date(it.interviewAt).toLocaleString("fr-FR", { timeZone: "Europe/Paris", dateStyle: "short", timeStyle: "short" });
         const sec = Math.floor(it.interviewAt / 1000);
-        // MP au candidat (il n'est pas dans le salon recruteur).
         const cand = await client.users.fetch(it.ownerId).catch(() => null);
         if (cand) {
           await cand.send({ embeds: [baseEmbed(BRAND.green).setTitle("📅 Rappel d'entretien")
-            .setDescription(`Ton entretien de recrutement a lieu **dans 15 minutes** (<t:${sec}:t>, heure de Paris).\nMerci d'être ponctuel(le) et en tenue réglementaire.`)] }).catch(() => {});
+            .setDescription(`Ton entretien de recrutement a lieu **dans 15 minutes** (<t:${sec}:t>, heure de Paris).\nMerci d'être ponctuel(le) et en tenue correcte.`)] }).catch(() => {});
         }
-        // Ping de l'instructeur qui a pris en charge, dans le salon du ticket.
         const chan = await channel(client, it.channelId);
         if (chan && it.interviewById) {
           await chan.send({ content: `<@${it.interviewById}> Rappel : entretien de **${it.prenom} ${it.nom}** dans 15 minutes (${whenParis}).`, allowedMentions: { users: [it.interviewById] } }).catch(() => {});

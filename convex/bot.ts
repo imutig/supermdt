@@ -781,7 +781,7 @@ export const interviewReminders = query({
       t.interviewRemindedFor !== t.interviewAt &&
       now >= t.interviewAt - 15 * 60_000 && now < t.interviewAt,
     );
-    return due.map((t) => ({ channelId: t.channelId, ownerId: t.ownerId, interviewById: t.interviewById ?? null, interviewAt: t.interviewAt!, prenom: t.prenom, nom: t.nom }));
+    return due.map((t) => ({ channelId: t.channelId, ownerId: t.ownerId, interviewById: t.interviewById ?? null, interviewAt: t.interviewAt!, prenom: t.prenom, nom: t.nom, interviewPresence: t.interviewPresence ?? null }));
   },
 });
 
@@ -799,8 +799,12 @@ export const ticketSetPresence = mutation({
   args: { secret: v.string(), ownerId: v.string(), presence: v.union(v.literal("CONFIRMED"), v.literal("DECLINED")) },
   handler: async (ctx, { secret, ownerId, presence }) => {
     assertBot(secret);
-    const t = await ctx.db.query("tickets").withIndex("by_owner", (q) => q.eq("ownerId", ownerId)).first();
-    if (!t || t.integrationStatus !== "INTERVIEW" || t.interviewAt == null) return null;
+    // Un même candidat peut avoir plusieurs tickets (tests, réouvertures) : on
+    // cible celui qui est réellement OUVERT avec un entretien programmé.
+    const t = (await ctx.db.query("tickets").withIndex("by_owner", (q) => q.eq("ownerId", ownerId)).collect())
+      .filter((x) => x.status === "OPEN" && x.integrationStatus === "INTERVIEW" && x.interviewAt != null)
+      .sort((a, b) => b.createdAt - a.createdAt)[0];
+    if (!t) return null;
     await ctx.db.patch(t._id, { interviewPresence: presence });
     await logEvent(ctx, t, { type: "status", label: presence === "CONFIRMED" ? "Présence à l'entretien confirmée par le candidat" : "Le candidat a signalé être indisponible" });
     return { channelId: t.channelId, interviewById: t.interviewById ?? null, interviewAt: t.interviewAt, prenom: t.prenom, nom: t.nom };

@@ -1045,7 +1045,7 @@ const PRESENCE_LABEL: Record<string, string> = { CONFIRMED: "✅ Présence confi
 function interviewEmbed(at: number, presence: string | null): EmbedBuilder {
   const sec = Math.floor(at / 1000);
   return baseEmbed(hexToInt(STATUS_HEX.INTERVIEW)).setTitle("📅 Entretien programmé")
-    .setDescription(`Entretien fixé au **<t:${sec}:F>** (<t:${sec}:R>).\nMerci d'être présent(e) à l'heure, en tenue réglementaire.`)
+    .setDescription(`Entretien fixé au **<t:${sec}:F>** (<t:${sec}:R>).\nMerci d'être présent(e) à l'heure, en tenue correcte.`)
     .addFields({ name: "Présence du candidat", value: presence ? PRESENCE_LABEL[presence] : "⏳ En attente de confirmation" });
 }
 // Boutons instructeur sur la programmation.
@@ -1089,28 +1089,44 @@ async function handleReschedule(interaction: ButtonInteraction) {
   await interaction.showModal(interviewModal(pre?.date, pre?.heure));
 }
 
+// Déprogramme un entretien (manuel via bouton, ou auto faute de confirmation) :
+// retour « en attente d'entretien », message + salon mis à jour, MP au candidat.
+export async function deprogramInterview(client: Client, channelId: string, opts: { auto: boolean; byName?: string }) {
+  const res = await mdt.ticketCancelInterview(channelId, opts.auto ? "Système (absence de confirmation)" : opts.byName);
+  if (!res) return null;
+  const chan = await client.channels.fetch(channelId).catch(() => null);
+  if (chan && chan.type === ChannelType.GuildText) {
+    const tc = chan as TextChannel;
+    if (res.interviewMsgId) {
+      const msg = await tc.messages.fetch(res.interviewMsgId).catch(() => null);
+      if (msg) await msg.edit({ embeds: [baseEmbed(BRAND.muted).setTitle("✖️ Entretien déprogrammé")
+        .setDescription(opts.auto ? "L'entretien a été **déprogrammé automatiquement** (le candidat n'a pas confirmé sa présence à temps). La candidature est de nouveau en attente d'entretien." : "L'entretien a été annulé. La candidature est de nouveau en attente d'entretien.")], components: [] }).catch(() => {});
+    }
+    if (opts.auto) {
+      await tc.send({ embeds: [baseEmbed(BRAND.warning).setDescription(`⚠️ Entretien de **${res.prenom} ${res.nom}** **déprogrammé automatiquement** (pas de confirmation 15 min avant). Reprogrammez une date.`)] }).catch(() => {});
+    }
+  }
+  try { await renameStatus(client, channelId, "ACCEPTED"); } catch { /* rien */ }
+  try { const cfg = await mdt.ticketConfigGet(); await moveToStatusCategory(client, channelId, "ACCEPTED", cfg); } catch { /* rien */ }
+  try { if (chan && chan.type === ChannelType.GuildText) await (chan as TextChannel).setTopic(""); } catch { /* rien */ }
+  // MP au candidat (dans tous les cas).
+  try {
+    const cand = await client.users.fetch(res.ownerId);
+    await cand.send({ embeds: [baseEmbed(BRAND.warning).setTitle("Entretien annulé")
+      .setDescription(opts.auto
+        ? "Ton entretien a été **déprogrammé** car tu ne l'as pas confirmé à temps. Ta candidature reste en cours : une nouvelle date te sera proposée. Pense à confirmer ta présence la prochaine fois."
+        : "Ton entretien a été annulé. Ne t'inquiète pas : ta candidature reste en cours, une nouvelle date te sera proposée prochainement.")] });
+  } catch { /* rien */ }
+  return res;
+}
+
 // Instructeur : annuler l'entretien -> retour « en attente d'entretien ».
 async function handleCancelInterview(interaction: ButtonInteraction) {
   if (!isStaff(interaction)) { await interaction.reply({ content: "Réservé à l'encadrement.", flags: EPH }); return; }
   const channel = interaction.channel;
   if (!channel || channel.type !== ChannelType.GuildText) return;
-  const res = await mdt.ticketCancelInterview(channel.id, interaction.user.username);
-  await interaction.reply({ content: "Entretien annulé. La candidature repasse en **attente d'entretien**.", flags: EPH });
-  if (!res) return;
-  // Retire les boutons + marque le message comme annulé.
-  if (res.interviewMsgId) {
-    const msg = await (channel as TextChannel).messages.fetch(res.interviewMsgId).catch(() => null);
-    if (msg) await msg.edit({ embeds: [baseEmbed(BRAND.muted).setTitle("✖️ Entretien annulé").setDescription("L'entretien a été annulé. La candidature est de nouveau en attente d'entretien.")], components: [] }).catch(() => {});
-  }
-  try { await renameStatus(interaction.client, channel.id, "ACCEPTED"); } catch { /* rien */ }
-  try { const cfg = await mdt.ticketConfigGet(); await moveToStatusCategory(interaction.client, channel.id, "ACCEPTED", cfg); } catch { /* rien */ }
-  try { await (channel as TextChannel).setTopic(""); } catch { /* rien */ }
-  // MP au candidat.
-  try {
-    const cand = await interaction.client.users.fetch(res.ownerId);
-    await cand.send({ embeds: [baseEmbed(BRAND.warning).setTitle("Entretien annulé")
-      .setDescription("Ton entretien a été annulé. Ne t'inquiète pas : ta candidature reste en cours, une nouvelle date te sera proposée prochainement.")] });
-  } catch { /* rien */ }
+  await interaction.reply({ content: "Entretien annulé. La candidature repasse en **attente d'entretien**. Le candidat a été prévenu.", flags: EPH });
+  await deprogramInterview(interaction.client, channel.id, { auto: false, byName: interaction.user.username });
 }
 
 // Candidat : confirme (ou décline) sa présence depuis son MP.
@@ -1152,7 +1168,7 @@ async function handleInterviewModal(interaction: ModalSubmitInteraction) {
       const cand = await interaction.client.users.fetch(ticket.ownerId);
       const sec = Math.floor(at / 1000);
       await cand.send({ embeds: [baseEmbed(BRAND.green).setTitle("📅 Entretien programmé")
-        .setDescription(`Ta candidature avance ! Un entretien de recrutement est **programmé le <t:${sec}:F>** (heure de Paris).\nMerci d'être ponctuel(le) et en tenue réglementaire. Tu recevras un rappel 15 minutes avant.\n\n**Merci de confirmer ta présence** ci-dessous.`)], components: [candidateInterviewButtons()] });
+        .setDescription(`Ta candidature avance ! Un entretien de recrutement est **programmé le <t:${sec}:F>** (heure de Paris).\nMerci d'être ponctuel(le) et en tenue correcte. Tu recevras un rappel 15 minutes avant.\n\n**Merci de confirmer ta présence** ci-dessous. ⚠️ Sans confirmation, le rendez-vous sera **automatiquement déprogrammé 15 minutes avant** l'heure proposée.`)], components: [candidateInterviewButtons()] });
     } catch (err) { console.error("[interview] MP candidat :", err); }
   }
   try { await renameStatus(interaction.client, channel.id, "INTERVIEW"); } catch (err) { console.error("[interview] renommage :", err); }
