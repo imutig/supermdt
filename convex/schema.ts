@@ -502,6 +502,14 @@ export default defineSchema({
     discordUsername: v.optional(v.string()),
     dmPending: v.optional(v.boolean()),
     dmSentAt: v.optional(v.number()),
+    // Pré-remplissage de la page « Rejoindre » : détecté depuis le pseudo serveur
+    // Discord (ex. "56420 | D. Carter" -> matricule 56420, nom Carter, initiale D).
+    prefillNom: v.optional(v.string()),
+    prefillMatricule: v.optional(v.number()),
+    prefillPrenomInitial: v.optional(v.string()),
+    // Invitation ciblée d'un membre vérifié (rôle LSPD) : le compte est actif
+    // d'emblée, sans passer par la validation de l'État-Major.
+    autoActivate: v.optional(v.boolean()),
   }).index("by_code", ["code"]).index("by_dm_pending", ["dmPending"]),
 
   // Membres du rôle LSPD synchronisés depuis Discord par le bot (pour l'écran

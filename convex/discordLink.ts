@@ -13,6 +13,25 @@ function genCode(): string {
   return `${part()}-${part()}`;
 }
 
+// Détecte matricule + nom de famille + initiale du prénom depuis un pseudo
+// serveur Discord standardisé, ex. "56420 | D. Carter". Tolérant : sans barre,
+// sans point, ou sans matricule, on extrait ce qu'on peut.
+function parseNickname(nick: string): { matricule?: number; nom?: string; prenomInitial?: string } {
+  const out: { matricule?: number; nom?: string; prenomInitial?: string } = {};
+  const digits = nick.match(/\d{2,6}/);
+  if (digits) out.matricule = Number(digits[0]);
+  // Partie « nom » : après la barre si présente, sinon le pseudo débarrassé du matricule.
+  const namePart = (nick.includes("|") ? nick.split("|").slice(1).join("|") : nick.replace(/\d{2,6}/, "")).trim();
+  const withInitial = namePart.match(/^([A-Za-zÀ-ÿ])\.?\s+(.+)$/); // "D. Carter" ou "D Carter"
+  if (withInitial) {
+    out.prenomInitial = withInitial[1].toUpperCase();
+    out.nom = withInitial[2].trim();
+  } else if (namePart) {
+    out.nom = namePart;
+  }
+  return out;
+}
+
 // Membres Discord (rôle LSPD) + statut de liaison / invitation en attente.
 export const list = query({
   args: {},
@@ -48,16 +67,23 @@ export const sendAccount = mutation({
     const already = await ctx.db.query("agents").withIndex("by_discord", (q) => q.eq("discordId", discordId)).first();
     if (already) throw new Error("Ce membre Discord est déjà relié à un compte.");
     const member = await ctx.db.query("discordMembers").withIndex("by_discord", (q) => q.eq("discordId", discordId)).first();
-    // Réutilise une invitation en attente non consommée pour ce membre.
+    const prefill = member ? parseNickname(member.displayName) : {};
+    // Réutilise une invitation en attente non consommée pour ce membre, en
+    // rafraîchissant le pré-remplissage (le pseudo a pu changer entre-temps).
     const existing = (await ctx.db.query("invitations").withIndex("by_dm_pending", (q) => q.eq("dmPending", true)).collect())
       .find((i) => i.discordId === discordId && !i.revoked);
-    if (existing) { await ctx.db.patch(existing._id, { dmSentAt: undefined, dmPending: true }); return existing.code; }
+    if (existing) {
+      await ctx.db.patch(existing._id, { dmSentAt: undefined, dmPending: true, prefillNom: prefill.nom, prefillMatricule: prefill.matricule, prefillPrenomInitial: prefill.prenomInitial });
+      return existing.code;
+    }
     let code = genCode();
     while (await ctx.db.query("invitations").withIndex("by_code", (q) => q.eq("code", code)).first()) code = genCode();
     await ctx.db.insert("invitations", {
       code, type: "SINGLE", maxUses: 1, usesCount: 0, revoked: false,
       createdBy: agent._id, expiresAt: Date.now() + 7 * 24 * 3600 * 1000,
       discordId, discordUsername: member?.username, dmPending: true,
+      prefillNom: prefill.nom, prefillMatricule: prefill.matricule, prefillPrenomInitial: prefill.prenomInitial,
+      autoActivate: true,
     });
     return code;
   },

@@ -172,16 +172,21 @@ export function startTasks(client: Client) {
     }
 
     // --- « Envoyer un compte » : MP en attente ---
+    // Lien unique et pré-rempli : un clic ouvre une page dédiée où il ne reste
+    // qu'à indiquer son prénom et choisir un mot de passe (matricule et nom sont
+    // détectés depuis le pseudo serveur). Pas de code à recopier.
     try {
       const queue = await mdt.accountDMQueue();
       for (const q of queue) {
         const user = await client.users.fetch(q.discordId).catch(() => null);
         if (user) {
-          const link = q.baseUrl || "le site du MDT";
-          await user.send({ embeds: [baseEmbed(BRAND.green).setTitle("🎫 Ton compte MDT - LSPD Station 13")
-            .setDescription(`Bienvenue ! Voici de quoi créer ton compte sur le MDT.\n\n**1.** Rends-toi sur ${q.baseUrl ? `**${q.baseUrl}**` : "le site du MDT"}\n**2.** Crée ton compte (identifiant \`prénom.nom\` + un mot de passe).\n**3.** Quand on te le demande, entre ce **code d'invitation** :`)
-            .addFields({ name: "Code d'invitation", value: `\`\`\`${q.code}\`\`\`` })
-            .setFooter({ text: "Ton compte sera automatiquement relié à ce Discord." })] }).catch(() => {});
+          const link = q.baseUrl ? `${q.baseUrl.replace(/\/$/, "")}/rejoindre/${q.code}` : null;
+          const embed = baseEmbed(BRAND.green).setTitle("🎫 Ton compte MDT - LSPD Station 13")
+            .setDescription(link
+              ? `Bienvenue ! Ton compte t'attend.\n\n**Clique sur le lien ci-dessous** : ton matricule et ton nom sont déjà pré-remplis, il ne te reste qu'à indiquer ton **prénom** et choisir un **mot de passe**.\n\n➡️ **${link}**`
+              : `Bienvenue ! Rends-toi sur le site du MDT pour créer ton compte avec ce code : \`${q.code}\`.`)
+            .setFooter({ text: "Lien à usage unique · ton compte sera relié à ce Discord." });
+          await user.send({ embeds: [embed] }).catch(() => {});
         }
         await mdt.markAccountDMSent(q.code);
       }

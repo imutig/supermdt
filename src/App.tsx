@@ -36,6 +36,7 @@ const Configuration = lazyReload(() => import("@/pages/Configuration").then((m) 
 const Statistiques = lazyReload(() => import("@/pages/Statistiques").then((m) => ({ default: m.Statistiques })));
 import { Profil } from "@/pages/Profil";
 import { LoginPage } from "@/auth/LoginPage";
+import { JoinPage } from "@/auth/JoinPage";
 import { Onboarding } from "@/auth/Onboarding";
 import { PendingScreen } from "@/auth/PendingScreen";
 import { ChangePasswordScreen } from "@/auth/ChangePasswordScreen";
@@ -74,6 +75,16 @@ export default function App() {
 // Tant qu'aucune surface n'est retenue, on n'affiche ni le MDT ni la LSPA.
 function Root() {
   const { portal, ready } = usePortal();
+  const location = useLocation();
+  // Lien d'invitation « Rejoindre » : page dédiée, accessible avant tout choix
+  // de portail et sans connexion. Elle gère elle-même l'inscription puis l'entrée.
+  if (location.pathname.startsWith("/rejoindre/")) {
+    return (
+      <Routes>
+        <Route path="/rejoindre/:code" element={<JoinPage />} />
+      </Routes>
+    );
+  }
   if (!ready) return <Splash />;
   if (!portal) return <PortalEntry />;
   return (

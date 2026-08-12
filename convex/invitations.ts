@@ -52,6 +52,27 @@ export const create = mutation({
   },
 });
 
+// Aperçu public d'une invitation depuis son code (page « Rejoindre », avant
+// toute connexion). Ne révèle que le pré-remplissage lié à ce code précis, que
+// seul son destinataire possède. Aucune donnée sensible.
+export const previewByCode = query({
+  args: { code: v.string() },
+  handler: async (ctx, { code }) => {
+    const invite = await ctx.db.query("invitations").withIndex("by_code", (q) => q.eq("code", code.trim())).unique();
+    if (!invite) return { status: "invalid" as const };
+    if (invite.revoked) return { status: "revoked" as const };
+    if (invite.expiresAt && invite.expiresAt < Date.now()) return { status: "expired" as const };
+    if (invite.usesCount >= invite.maxUses) return { status: "used" as const };
+    return {
+      status: "ok" as const,
+      prefillNom: invite.prefillNom ?? null,
+      prefillMatricule: invite.prefillMatricule ?? null,
+      prefillPrenomInitial: invite.prefillPrenomInitial ?? null,
+      discordUsername: invite.discordUsername ?? null,
+    };
+  },
+});
+
 export const list = query({
   args: {},
   handler: async (ctx) => {

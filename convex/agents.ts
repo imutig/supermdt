@@ -173,9 +173,11 @@ export const bootstrapOwner = mutation({
   },
 });
 
-// Inscription encadrée par code d'invitation → crée le profil agent (PENDING).
+// Inscription encadrée par code d'invitation → crée le profil agent.
+// Cas classique : PENDING (validation État-Major). Code de promo ou invitation
+// ciblée d'un membre vérifié (autoActivate) : compte ACTIVE d'emblée.
 export const completeRegistration = mutation({
-  args: { code: v.string(), nomRP: v.string(), prenomRP: v.string() },
+  args: { code: v.string(), nomRP: v.string(), prenomRP: v.string(), matricule: v.optional(v.number()) },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (!userId) throw new Error("Non authentifié.");
@@ -205,15 +207,27 @@ export const completeRegistration = mutation({
     // inscrit dans la promo. Le grade Cadet est posé si configuré.
     const enrolled = !!promo;
     const asCadet = enrolled && !!cadetGrade;
+    // Compte actif d'emblée si admis en promo, ou invitation ciblée d'un membre
+    // vérifié (« Envoyer un compte »).
+    const active = enrolled || !!invite.autoActivate;
+
+    // Matricule pré-rempli (page « Rejoindre ») : posé s'il est libre.
+    let mat: number | undefined = undefined;
+    const wantMat = args.matricule ?? invite.prefillMatricule;
+    if (wantMat != null) {
+      const taken = await ctx.db.query("agents").withIndex("by_matricule", (q) => q.eq("matricule", wantMat)).first();
+      if (!taken) mat = wantMat;
+    }
 
     const agentId = await ctx.db.insert("agents", {
       userId,
       login: makeLogin(args.prenomRP, args.nomRP),
       nomRP: args.nomRP,
       prenomRP: args.prenomRP,
-      status: enrolled ? "ACTIVE" : "PENDING",
+      status: active ? "ACTIVE" : "PENDING",
       gradeId: asCadet ? cadetGrade!._id : undefined,
-      dateEntree: enrolled ? Date.now() : undefined,
+      matricule: mat,
+      dateEntree: active ? Date.now() : undefined,
       isOwner: false,
       // Invitation ciblée « Envoyer un compte » : liaison automatique au Discord.
       discordId: invite.discordId,
@@ -230,11 +244,13 @@ export const completeRegistration = mutation({
       metadata: { via: "invite", code: args.code, ...(enrolled ? { promo: promo!.name } : {}) },
     });
     await notify(ctx, "agent.pending", {
-      title: enrolled ? "Nouveau cadet admis" : "Nouvelle inscription en attente",
+      title: enrolled ? "Nouveau cadet admis" : active ? "Nouvel agent relié" : "Nouvelle inscription en attente",
       description: enrolled
         ? `**${args.prenomRP} ${args.nomRP}** rejoint la promotion **${promo!.name}**.`
-        : `**${args.prenomRP} ${args.nomRP}** attend une validation de l'État-Major.`,
-      color: enrolled ? NOTIFY_COLOR.accent : NOTIFY_COLOR.warning,
+        : active
+          ? `**${args.prenomRP} ${args.nomRP}** a créé son compte (relié au Discord).`
+          : `**${args.prenomRP} ${args.nomRP}** attend une validation de l'État-Major.`,
+      color: active ? NOTIFY_COLOR.accent : NOTIFY_COLOR.warning,
       url: await deepLink(ctx, enrolled ? "/lspa/effectif" : "/effectif"),
     });
     return agentId;

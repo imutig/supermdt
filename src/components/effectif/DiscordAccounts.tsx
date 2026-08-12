@@ -126,15 +126,15 @@ export function DiscordAccounts({ onClose }: { onClose: () => void }) {
                     {code ? (
                       <div className="rounded-sm border p-[10px]" style={{ borderColor: "var(--accent)", background: "var(--accent-soft)" }}>
                         <div className="mb-[6px] text-[11.5px] font-semibold" style={{ color: "var(--accent)" }}>
-                          Code d'invitation (le bot l'envoie aussi en MP)
+                          Le bot envoie un lien de création (pré-rempli) à ce membre par MP.
                         </div>
                         <div className="flex items-center gap-2">
-                          <code className="flex-1 select-all rounded-sm border border-border bg-surface px-3 py-[8px] font-data text-[14px] font-bold tracking-[0.08em]">{code}</code>
+                          <code className="flex-1 select-all rounded-sm border border-border bg-surface px-3 py-[8px] font-data text-[13px] font-bold tracking-[0.06em]">/rejoindre/{code}</code>
                           <button
-                            onClick={() => { void navigator.clipboard.writeText(code); toast.success("Copié."); }}
+                            onClick={() => { void navigator.clipboard.writeText(`${window.location.origin}/rejoindre/${code}`); toast.success("Lien copié."); }}
                             className="flex items-center gap-[5px] rounded-sm border border-border bg-surface px-[10px] py-[8px] text-[12px] font-semibold text-muted hover:border-border-strong"
                           >
-                            <Copy className="h-[13px] w-[13px]" /> Copier
+                            <Copy className="h-[13px] w-[13px]" /> Copier le lien
                           </button>
                         </div>
                       </div>
