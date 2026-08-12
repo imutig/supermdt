@@ -593,16 +593,32 @@ async function dmSay(user: User, color: ColorResolvable, desc: string, title?: s
   await user.send({ embeds: [e] }).catch(() => {});
 }
 
-// Message du candidat (MP) retranscrit dans son ticket.
+// Nom de fichier sûr pour une référence attachment:// (pas d'espace ni de
+// caractère spécial, sinon l'image ne s'affiche pas dans l'embed).
+function safeName(n: string, i: number): string {
+  const s = (n || `fichier-${i + 1}`).replace(/[^\w.-]+/g, "_");
+  return s || `fichier-${i + 1}`;
+}
+
+// Ré-attache les pièces jointes d'un message (images comprises) pour les relayer.
+// Renvoie les fichiers à joindre et le nom de la 1re image (à afficher en grand).
+function collectAttachments(msg: Message): { files: { attachment: string; name: string }[]; inlineName: string | null } {
+  const atts = [...msg.attachments.values()];
+  const files = atts.map((a, i) => ({ attachment: a.url, name: safeName(a.name ?? "", i) }));
+  const imgIdx = atts.findIndex((a) => (a.contentType ?? "").startsWith("image/") || /\.(png|jpe?g|gif|webp)$/i.test(a.name ?? ""));
+  return { files, inlineName: imgIdx >= 0 ? files[imgIdx].name : null };
+}
+
+// Message du candidat (MP) retranscrit dans son ticket (images ré-uploadées).
 async function relayCandidateMessage(msg: Message, channelId: string, name: string): Promise<boolean> {
   const chan = await msg.client.channels.fetch(channelId).catch(() => null);
   if (!chan || chan.type !== ChannelType.GuildText) return false;
+  const { files, inlineName } = collectAttachments(msg);
   const embed = baseEmbed(BRAND.info)
     .setAuthor({ name: `${name} (candidat)`, iconURL: msg.author.displayAvatarURL() })
-    .setDescription((msg.content || "*(sans texte)*").slice(0, 4000));
-  const files = [...msg.attachments.values()].map((a) => a.url);
-  if (files.length) embed.addFields({ name: "Pièces jointes", value: files.map((u) => `[fichier](${u})`).join("\n").slice(0, 1024) });
-  await (chan as TextChannel).send({ embeds: [embed] });
+    .setDescription((msg.content || (files.length ? "*(pièce jointe)*" : "*(sans texte)*")).slice(0, 4000));
+  if (inlineName) embed.setImage(`attachment://${inlineName}`);
+  await (chan as TextChannel).send({ embeds: [embed], files });
   return true;
 }
 
@@ -610,16 +626,22 @@ async function relayCandidateMessage(msg: Message, channelId: string, name: stri
 // avec un miroir dans le ticket.
 async function relayRecruiterMessage(msg: Message, ownerId: string, body: string, anon: boolean) {
   const nick = msg.member?.displayName ?? msg.author.username;
+  const { files, inlineName } = collectAttachments(msg);
+  const senderLabel = anon ? "Recruteur" : nick;
   let delivered = true;
   try {
     const user = await msg.client.users.fetch(ownerId);
-    await user.send({ embeds: [baseEmbed(anon ? BRAND.muted : BRAND.green).setDescription(`**${anon ? "Recruteur" : nick}** : ${body}`.slice(0, 4000))] });
+    const dm = baseEmbed(anon ? BRAND.muted : BRAND.green)
+      .setDescription(`**${senderLabel}**${body ? ` : ${body}` : (files.length ? " a envoyé une pièce jointe :" : " :")}`.slice(0, 4000));
+    if (inlineName) dm.setImage(`attachment://${inlineName}`);
+    await user.send({ embeds: [dm], files });
   } catch { delivered = false; }
   const mirror = baseEmbed(anon ? BRAND.muted : BRAND.green)
     .setAuthor({ name: anon ? `${nick} (anonyme)` : nick, iconURL: msg.author.displayAvatarURL() })
-    .setDescription(body.slice(0, 4000));
+    .setDescription((body || (files.length ? "*(pièce jointe)*" : "")).slice(0, 4000));
+  if (inlineName) mirror.setImage(`attachment://${inlineName}`);
   if (!delivered) mirror.setFooter({ text: "Non reçu par le candidat (MP fermés)." });
-  await (msg.channel as TextChannel).send({ embeds: [mirror] }).catch(() => {});
+  await (msg.channel as TextChannel).send({ embeds: [mirror], files }).catch(() => {});
 }
 
 // MP reçu par le bot : lancement de candidature ou retranscription.
@@ -723,7 +745,7 @@ export async function handleTicketChannelMessage(msg: Message) {
   if (closeM) { await handleScheduledClose(msg, ticket, closeM[1]); return; }
   if (pingM) { await handlePingSubscribe(msg, pingM[1].toLowerCase()); return; }
   const body = relayM![2].trim();
-  if (!body) { await msg.react("❓").catch(() => {}); return; }
+  if (!body && msg.attachments.size === 0) { await msg.react("❓").catch(() => {}); return; }
   await relayRecruiterMessage(msg, ticket.ownerId, body, relayM![1].toLowerCase() === "a");
   await msg.delete().catch(() => {});
 }
