@@ -1,6 +1,8 @@
 import { useState } from "react";
+import { useQuery } from "convex/react";
 import { useAuthActions } from "@convex-dev/auth/react";
 import { ArrowLeft } from "lucide-react";
+import { api } from "@/lib/api";
 import { AuthShell } from "./AuthShell";
 import { readableError } from "@/lib/errors";
 import { useApp } from "@/providers/app-state";
@@ -21,7 +23,12 @@ export function LoginPage() {
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const isLogin = mode === "login";
+  // La création de compte publique est désactivée : les comptes se créent via le
+  // lien Discord (« Envoyer un compte » -> /rejoindre). On ne garde le mode
+  // inscription que pour l'amorçage du tout premier compte owner (aucun owner).
+  const ownerExists = useQuery(api.agents.ownerExists);
+  const allowSignup = ownerExists === false;
+  const isLogin = mode === "login" || !allowSignup;
   const idValid = ID_RE.test(id.trim());
 
   async function submit(e: React.FormEvent) {
@@ -78,11 +85,13 @@ export function LoginPage() {
         ) : undefined
       }
     >
-      {/* Onglets */}
-      <div className="mx-4 mt-4 flex gap-[3px] rounded-[11px] border border-border bg-surface-2 p-[5px]">
-        <button onClick={() => { setMode("login"); setErr(null); }} className={tab(isLogin)}>Se connecter</button>
-        <button onClick={() => { setMode("signup"); setErr(null); }} className={tab(!isLogin)}>Créer un compte</button>
-      </div>
+      {/* Onglets — l'inscription n'apparaît que pour amorcer l'owner initial. */}
+      {allowSignup && (
+        <div className="mx-4 mt-4 flex gap-[3px] rounded-[11px] border border-border bg-surface-2 p-[5px]">
+          <button onClick={() => { setMode("login"); setErr(null); }} className={tab(isLogin)}>Se connecter</button>
+          <button onClick={() => { setMode("signup"); setErr(null); }} className={tab(!isLogin)}>Créer un compte</button>
+        </div>
+      )}
 
       <form onSubmit={submit} className="px-[26px] pb-[26px] pt-[22px]">
         <div className="mb-[18px]">
@@ -169,15 +178,21 @@ export function LoginPage() {
           </div>
         )}
 
-        <div className="mt-[18px] text-center text-[12.5px] text-muted">
-          {isLogin ? "Pas encore de compte ?" : "Vous avez déjà un compte ?"}{" "}
-          <span
-            onClick={() => { setMode(isLogin ? "signup" : "login"); setErr(null); }}
-            className="cursor-pointer font-semibold text-accent hover:underline"
-          >
-            {isLogin ? "Créer un compte" : "Se connecter"}
-          </span>
-        </div>
+        {allowSignup ? (
+          <div className="mt-[18px] text-center text-[12.5px] text-muted">
+            {isLogin ? "Pas encore de compte ?" : "Vous avez déjà un compte ?"}{" "}
+            <span
+              onClick={() => { setMode(isLogin ? "signup" : "login"); setErr(null); }}
+              className="cursor-pointer font-semibold text-accent hover:underline"
+            >
+              {isLogin ? "Créer un compte" : "Se connecter"}
+            </span>
+          </div>
+        ) : (
+          <div className="mt-[18px] text-center text-[12px] leading-[1.5] text-faint">
+            La création de compte se fait via le lien envoyé sur Discord par un membre de l'État-Major.
+          </div>
+        )}
       </form>
     </AuthShell>
   );
