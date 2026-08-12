@@ -1403,6 +1403,7 @@ export default defineSchema({
     ),
     decidedBy: v.optional(v.id("agents")),
     at: v.number(),
+    announced: v.optional(v.boolean()), // publiée dans le salon Discord des absences
   })
     .index("by_agent", ["agentId"])
     .index("by_status", ["status"]),
@@ -1485,6 +1486,7 @@ export default defineSchema({
     botPresenceChannel: v.optional(v.string()),
     botDailyChannel: v.optional(v.string()),
     botRollcallChannel: v.optional(v.string()),
+    botAbsenceChannel: v.optional(v.string()), // salon où publier les absences (embed)
     botDailyAt: v.optional(v.string()), // "HH:MM" (fuseau du serveur bot)
     botRollcallStartAt: v.optional(v.string()), // ouverture de l'appel
     botRollcallEndAt: v.optional(v.string()), // clôture : plus de vote possible (heure affichée dans le message)

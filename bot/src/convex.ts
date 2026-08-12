@@ -33,6 +33,7 @@ type BotConfig = {
   presenceChannel: string | null;
   dailyChannel: string | null;
   rollcallChannel: string | null;
+  absenceChannel: string | null;
   dailyAt: string;
   rollcallStartAt: string | null;
   rollcallEndAt: string | null;
@@ -87,6 +88,8 @@ export const mdt = {
   absentDiscordIds: () => client.query(anyApi.bot.absentDiscordIds, { secret: env.botSecret }) as Promise<string[]>,
   commandAllowed: (command: string, discordId: string, roleIds: string[]) => client.query(anyApi.bot.commandAllowed, { secret: env.botSecret, command, discordId, roleIds }) as Promise<boolean>,
   absencesCurrent: () => client.query(anyApi.bot.absencesCurrent, { secret: env.botSecret }) as Promise<{ name: string; matricule: number | null; until: number; reason: string }[]>,
+  absencesToAnnounce: () => client.query(anyApi.bot.absencesToAnnounce, { secret: env.botSecret }) as Promise<{ id: string; name: string; matricule: number | null; discordId: string | null; from: number; to: number; reason: string }[]>,
+  markAbsenceAnnounced: (id: string) => client.mutation(anyApi.bot.markAbsenceAnnounced, { secret: env.botSecret, id }) as Promise<void>,
   presenceMessageGet: () => client.query(anyApi.bot.presenceMessageGet, { secret: env.botSecret }) as Promise<string | null>,
   presenceMessageSet: (messageId: string) => client.mutation(anyApi.bot.presenceMessageSet, { secret: env.botSecret, messageId }) as Promise<void>,
 

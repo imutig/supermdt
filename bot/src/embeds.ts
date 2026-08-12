@@ -171,6 +171,19 @@ export function absenceEmbed(name: string, from: number, to: number, reason: str
     );
 }
 
+// Embed publié dans le salon des absences à chaque nouvelle absence approuvée.
+export function absencePublishEmbed(a: { name: string; matricule: number | null; discordId: string | null; from: number; to: number; reason: string }): EmbedBuilder {
+  const mat = a.matricule != null ? `\`${String(a.matricule).padStart(5, "0")}\` ` : "";
+  return baseEmbed(BRAND.warning)
+    .setTitle("🗓️ Absence")
+    .setDescription(`${mat}**${a.name}**${a.discordId ? ` (<@${a.discordId}>)` : ""} est absent(e).`)
+    .addFields(
+      { name: "Du", value: `<t:${Math.floor(a.from / 1000)}:D>`, inline: true },
+      { name: "Au", value: `<t:${Math.floor(a.to / 1000)}:D>`, inline: true },
+      { name: "Motif", value: a.reason || "-" },
+    );
+}
+
 export function absentsListEmbed(rows: { name: string; matricule: number | null; until: number; reason: string }[]): EmbedBuilder {
   if (rows.length === 0) {
     return baseEmbed(BRAND.green).setTitle("🗓️ Absents").setDescription("Aucun agent absent actuellement.");

@@ -1,6 +1,6 @@
 import { type Client, type TextChannel } from "discord.js";
 import { mdt } from "./convex.js";
-import { presenceEmbed, dailyEmbed } from "./embeds.js";
+import { presenceEmbed, dailyEmbed, absencePublishEmbed } from "./embeds.js";
 import { openRollcall, closeRollcall, remindNonVoters, LSPD_ROLE } from "./rollcall.js";
 import { reconcilePromoCategories, reconcilePromoDeletions, deprogramInterview } from "./tickets.js";
 import { baseEmbed, BRAND } from "./theme.js";
@@ -208,6 +208,20 @@ export function startTasks(client: Client) {
         }
       }
     } catch (err) { console.error("[discord] montées en grade :", err); }
+
+    // --- Publication des absences dans le salon configuré ---
+    if (cfg.absenceChannel) {
+      try {
+        const pending = await mdt.absencesToAnnounce();
+        if (pending.length) {
+          const chan = await channel(client, cfg.absenceChannel);
+          for (const ab of pending) {
+            if (chan) await chan.send({ embeds: [absencePublishEmbed(ab)] }).catch(() => {});
+            await mdt.markAbsenceAnnounced(ab.id);
+          }
+        }
+      } catch (err) { console.error("[absence] publication :", err); }
+    }
 
     // --- Récapitulatif quotidien ---
     if (cfg.dailyChannel && cfg.dailyAt === hhmm && lastDailySent !== today) {

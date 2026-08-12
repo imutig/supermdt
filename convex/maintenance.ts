@@ -87,3 +87,17 @@ export const cleanupOrphanAuth = internalMutation({
     return { orphans: orphans.length };
   },
 });
+
+// Marque toutes les absences existantes comme « déjà publiées », pour ne pas
+// inonder le salon Discord des absences historiques au premier déploiement de la
+// publication. À lancer une fois : `npx convex run maintenance:markAllAbsencesAnnounced`.
+export const markAllAbsencesAnnounced = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    let n = 0;
+    for (const ab of await ctx.db.query("absences").collect()) {
+      if (ab.announced !== true) { await ctx.db.patch(ab._id, { announced: true }); n++; }
+    }
+    return { marked: n };
+  },
+});

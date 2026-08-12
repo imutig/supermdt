@@ -336,6 +336,7 @@ export const config = query({
       presenceChannel: cfg?.botPresenceChannel ?? null,
       dailyChannel: cfg?.botDailyChannel ?? null,
       rollcallChannel: cfg?.botRollcallChannel ?? null,
+      absenceChannel: cfg?.botAbsenceChannel ?? null,
       dailyAt: cfg?.botDailyAt ?? "23:30",
       rollcallStartAt: cfg?.botRollcallStartAt ?? null,
       rollcallEndAt: cfg?.botRollcallEndAt ?? null,
@@ -549,6 +550,38 @@ export const absentDiscordIds = query({
       if (a?.discordId) ids.push(a.discordId);
     }
     return [...new Set(ids)];
+  },
+});
+
+// Absences approuvées non encore publiées dans le salon Discord (le bot draine
+// et poste un embed, puis marque comme publiées).
+export const absencesToAnnounce = query({
+  args: { secret: v.string() },
+  handler: async (ctx, { secret }) => {
+    assertBot(secret);
+    const rows = (await ctx.db.query("absences").withIndex("by_status", (q) => q.eq("status", "APPROUVEE")).collect())
+      .filter((ab) => ab.announced !== true)
+      .slice(0, 20);
+    const out = [];
+    for (const ab of rows) {
+      const a = await ctx.db.get(ab.agentId);
+      out.push({
+        id: ab._id,
+        name: a ? `${a.prenomRP} ${a.nomRP}` : "Agent",
+        matricule: a?.matricule ?? null,
+        discordId: a?.discordId ?? null,
+        from: ab.from, to: ab.to, reason: ab.reason,
+      });
+    }
+    return out;
+  },
+});
+
+export const markAbsenceAnnounced = mutation({
+  args: { secret: v.string(), id: v.id("absences") },
+  handler: async (ctx, { secret, id }) => {
+    assertBot(secret);
+    await ctx.db.patch(id, { announced: true });
   },
 });
 
