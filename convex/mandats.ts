@@ -170,7 +170,7 @@ export const create = mutation({
       color: NOTIFY_COLOR.danger,
       fields: [
         { name: "Motif", value: args.motif },
-        ...(args.expiresAt ? [{ name: "Expire le", value: new Date(args.expiresAt).toLocaleString("fr-FR"), inline: true }] : []),
+        ...(args.expiresAt ? [{ name: "Expire le", value: new Date(args.expiresAt).toLocaleString("fr-FR", { timeZone: "Europe/Paris" }), inline: true }] : []),
       ],
       url: await deepLink(ctx, `/citoyen/${args.citizenId}`),
       footer: `Émis par ${agent.prenomRP} ${agent.nomRP}`,

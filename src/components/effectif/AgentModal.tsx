@@ -7,6 +7,7 @@ import { useToast } from "@/providers/toast";
 import { useCan } from "@/hooks/useCan";
 import { fmtMatricule } from "@/components/common/AgentTag";
 import { fmtAnciennete, tsToDateInput, dateInputToTs } from "@/lib/anciennete";
+import { parisDayStart, parisDayEnd } from "@/lib/paris";
 import { actionLabel, resourceLabel } from "@/lib/auditLabels";
 import { SanctionModal } from "@/components/effectif/SanctionModal";
 import { FicheDocument } from "@/components/effectif/FicheDocument";
@@ -42,11 +43,11 @@ export function AgentModal({ agentId, onClose }: { agentId: Id<"agents">; onClos
   const [absReason, setAbsReason] = useState("");
 
   async function submitAbsence() {
-    const from = dateInputToTs(absFrom);
-    const to = dateInputToTs(absTo);
+    const from = parisDayStart(absFrom);
+    const to = parisDayEnd(absTo);
     if (from == null || to == null) return;
     const r = await toast.guard(
-      createAbsence({ agentId, reason: absReason.trim() || "Absence", from, to: to + 24 * 3600 * 1000 - 1 }),
+      createAbsence({ agentId, reason: absReason.trim() || "Absence", from, to }),
       "Déclaration impossible",
     );
     if (r !== undefined) {

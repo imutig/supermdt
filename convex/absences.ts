@@ -54,7 +54,7 @@ export const request = mutation({
       description: `**${agent.prenomRP} ${agent.nomRP}**`,
       color: NOTIFY_COLOR.info,
       fields: [
-        { name: "Période", value: `${new Date(args.from).toLocaleDateString("fr-FR")} au ${new Date(args.to).toLocaleDateString("fr-FR")}` },
+        { name: "Période", value: `${new Date(args.from).toLocaleDateString("fr-FR", { timeZone: "Europe/Paris" })} au ${new Date(args.to).toLocaleDateString("fr-FR", { timeZone: "Europe/Paris" })}` },
         { name: "Motif", value: args.reason },
       ],
     });
@@ -88,7 +88,7 @@ export const createFor = mutation({
       description: `**${target.prenomRP} ${target.nomRP}**`,
       color: NOTIFY_COLOR.info,
       fields: [
-        { name: "Période", value: `${new Date(args.from).toLocaleDateString("fr-FR")} au ${new Date(args.to).toLocaleDateString("fr-FR")}` },
+        { name: "Période", value: `${new Date(args.from).toLocaleDateString("fr-FR", { timeZone: "Europe/Paris" })} au ${new Date(args.to).toLocaleDateString("fr-FR", { timeZone: "Europe/Paris" })}` },
         { name: "Motif", value: args.reason.trim() || "Absence" },
       ],
       footer: `Déclarée par ${actor.prenomRP} ${actor.nomRP}`,

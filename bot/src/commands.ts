@@ -8,7 +8,7 @@ import {
   presenceEmbed, dailyEmbed, overviewEmbed, weeklyHoursEmbed,
   vehicleEmbed, vehicleNotFoundEmbed, casierEmbed, absenceEmbed, absentsListEmbed, errorEmbed,
 } from "./embeds.js";
-import { openHub, sendTemplate, renderTemplatesCmd, startTemplateBuilder, openAnnounce, integrer, validation } from "./tickets.js";
+import { openHub, sendTemplate, renderTemplatesCmd, startTemplateBuilder, openAnnounce, integrer, validation, parisWallToEpoch } from "./tickets.js";
 
 // Définition des commandes slash. Chaque réponse est un embed élaboré.
 export const commands = [
@@ -53,14 +53,17 @@ export const commands = [
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages),
 ].map((c) => c.toJSON());
 
-// « JJ/MM/AAAA » -> timestamp (minuit), ou null si invalide.
-function parseDate(s: string): number | null {
+// « JJ/MM/AAAA » -> {y,mo,d} validé, ou null.
+function dateParts(s: string): { y: number; mo: number; d: number } | null {
   const m = /^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/.exec(s.trim());
   if (!m) return null;
   const [, d, mo, y] = m.map(Number);
   const dt = new Date(y, mo - 1, d);
-  return dt.getMonth() === mo - 1 && dt.getDate() === d ? dt.getTime() : null;
+  return dt.getMonth() === mo - 1 && dt.getDate() === d ? { y, mo, d } : null;
 }
+// Bornes de la journée saisie, en heure de Paris (début 00:00, fin 23:59:59.999).
+function parisDayStart(s: string): number | null { const p = dateParts(s); return p ? parisWallToEpoch(p.y, p.mo, p.d, 0, 0) : null; }
+function parisDayEnd(s: string): number | null { const p = dateParts(s); return p ? parisWallToEpoch(p.y, p.mo, p.d, 23, 59) : null; }
 
 // Enregistrement au niveau du serveur : mise à jour instantanée, contrairement
 // aux commandes globales qui mettent jusqu'à une heure à se propager.
@@ -140,8 +143,8 @@ export async function handleCommand(interaction: ChatInputCommandInteraction) {
     if (interaction.commandName === "absence") {
       await interaction.deferReply({ flags: 64 });
       const q = interaction.options.getString("agent") ?? undefined; // absent -> soi-même
-      const from = parseDate(interaction.options.getString("du", true));
-      const to = parseDate(interaction.options.getString("au", true));
+      const from = parisDayStart(interaction.options.getString("du", true));
+      const to = parisDayEnd(interaction.options.getString("au", true));
       const reason = interaction.options.getString("motif") ?? "Absence";
       if (from === null || to === null) {
         await interaction.editReply({ embeds: [errorEmbed("Dates invalides. Format attendu : JJ/MM/AAAA.")] });

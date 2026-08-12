@@ -34,7 +34,7 @@ export function presenceEmbed(agents: OnDutyAgent[]): EmbedBuilder {
 
 // Récapitulatif de la journée : chiffres clés + courbe de présence horaire.
 export function dailyEmbed(s: DayStats): EmbedBuilder {
-  const dateStr = new Date(s.date).toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" });
+  const dateStr = new Date(s.date).toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", timeZone: "Europe/Paris" });
   const e = baseEmbed(BRAND.green)
     .setTitle("📊 Récapitulatif de la journée")
     .setDescription(`Bilan du **${dateStr}**.`)
@@ -101,7 +101,7 @@ function jail(seconds: number): string {
   const m = Math.floor((seconds % 3600) / 60);
   return [h ? `${h}h` : "", m ? `${m}min` : ""].filter(Boolean).join(" ") || `${seconds}s`;
 }
-function date(ts: number): string { return new Date(ts).toLocaleDateString("fr-FR"); }
+function date(ts: number): string { return new Date(ts).toLocaleDateString("fr-FR", { timeZone: "Europe/Paris" }); }
 
 // Fiche d'un véhicule civil enregistré.
 export function vehicleEmbed(v: VehicleInfo): EmbedBuilder {

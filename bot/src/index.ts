@@ -1,3 +1,4 @@
+import "./tz.js"; // fuseau Paris — doit s'exécuter avant tout usage de Date
 import { Client, GatewayIntentBits, Partials, Events } from "discord.js";
 import { createServer } from "node:http";
 import { env } from "./env.js";

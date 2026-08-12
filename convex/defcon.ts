@@ -40,7 +40,7 @@ export const setDefcon = mutation({
     });
     await notify(ctx, "defcon.change", {
       title: `DEFCON · ${level.name}`,
-      description: until ? `Jusqu'à ${new Date(until).toLocaleString("fr-FR")}.` : "Sans échéance.",
+      description: until ? `Jusqu'à ${new Date(until).toLocaleString("fr-FR", { timeZone: "Europe/Paris" })}.` : "Sans échéance.",
       color: NOTIFY_COLOR.info,
       footer: `Décidé par ${agent.prenomRP} ${agent.nomRP}`,
     });

@@ -2,7 +2,7 @@ import { type Client, type TextChannel } from "discord.js";
 import { mdt } from "./convex.js";
 import { presenceEmbed, dailyEmbed, absencePublishEmbed } from "./embeds.js";
 import { openRollcall, closeRollcall, remindNonVoters, LSPD_ROLE } from "./rollcall.js";
-import { reconcilePromoCategories, reconcilePromoDeletions, deprogramInterview } from "./tickets.js";
+import { reconcilePromoCategories, reconcilePromoDeletions, deprogramInterview, parisWallToEpoch } from "./tickets.js";
 import { baseEmbed, BRAND } from "./theme.js";
 
 // Les salons et l'heure du récap sont lus depuis le MDT (page Configuration),
@@ -18,6 +18,18 @@ function reminderSlots(start: string, end: string): string[] {
   const out: string[] = [];
   for (let t = s + 120; t < e; t += 120) out.push(`${pad2(Math.floor(t / 60))}:${pad2(t % 60)}`);
   return out;
+}
+
+// Composants de l'heure de Paris « maintenant », indépendants du fuseau du
+// serveur (Railway tourne en UTC) : sans ça, roll call et récap se déclenchent
+// avec 1-2 h de décalage.
+function parisNow(now: Date): { date: string; hhmm: string; min: number; dow: number; y: number; mo: number; d: number } {
+  const p: Record<string, string> = {};
+  for (const part of new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Paris", hour12: false, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", weekday: "short" }).formatToParts(now)) p[part.type] = part.value;
+  const hour = p.hour === "24" ? 0 : Number(p.hour);
+  const hh = String(hour).padStart(2, "0");
+  const dowMap: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+  return { date: `${p.year}-${p.month}-${p.day}`, hhmm: `${hh}:${p.minute}`, min: hour * 60 + Number(p.minute), dow: dowMap[p.weekday] ?? 0, y: Number(p.year), mo: Number(p.month), d: Number(p.day) };
 }
 
 async function channel(client: Client, id: string | null): Promise<TextChannel | null> {
@@ -73,27 +85,28 @@ export function startTasks(client: Client) {
     }
 
     const now = new Date();
-    const hhmm = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
-    const today = now.toISOString().slice(0, 10);
+    const P = parisNow(now); // heure de Paris (indépendante du fuseau serveur)
+    const hhmm = P.hhmm;
+    const today = P.date;
 
     // --- Roll call : ouverture, puis clôture à l'heure de fin ---
     if (cfg.rollcallChannel && cfg.rollcallStartAt && cfg.rollcallEndAt) {
       const [eh, em] = cfg.rollcallEndAt.split(":").map(Number);
-      const endsAt = new Date(now); endsAt.setHours(eh, em, 0, 0);
+      const endsAtMs = parisWallToEpoch(P.y, P.mo, P.d, eh, em); // heure de fin, murale Paris
       const existing = await mdt.rollcallToday(today).catch(() => null);
       // Rattrapage : on ouvre dès que l'heure de début est atteinte OU dépassée,
       // tant que la clôture n'est pas passée et qu'aucun appel n'existe pour le
       // jour. Ainsi, configurer/déployer après l'heure poste quand même l'appel.
       // Comparaison en minutes (robuste aux heures non zéro-préfixées, ex. "9:00").
       const [sh, sm] = cfg.rollcallStartAt.split(":").map(Number);
-      const nowMin = now.getHours() * 60 + now.getMinutes();
-      const inWindow = nowMin >= sh * 60 + sm && Date.now() < endsAt.getTime();
+      const nowMin = P.min;
+      const inWindow = nowMin >= sh * 60 + sm && Date.now() < endsAtMs;
       if (inWindow && lastRollcallOpened !== today && !existing) {
         lastRollcallOpened = today;
-        // Le dimanche (getDay() === 0), le roll call devient un appel à la cérémonie.
-        const ceremony = now.getDay() === 0;
+        // Le dimanche (dow === 0), le roll call devient un appel à la cérémonie.
+        const ceremony = P.dow === 0;
         await openRollcall(client, {
-          channelId: cfg.rollcallChannel, date: today, endsAt: endsAt.getTime(),
+          channelId: cfg.rollcallChannel, date: today, endsAt: endsAtMs,
           ceremony, ceremonyTime: cfg.ceremonyAt,
           // L'heure de présence affichée = l'heure de clôture des votes.
           displayTime: cfg.rollcallEndAt,

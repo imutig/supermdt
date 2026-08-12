@@ -3,6 +3,7 @@ import { X } from "lucide-react";
 import { useMutation, useQuery } from "convex/react";
 import { api, type Id } from "@/lib/api";
 import { useToast } from "@/providers/toast";
+import { parisDayStart, parisDayEnd } from "@/lib/paris";
 import { EmptyState } from "@/components/common/EmptyState";
 import { SkeletonRows } from "@/components/common/Skeleton";
 import { Clover } from "@/components/common/Clover";
@@ -78,10 +79,12 @@ function AbsenceModal({ onClose }: { onClose: () => void }) {
   const [busy, setBusy] = useState(false);
 
   async function submit() {
-    if (!reason.trim() || !from || !to) return;
+    const fromTs = parisDayStart(from);
+    const toTs = parisDayEnd(to);
+    if (!reason.trim() || fromTs == null || toTs == null) return;
     setBusy(true);
     const r = await toast.guard(
-      request({ reason: reason.trim(), from: new Date(from).getTime(), to: new Date(to).getTime() }),
+      request({ reason: reason.trim(), from: fromTs, to: toTs }),
       "Demande impossible",
     );
     setBusy(false);

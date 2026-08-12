@@ -47,7 +47,7 @@ export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
         throw new Error("Ce compte a été désactivé. Contactez l'État-Major.");
       }
       if (typeof agent.lockedUntil === "number" && agent.lockedUntil > Date.now()) {
-        const until = new Date(agent.lockedUntil).toLocaleString("fr-FR");
+        const until = new Date(agent.lockedUntil).toLocaleString("fr-FR", { timeZone: "Europe/Paris" });
         throw new Error(`Compte verrouillé jusqu'au ${until}.`);
       }
     },

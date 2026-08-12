@@ -1112,7 +1112,7 @@ function tzOffsetMs(tz: string, utcMs: number): number {
   return asUTC - utcMs;
 }
 // L'heure saisie est une heure « murale » de Paris → epoch UTC correspondant.
-function parisWallToEpoch(year: number, mon: number, day: number, hr: number, min: number): number {
+export function parisWallToEpoch(year: number, mon: number, day: number, hr: number, min: number): number {
   const guess = Date.UTC(year, mon - 1, day, hr, min);
   let epoch = guess - tzOffsetMs("Europe/Paris", guess);
   const off2 = tzOffsetMs("Europe/Paris", epoch); // correction DST
