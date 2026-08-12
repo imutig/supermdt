@@ -1,0 +1,9 @@
+Tuiles de la carte de GTA V (fonds atlas + satellite), zoom 0 à 6.
+Source : jeu de tuiles communautaire « GTA-V-World-Map » de Flamm64
+(https://github.com/Flamm64/GTA-V-World-Map).
+
+La carte de GTA V est la propriété intellectuelle de Rockstar Games.
+Usage communautaire RP privé uniquement — pas de redistribution ni d'usage commercial.
+
+Nommage des tuiles : {z}_{x}_{y}.jpg (convention XYZ, y du haut vers le bas).
+Servies en statique par l'application (public/tiles/gta), sans dépendance à un tiers.

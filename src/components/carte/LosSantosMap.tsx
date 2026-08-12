@@ -16,8 +16,8 @@ export interface MapMarker {
 // Carte réutilisable — désormais rendue avec Leaflet sur les tuiles GTA (zoom
 // profond et net). Même API qu'avant : coordonnées en % (0-100), marqueurs
 // LIEU/SECTEUR, pastille (pin), tracé en cours (draft), clic -> onPick(x,y).
-const TILE = "https://cdn.jsdelivr.net/gh/meesvrh/GTAV-Map-Tiles/tiles/atlas/{z}/{x}/{y}.jpg";
-const NATIVE_MAX = 5;
+const TILE = "/tiles/gta/atlas/{z}_{x}_{y}.jpg"; // tuiles auto-hébergées (public/tiles/gta), zoom 0-6
+const NATIVE_MAX = 6;
 const WORLD = 256 * 2 ** NATIVE_MAX;
 
 export function LosSantosMap({

@@ -8,9 +8,9 @@ import { Pentagon, PenTool, Spline, MapPin, Type as TypeIcon, CircleDashed, Penc
 // Carte tactique Leaflet (moteur Geoman), barre d'outils maison en français.
 // Modèle de formes en % (0-100), indépendant des tuiles → sérialisable et
 // partageable. Réutilisable en édition (plans perso) ou en lecture seule.
-const TILE = (style: "atlas" | "satellite") =>
-  `https://cdn.jsdelivr.net/gh/meesvrh/GTAV-Map-Tiles/tiles/${style}/{z}/{x}/{y}.jpg`;
-const NATIVE_MAX = 5;
+// Tuiles GTA auto-hébergées (public/tiles/gta), zoom 0-6. Nommage plat {z}_{x}_{y}.
+const TILE = (style: "atlas" | "satellite") => `/tiles/gta/${style}/{z}_{x}_{y}.jpg`;
+const NATIVE_MAX = 6;
 const WORLD = 256 * 2 ** NATIVE_MAX;
 
 export type Shape =
