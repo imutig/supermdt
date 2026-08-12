@@ -17,6 +17,7 @@ import { Ressources } from "@/pages/Ressources";
 const Carte = lazyReload(() => import("@/pages/Carte").then((m) => ({ default: m.Carte })));
 import { Calendrier } from "@/pages/Calendrier";
 import { Ceremonies } from "@/pages/Ceremonies";
+const CarteProto = lazyReload(() => import("@/pages/CarteProto").then((m) => ({ default: m.CarteProto })));
 import { Plaintes } from "@/pages/Plaintes";
 import { Armes } from "@/pages/Armes";
 import { Vehicules } from "@/pages/Vehicules";
@@ -197,6 +198,7 @@ function Gated() {
         <Route path="/protocoles" element={<RequirePerm perm="protocoles.view"><Protocoles /></RequirePerm>} />
         <Route path="/ressources" element={<RequirePerm perm="formations.view"><Ressources /></RequirePerm>} />
         <Route path="/carte" element={<RequirePerm perm="carte.view"><Carte /></RequirePerm>} />
+        <Route path="/carte-proto" element={<RequirePerm perm="carte.view"><CarteProto /></RequirePerm>} />
         <Route path="/calendrier" element={<RequirePerm perm="calendrier.view"><Calendrier /></RequirePerm>} />
         <Route path="/ceremonies" element={<RequirePerm perm="ceremonies.manage"><Ceremonies /></RequirePerm>} />
         <Route path="/plaintes" element={<RequirePerm perm="plaintes.view"><Plaintes /></RequirePerm>} />

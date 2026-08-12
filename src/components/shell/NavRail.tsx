@@ -66,6 +66,7 @@ const GROUPS: NavGroup[] = [
       { key: "vehicules", label: "Véhicules", icon: Car, to: "/vehicules", anyPerm: ["vehicules.view", "flotte.view"] },
       { key: "saisies", label: "Saisies", icon: Boxes, to: "/saisies", perm: "saisies.view" },
       { key: "carte", label: "Carte", icon: MapIcon, to: "/carte", perm: "carte.view" },
+      { key: "carte-proto", label: "Carte (proto)", icon: MapIcon, to: "/carte-proto", perm: "carte.view" },
       { key: "calendrier", label: "Calendrier", icon: CalendarDays, to: "/calendrier", perm: "calendrier.view" },
     ],
   },
