@@ -193,7 +193,12 @@ function UnlockCard({ portal, onBack, onUnlocked }: { portal: Portal; onBack: ()
       const r = await unlock({ code, portal });
       onUnlocked(r.expiresAt);
     } catch (e) {
-      setErr(readableError(e, "Code d'accès incorrect."));
+      const raw = e instanceof Error ? e.message : "";
+      setErr(
+        /Code d'accès incorrect/i.test(raw)
+          ? `Code d'accès incorrect, l'accès au ${label} est restreint pendant une période de maintenance.`
+          : readableError(e, "Une erreur est survenue, réessaie."),
+      );
       setBusy(false);
     }
   }
