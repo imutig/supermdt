@@ -23,9 +23,12 @@ export const casierAndCitations = query({
 
     // Le fil n'affiche qu'une quarantaine de lignes : en charger 120 pour en
     // jeter les deux tiers coûtait autant de requêtes de charges inutiles.
-    const entries = await ctx.db.query("casierEntries").order("desc").take(25);
+    // Tri par date d'arrestation (by_at) et non par _creationTime : les casiers
+    // importés du Nexus sont tous créés au même instant, leur ordre d'insertion
+    // ne reflète pas la chronologie. On en prend un peu plus pour absorber les
+    // supprimés filtrés ensuite.
+    const entries = (await ctx.db.query("casierEntries").withIndex("by_at").order("desc").take(60)).filter((e) => !e.deletedAt).slice(0, 25);
     for (const e of entries) {
-      if (e.deletedAt) continue;
       const citizen = await ctx.db.get(e.citizenId);
       const charges = await ctx.db
         .query("casierCharges")
@@ -88,9 +91,10 @@ export const home = query({
     }[] = [];
 
     if (canCasier) {
-      const entries = await ctx.db.query("casierEntries").order("desc").take(12);
+      // Tri par date d'arrestation (voir casierAndCitations) : les imports Nexus
+      // partagent le même _creationTime, seul `at` donne le bon ordre.
+      const entries = (await ctx.db.query("casierEntries").withIndex("by_at").order("desc").take(40)).filter((e) => !e.deletedAt).slice(0, 12);
       for (const e of entries) {
-        if (e.deletedAt) continue;
         const citizen = await ctx.db.get(e.citizenId);
         const charges = await ctx.db
           .query("casierCharges")

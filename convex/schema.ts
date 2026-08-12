@@ -1268,7 +1268,10 @@ export default defineSchema({
   })
     .index("by_citizen", ["citizenId"])
     .index("by_deleted", ["deletedAt"])
-    .index("by_import", ["importRef"]),
+    .index("by_import", ["importRef"])
+    // Tri par date d'arrestation (les imports arrivent tous en même temps, donc
+    // _creationTime ne reflète plus la chronologie réelle).
+    .index("by_at", ["at"]),
 
   casierCharges: defineTable({
     entryId: v.id("casierEntries"),
