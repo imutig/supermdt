@@ -129,6 +129,29 @@ export const syncPermissions = internalMutation({
   },
 });
 
+// Accorde `ceremonies.manage` aux grades de commandement par défaut (Capitaine,
+// Lieutenant, Sergent 1, Sergent 2, Senior Lead Officer). L'État-Major l'a déjà
+// via syncPermissions ; ceci couvre les grades de supervision nommés autrement.
+// À lancer après syncPermissions : `npx convex run seed:seedCeremonies`.
+export const seedCeremonies = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const perm = (await ctx.db.query("permissions").collect()).find((p) => p.slug === "ceremonies.manage");
+    if (!perm) return "Slug ceremonies.manage absent - lance d'abord seed:syncPermissions.";
+    const TARGET = ["capitaine", "lieutenant", "lieutenant 1", "lieutenant 2", "sergent 1", "sergent 2", "senior lead officer"];
+    let granted = 0;
+    for (const g of await ctx.db.query("grades").collect()) {
+      if (!TARGET.includes(g.name.trim().toLowerCase())) continue;
+      const has = await ctx.db
+        .query("gradePermissions")
+        .withIndex("by_grade_permission", (q) => q.eq("gradeId", g._id).eq("permissionId", perm._id))
+        .first();
+      if (!has) { await ctx.db.insert("gradePermissions", { gradeId: g._id, permissionId: perm._id }); granted++; }
+    }
+    return `ceremonies.manage accordé à ${granted} grade(s) de commandement.`;
+  },
+});
+
 // Seed idempotent des données de configuration & référentiels.
 // À lancer une fois : `npx convex run seed:seed`.
 export const seed = internalMutation({

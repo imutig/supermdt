@@ -28,6 +28,7 @@ export const WEBHOOK_EVENTS: { slug: string; group: string; label: string }[] = 
   { slug: "agent.validate", group: "Effectif", label: "Agent validé" },
   { slug: "agent.grade", group: "Effectif", label: "Promotion / rétrogradation" },
   { slug: "agent.deactivate", group: "Effectif", label: "Agent désactivé" },
+  { slug: "ceremony.publish", group: "Effectif", label: "Cérémonie publiée" },
 
   { slug: "discipline.create", group: "Discipline", label: "Sanction disciplinaire ouverte" },
   { slug: "absence.request", group: "Discipline", label: "Demande d'absence" },

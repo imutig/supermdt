@@ -1595,6 +1595,38 @@ export default defineSchema({
     createdBy: v.optional(v.id("agents")),
   }).index("by_at", ["at"]),
 
+  // ============ CÉRÉMONIES ============
+  // Une cérémonie planifie une date/heure (ajoutée au calendrier, 1 h), porte des
+  // rappels (un par un) et des montées en grade (agent + grade futur), génère un
+  // document officiel et peut exécuter les montées en grade Discord (file de rôles).
+  ceremonies: defineTable({
+    title: v.string(),
+    at: v.number(), // jour concerné (minuit UTC)
+    startTime: v.string(), // "HH:MM" (heure de Paris affichée)
+    lieu: v.optional(v.string()),
+    notes: v.optional(v.string()),
+    calendarEventId: v.optional(v.id("calendarEvents")),
+    createdBy: v.optional(v.id("agents")),
+    createdAt: v.number(),
+    deletedAt: v.optional(v.number()), // soft-delete universel
+  }).index("by_at", ["at"]),
+
+  ceremonyReminders: defineTable({
+    ceremonyId: v.id("ceremonies"),
+    text: v.string(),
+    createdAt: v.number(),
+  }).index("by_ceremony", ["ceremonyId"]),
+
+  ceremonyPromotions: defineTable({
+    ceremonyId: v.id("ceremonies"),
+    agentId: v.id("agents"),
+    fromGradeId: v.optional(v.id("grades")), // grade au moment de l'ajout (snapshot)
+    toGradeId: v.id("grades"),
+    mdtAppliedAt: v.optional(v.number()), // grade appliqué dans le MDT
+    discordAppliedAt: v.optional(v.number()), // rôle Discord mis en file
+    createdAt: v.number(),
+  }).index("by_ceremony", ["ceremonyId"]),
+
   // ============ PLAINTES (item 2) ============
   complaints: defineTable({
     plaignantId: v.id("citizens"),

@@ -129,6 +129,8 @@ export const PERMISSION_SLUGS: { slug: string; domain: string; description: stri
   { slug: "calendrier.view", domain: "calendrier", description: "Consulter le calendrier" },
   { slug: "calendrier.create", domain: "calendrier", description: "Créer un évènement" },
   { slug: "calendrier.delete", domain: "calendrier", description: "Supprimer un évènement" },
+  // Cérémonies
+  { slug: "ceremonies.manage", domain: "ceremonies", description: "Gérer les cérémonies (planification, rappels, montées en grade)" },
   // Plaintes (item 2)
   { slug: "plaintes.view", domain: "plaintes", description: "Consulter les plaintes" },
   { slug: "plaintes.create", domain: "plaintes", description: "Déposer une plainte" },

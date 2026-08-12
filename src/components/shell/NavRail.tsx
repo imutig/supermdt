@@ -23,6 +23,7 @@ import {
   BarChart3,
   Archive as ArchiveIcon,
   Shield,
+  Award,
   type LucideIcon,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -84,6 +85,7 @@ const GROUPS: NavGroup[] = [
       { key: "services", label: "Services", icon: Clock, to: "/services", perm: "service.self" },
       { key: "absences", label: "Absences", icon: CalendarOff, to: "/absences", perm: "absences.request" },
       { key: "discipline", label: "Discipline", icon: ShieldAlert, to: "/discipline", perm: "discipline.view" },
+      { key: "ceremonies", label: "Cérémonies", icon: Award, to: "/ceremonies", perm: "ceremonies.manage" },
     ],
   },
   {
