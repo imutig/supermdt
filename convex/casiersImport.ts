@@ -111,7 +111,8 @@ export function mapDossier(d: any) {
     nom: String(pick(d, "citoyen.nom", "citizen.nom", "nom") ?? "").trim(),
     at: parseArrestDate(String(pick(d, "dateArrestation", "date_arrestation", "arrestDate") ?? ""), String(pick(d, "createdAt", "created_at") ?? "")),
     createdByMatricule: num(pick(d, "createdBy.matricule", "createdBy.badge")),
-    agentMatricules: (Array.isArray(agents) ? agents : []).map((a: any) => num(pick(a, "matricule", "badge"))).filter((n: any): n is number => n != null),
+    createdByNom: String(pick(d, "createdBy.nom", "createdBy.name") ?? "").trim(),
+    officers: (Array.isArray(agents) ? agents : []).map((a: any) => ({ matricule: num(pick(a, "matricule", "badge")), nom: String(pick(a, "nom", "name") ?? "").trim() })).filter((o: any) => o.matricule != null || o.nom),
     statut: (String(pick(d, "statut", "status") ?? "").trim()) || undefined,
     lieu: (String(pick(d, "postePolice", "lieu", "poste") ?? "").trim()) || undefined,
     forceUsed: !!pick(d, "forceUtilisee", "force"),
@@ -173,12 +174,48 @@ async function resolveRefs(ctx: any) {
   const agents = await ctx.db.query("agents").collect();
   const byMat = new Map<number, Id<"agents">>();
   for (const a of agents) if (a.matricule != null) byMat.set(a.matricule, a._id);
+  // Rattachement des officiers par nom de famille (le Nexus ne donne que le nom),
+  // seulement si ce nom est unique dans l'effectif (sinon ambigu -> non rattaché).
+  const lastCount = new Map<string, number>();
+  for (const a of agents) lastCount.set(norm(a.nomRP), (lastCount.get(norm(a.nomRP)) ?? 0) + 1);
+  const byLastName = new Map<string, Id<"agents">>();
+  for (const a of agents) if (lastCount.get(norm(a.nomRP)) === 1) byLastName.set(norm(a.nomRP), a._id);
   const owner = agents.find((a: any) => a.isOwner);
   const cats = new Map((await ctx.db.query("penalCategories").collect()).map((c: any) => [c._id as string, c]));
   const sevs = new Map((await ctx.db.query("severityLevels").collect()).map((s: any) => [s._id as string, s]));
   const penalByName = new Map<string, any>();
   for (const p of await ctx.db.query("penalCharges").collect()) penalByName.set(norm(p.name), p);
-  return { byName, byMat, owner, cats, sevs, penalByName };
+  return { byName, byMat, byLastName, owner, cats, sevs, penalByName };
+}
+
+// Rattache un officier Nexus (matricule + nom) à un compte : matricule d'abord,
+// sinon nom de famille unique. undefined si aucun.
+function resolveOfficer(refs: any, mat?: number, nom?: string): Id<"agents"> | undefined {
+  return (mat != null && refs.byMat.get(mat)) || (nom ? refs.byLastName.get(norm(nom)) : undefined) || undefined;
+}
+
+type OfficerLink = { name: string; matricule?: string; agentId?: Id<"agents"> };
+// Liste ordonnée des officiers du dossier (créateur en 1er), chacun rattaché à un
+// compte existant si possible (agentId). Recalculée à CHAQUE sync : un officier
+// sans compte au 1er import se relie tout seul dès que son compte existe.
+function buildOfficers(d: any, refs: any): OfficerLink[] {
+  const seen = new Set<string>();
+  const list: OfficerLink[] = [];
+  const push = (mat?: number, nom?: string) => {
+    const name = (nom || "").trim();
+    if (!name && mat == null) return;
+    const key = mat != null ? `m:${mat}` : `n:${norm(name)}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    const agentId = resolveOfficer(refs, mat, name);
+    list.push({ name: name || `#${mat}`, matricule: mat != null ? String(mat) : undefined, agentId });
+  };
+  push(d.createdByMatricule, d.createdByNom); // le créateur du dossier d'abord
+  for (const o of d.officers || []) push(o.matricule, o.nom);
+  return list;
+}
+function linkedIds(officers: OfficerLink[]): Id<"agents">[] {
+  return [...new Set(officers.filter((o) => o.agentId).map((o) => o.agentId as Id<"agents">))];
 }
 
 function buildCharges(d: any, refs: any) {
@@ -201,18 +238,47 @@ export const _upsertCasiers = internalMutation({
     const refs = await resolveRefs(ctx);
     if (!refs.owner) throw new Error("Aucun compte owner pour rattacher les casiers importés.");
     const allEntries = await ctx.db.query("casierEntries").collect();
-    const existing = new Set(allEntries.map((e) => e.importRef).filter(Boolean) as string[]);
+    const existingByRef = new Map<string, (typeof allEntries)[number]>();
+    for (const e of allEntries) if (e.importRef) existingByRef.set(e.importRef, e);
     // Références présentes dans le flux Nexus actuel (matchées ou non) : sert à
     // supprimer les casiers importés qui ont disparu du Nexus.
     const incomingRefs = new Set<string>();
     for (const rawStr of raws) { try { incomingRefs.add(mapDossier(JSON.parse(rawStr)).importRef); } catch { /* compté plus bas */ } }
 
     let ajoutes = 0, dejaImporte = 0, sansCitoyen = 0, citoyensCrees = 0, chargesLiees = 0, chargesLibres = 0, officiersLies = 0, parseErr = 0;
+    // Re-rattachement des casiers déjà importés (à chaque sync) :
+    let casiersRelies = 0, officiersRelies = 0;
     const exemplesSansCitoyen: string[] = [];
     for (const rawStr of raws) {
       let d: any;
       try { d = mapDossier(JSON.parse(rawStr)); } catch { parseErr++; continue; }
-      if (existing.has(d.importRef)) { dejaImporte++; continue; }
+      const prev = existingByRef.get(d.importRef);
+      if (prev) {
+        // Casier déjà importé : on ne le recrée pas, mais on RE-RATTACHE ses
+        // officiers si des comptes correspondants existent désormais (relink auto).
+        dejaImporte++;
+        if (!dryRun) {
+          const officers = buildOfficers(d, refs);
+          const prevLinked = new Set((prev.officers ?? []).filter((o) => o.agentId).map((o) => o.agentId as string));
+          const nowLinked = officers.filter((o) => o.agentId && !prevLinked.has(o.agentId as string)).length;
+          const patch: Record<string, unknown> = {};
+          if (JSON.stringify(officers) !== JSON.stringify(prev.officers ?? null)) {
+            patch.officers = officers;
+            patch.officerIds = linkedIds(officers);
+          }
+          // createdBy : on remonte owner -> vrai agent dès qu'il est identifiable
+          // (jamais l'inverse : un createdBy déjà relié n'est pas rétrogradé).
+          const creator = officers[0]?.agentId;
+          if (creator && prev.createdBy === refs.owner._id) patch.createdBy = creator;
+          if (prev.importRaw !== rawStr) patch.importRaw = rawStr;
+          if (Object.keys(patch).length) {
+            await ctx.db.patch(prev._id, patch);
+            casiersRelies++;
+            officiersRelies += nowLinked;
+          }
+        }
+        continue;
+      }
       let citizenId = refs.byName.get(norm(`${d.prenom} ${d.nom}`));
       if (!citizenId) {
         // Citoyen absent (souvent supprimé du Nexus). On l'ignore, ou on crée une
@@ -232,12 +298,13 @@ export const _upsertCasiers = internalMutation({
       ajoutes++;
       const charges = buildCharges(d, refs);
       for (const c of charges) (c.linked ? chargesLiees++ : chargesLibres++);
-      const officerIds = [...new Set(d.agentMatricules.map((m: number) => refs.byMat.get(m)).filter(Boolean))] as Id<"agents">[];
+      const officers = buildOfficers(d, refs);
+      const officerIds = linkedIds(officers);
       officiersLies += officerIds.length;
       if (dryRun) continue;
-      const createdBy = (d.createdByMatricule != null && refs.byMat.get(d.createdByMatricule)) || refs.owner._id;
+      const createdBy = officers[0]?.agentId || refs.owner._id;
       const entryId = await ctx.db.insert("casierEntries", {
-        citizenId: citizenId as Id<"citizens">, at: d.at, officerIds,
+        citizenId: citizenId as Id<"citizens">, at: d.at, officerIds, officers,
         defconSnapshot: { name: "Import", fineMultiplier: 1, sensitiveFineMultiplier: 1 },
         totalFine: d.totalFine, totalJailSeconds: d.totalJail, dojRequired: false, sanctions: [],
         derouleFaits: d.derouleFaits, lieu: d.lieu, notes: `Importé du MDT Nexus · dossier n°${d.numero}`,
@@ -264,7 +331,7 @@ export const _upsertCasiers = internalMutation({
       await ctx.db.delete(e._id);
     }
 
-    return { source: raws.length, ajoutes, dejaImporte, sansCitoyen, citoyensCrees, exemplesSansCitoyen, chargesLiees, chargesLibres, officiersLies, parseErr, supprimes, chargesSupprimees };
+    return { source: raws.length, ajoutes, dejaImporte, casiersRelies, officiersRelies, sansCitoyen, citoyensCrees, exemplesSansCitoyen, chargesLiees, chargesLibres, officiersLies, parseErr, supprimes, chargesSupprimees };
   },
 });
 
@@ -282,12 +349,15 @@ export const remapCasiers = internalMutation({
       updated++;
       if (dryRun) continue;
       const charges = buildCharges(d, refs);
-      const officerIds = [...new Set(d.agentMatricules.map((m: number) => refs.byMat.get(m)).filter(Boolean))] as Id<"agents">[];
+      const officers = buildOfficers(d, refs);
+      const officerIds = linkedIds(officers);
+      const creator = officers[0]?.agentId;
       await ctx.db.patch(e._id, {
-        at: d.at, officerIds, totalFine: d.totalFine, totalJailSeconds: d.totalJail,
+        at: d.at, officers, officerIds, totalFine: d.totalFine, totalJailSeconds: d.totalJail,
         derouleFaits: d.derouleFaits, lieu: d.lieu, reportBody: d.reportBody,
         imageUrls: d.imageUrls.length ? d.imageUrls : undefined, avocat: d.avocat,
         dossierStatus: d.statut, forceUsed: d.forceUsed, cuffedAt: d.cuffedAt, mirandaAt: d.mirandaAt,
+        ...(creator && e.createdBy === refs.owner?._id ? { createdBy: creator } : {}),
       });
       for (const old of await ctx.db.query("casierCharges").withIndex("by_entry", (q) => q.eq("entryId", e._id)).collect()) await ctx.db.delete(old._id);
       for (const c of charges) await ctx.db.insert("casierCharges", { entryId: e._id, penalChargeId: c.penalChargeId, snapshot: c.snapshot, formulaParam: c.formulaParam, isRecidive: false, computedFine: c.computedFine, computedJailSeconds: c.computedJailSeconds, onDecision: false });

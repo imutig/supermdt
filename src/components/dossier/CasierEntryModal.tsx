@@ -176,7 +176,17 @@ export function CasierEntryModal({ entryId, canDelete: canDeleteAny, onClose }: 
 
               {/* Contexte */}
               <div className="grid grid-cols-2 gap-px overflow-hidden rounded-sm border border-border bg-border">
-                <Field label="Agent">{entry.officers[0] ? <AgentTag agent={entry.officers[0]} /> : "-"}</Field>
+                <Field label={entry.officers.length > 1 ? "Agents" : "Agent"}>
+                  {entry.officers.length ? (
+                    <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                      {entry.officers.map((o, i) => (
+                        <AgentTag key={i} agent={o} />
+                      ))}
+                    </span>
+                  ) : (
+                    "-"
+                  )}
+                </Field>
                 <Field label="Lieu">{entry.lieu || "-"}</Field>
                 <Field label="Sanctions">{entry.sanctions.length ? entry.sanctions.join(", ") : "-"}</Field>
                 <Field label="Menottage / Miranda">{entry.cuffedAt || "-"} / {entry.mirandaAt || "-"}</Field>

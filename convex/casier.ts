@@ -7,6 +7,34 @@ import { touchStats } from "./stats";
 import { notify, NOTIFY_COLOR, deepLink } from "./lib/notify";
 import { computeCharge } from "./lib/calc";
 
+// Officiers affichables d'une entrée, avec état de rattachement.
+//  - `linked: true`  = relié à un compte du MDT (badge + nom à jour)
+//  - `linked: false` = nom simplement écrit dans le rapport (import Nexus,
+//    agent parti ou jamais créé) -> affiché tel quel, sans badge.
+async function officerViews(
+  ctx: QueryCtx,
+  e: { officers?: { name: string; matricule?: string; agentId?: import("./_generated/dataModel").Id<"agents"> }[]; officerIds: import("./_generated/dataModel").Id<"agents">[] },
+): Promise<{ name: string; matricule: number | null; linked: boolean }[]> {
+  if (e.officers && e.officers.length) {
+    const out = [];
+    for (const o of e.officers) {
+      if (o.agentId) {
+        const l = await agentLabel(ctx, o.agentId);
+        out.push({ name: l.name, matricule: l.matricule, linked: true });
+      } else {
+        out.push({ name: o.name, matricule: null, linked: false });
+      }
+    }
+    return out;
+  }
+  const out = [];
+  for (const oid of e.officerIds) {
+    const l = await agentLabel(ctx, oid);
+    out.push({ name: l.name, matricule: l.matricule, linked: true });
+  }
+  return out;
+}
+
 // DEFCON courant (dupliqué de defcon.ts pour usage interne).
 async function currentDefcon(ctx: QueryCtx) {
   const levels = await ctx.db.query("defconLevels").withIndex("by_position").collect();
@@ -47,7 +75,7 @@ export const byCitizen = query({
         totalJailSeconds: e.totalJailSeconds,
         dojRequired: e.dojRequired,
         lieu: e.lieu,
-        officer: await agentLabel(ctx, e.officerIds[0]),
+        officer: (await officerViews(ctx, e))[0] ?? { name: "-", matricule: null, linked: true },
         chargeCount: charges.length,
         charges: charges.map((c) => c.snapshot.name),
       });
@@ -69,8 +97,7 @@ export const getEntry = query({
       .query("casierCharges")
       .withIndex("by_entry", (q) => q.eq("entryId", e._id))
       .collect();
-    const officers = [];
-    for (const oid of e.officerIds) officers.push(await agentLabel(ctx, oid));
+    const officers = await officerViews(ctx, e);
     // Rapport lié (dossier)
     let linkedReport: { _id: string; title: string } | null = null;
     if (e.linkedReportId) {

@@ -1208,6 +1208,18 @@ export default defineSchema({
     citizenId: v.id("citizens"),
     at: v.number(),
     officerIds: v.array(v.id("agents")),
+    // Officiers du rapport avec état de rattachement (import Nexus surtout) :
+    // `agentId` présent = relié à un compte existant ; absent = nom simplement
+    // écrit dans le rapport (pas de compte). Le créateur est en 1re position.
+    officers: v.optional(
+      v.array(
+        v.object({
+          name: v.string(),
+          matricule: v.optional(v.string()),
+          agentId: v.optional(v.id("agents")),
+        }),
+      ),
+    ),
     defconSnapshot: v.object({
       name: v.string(),
       fineMultiplier: v.number(),

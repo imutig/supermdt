@@ -13,11 +13,26 @@ export function AgentTag({
   className = "",
   muted = false,
 }: {
-  agent: { matricule: number | null; name: string } | null | undefined;
+  // `linked === false` : nom écrit dans un rapport importé, non rattaché à un
+  // compte du MDT (agent parti / jamais créé). Affiché sans badge, en discret.
+  agent: { matricule: number | null; name: string; linked?: boolean } | null | undefined;
   className?: string;
   muted?: boolean;
 }) {
   if (!agent) return <span className={className}>-</span>;
+  if (agent.linked === false) {
+    return (
+      <span className={`inline-flex items-center gap-1 ${className}`}>
+        <span className="italic text-muted">{agent.name || "?"}</span>
+        <span
+          title="Nom saisi dans le rapport, non relié à un agent du MDT"
+          className="rounded border border-white/10 bg-white/5 px-1 text-[10px] uppercase tracking-wide text-muted"
+        >
+          non relié
+        </span>
+      </span>
+    );
+  }
   const mat = fmtMatricule(agent.matricule);
   return (
     <span className={className}>
