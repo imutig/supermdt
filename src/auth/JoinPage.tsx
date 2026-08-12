@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { useMutation, useQuery } from "convex/react";
+import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { useAuthActions } from "@convex-dev/auth/react";
 import { BadgeCheck, ShieldAlert } from "lucide-react";
 import { api } from "@/lib/api";
@@ -21,6 +21,7 @@ export function JoinPage() {
   const { code = "" } = useParams();
   const preview = useQuery(api.invitations.previewByCode, { code });
   const { signIn } = useAuthActions();
+  const { isAuthenticated } = useConvexAuth();
   const completeRegistration = useMutation(api.agents.completeRegistration);
   const { requestEntry } = useApp();
   const { choose } = usePortal();
@@ -34,6 +35,12 @@ export function JoinPage() {
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [seeded, setSeeded] = useState(false);
+  // Étape 2 (création du profil) : lancée seulement une fois la session
+  // d'authentification réellement établie, sinon completeRegistration part sans
+  // token et échoue « Non authentifié ».
+  const [awaitingAuth, setAwaitingAuth] = useState(false);
+  const pending = useRef<{ prenomRP: string; nomRP: string; matricule?: number } | null>(null);
+  const finishing = useRef(false);
 
   // Pré-remplissage une fois l'aperçu chargé (sans écraser une saisie en cours).
   useEffect(() => {
@@ -47,30 +54,55 @@ export function JoinPage() {
   const loginValid = norm(prenom).length >= 2 && norm(nom).length >= 2;
   const canSubmit = loginValid && pw.length >= 1 && !busy;
 
+  function fail(e: unknown) {
+    const raw = e instanceof Error ? e.message : "";
+    if (/already exists|InvalidAccountId/i.test(raw)) {
+      setErr("Un compte existe déjà avec cet identifiant. Connecte-toi depuis la page d'accueil.");
+    } else {
+      setErr(readableError(e, "Impossible de créer le compte. Réessaie ou contacte l'État-Major."));
+    }
+    setBusy(false);
+    setAwaitingAuth(false);
+    pending.current = null;
+    finishing.current = false;
+  }
+
+  // Étape 1 : créer le compte d'authentification (prénom.nom + mot de passe).
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!canSubmit) return;
     setErr(null);
     setBusy(true);
+    pending.current = {
+      prenomRP: prenom.trim(),
+      nomRP: nom.trim(),
+      matricule: matricule.trim() ? Number(matricule.trim()) : undefined,
+    };
     try {
       const login = `${norm(prenom)}.${norm(nom)}`;
       await signIn("password", { email: login, password: pw, name: login, flow: "signUp" });
-      const mat = matricule.trim() ? Number(matricule.trim()) : undefined;
-      await completeRegistration({ code, prenomRP: prenom.trim(), nomRP: nom.trim(), matricule: mat });
-      // Compte créé et relié : on ouvre directement le MDT.
-      choose("mdt");
-      requestEntry();
-      navigate("/", { replace: true });
+      // On attend que la session soit propagée (useConvexAuth) avant l'étape 2.
+      setAwaitingAuth(true);
     } catch (e) {
-      const raw = e instanceof Error ? e.message : "";
-      if (/already exists|InvalidAccountId/i.test(raw)) {
-        setErr("Un compte existe déjà avec cet identifiant. Connecte-toi depuis la page d'accueil.");
-      } else {
-        setErr(readableError(e, "Impossible de créer le compte. Réessaie ou contacte l'État-Major."));
-      }
-      setBusy(false);
+      fail(e);
     }
   }
+
+  // Étape 2 : une fois authentifié, créer le profil agent puis entrer.
+  useEffect(() => {
+    if (!awaitingAuth || !isAuthenticated || finishing.current || !pending.current) return;
+    finishing.current = true;
+    (async () => {
+      try {
+        await completeRegistration({ code, ...pending.current! });
+        choose("mdt");
+        requestEntry();
+        navigate("/", { replace: true });
+      } catch (e) {
+        fail(e);
+      }
+    })();
+  }, [awaitingAuth, isAuthenticated]);
 
   // États du lien.
   if (preview === undefined) {
