@@ -249,15 +249,39 @@ export const test = action({
 
 // Les actions n'ont pas d'accès direct à la base : ce contrôle est délégué à
 // une mutation interne, qui hérite de l'identité de l'appelant.
+// Permission requise pour ÉMETTRE un document d'un domaine donné vers Discord.
+// Empêche qu'un agent actif pousse un document arbitraire (le gating existait en
+// amont côté appelant, pas dans l'action elle-même).
+function eventPermission(event: string): string | null {
+  const domain = event.split(".")[0];
+  const map: Record<string, string> = {
+    casier: "casier.view",
+    contravention: "contraventions.view",
+    contraventions: "contraventions.view",
+    rapport: "rapports.view",
+    rapports: "rapports.view",
+    report: "rapports.view",
+  };
+  return map[domain] ?? null;
+}
+
 export const assertCanSend = internalMutation({
-  args: { manage: v.optional(v.boolean()) },
-  handler: async (ctx, { manage }) => {
+  args: { manage: v.optional(v.boolean()), event: v.optional(v.string()) },
+  handler: async (ctx, { manage, event }) => {
     const agent = await requireAgent(ctx);
     if (manage) {
       await requirePermission(ctx, agent, "webhooks.manage");
-    } else if (agent.status !== "ACTIVE") {
+      return true;
+    }
+    if (agent.status !== "ACTIVE") {
       // Un compte suspendu ou en attente ne relaie rien vers Discord.
       throw new Error("Compte inactif.");
+    }
+    // Émission d'un document : exiger la permission du domaine ; un événement
+    // non répertorié est réservé aux gestionnaires de webhooks.
+    if (event) {
+      const slug = eventPermission(event);
+      await requirePermission(ctx, agent, slug ?? "webhooks.manage");
     }
     return true;
   },
@@ -358,7 +382,7 @@ export const postDocument = action({
     path: v.optional(v.string()),
   },
   handler: async (ctx, { event, filename, base64, embed, path }): Promise<string> => {
-    await ctx.runMutation(internal.webhooks.assertCanSend, {});
+    await ctx.runMutation(internal.webhooks.assertCanSend, { event });
     const urls: string[] = await ctx.runMutation(internal.webhooks.urlsFor, { event });
     if (urls.length === 0) return "aucun webhook abonné";
 

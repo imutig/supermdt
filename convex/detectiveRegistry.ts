@@ -185,6 +185,9 @@ export const addCasePerson = mutation({
     let pid = personId;
     if (!pid) {
       if (!name?.trim()) throw new Error("Sélectionnez une personne ou saisissez un nom.");
+      // Créer une personne à la volée alimente le REGISTRE de la division : exige
+      // la permission dédiée (au-delà du simple droit d'écriture sur l'enquête).
+      await requireDivPerm(ctx, c.divisionId, "db.registry");
       const roleFromCase = caseRole === "POI" ? "POI" : caseRole;
       pid = await ctx.db.insert("dbPersons", {
         divisionId: c.divisionId, name: name.trim(), alias: alias?.trim() || undefined,
