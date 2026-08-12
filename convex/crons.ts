@@ -11,4 +11,9 @@ crons.hourly("expirer les mandats", { minuteUTC: 5 }, internal.mandats.expireDue
 // VIZU_EMAIL / VIZU_PASSWORD ne sont pas configurés (voir migration.autoSync).
 crons.interval("synchro nexus", { minutes: 30 }, internal.migration.autoSync, {});
 
+// Nettoie les comptes d'authentification orphelins (inscription abandonnée avant
+// la création de la fiche agent), avec 30 min de grâce. Évite les « un compte
+// existe déjà » persistants.
+crons.hourly("nettoyer les comptes orphelins", { minuteUTC: 20 }, internal.maintenance.cleanupOrphanAuth, {});
+
 export default crons;

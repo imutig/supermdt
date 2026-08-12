@@ -46,3 +46,44 @@ export const purgeNonOwnerAccounts = internalMutation({
     return { keptOwners, deletedAgents, deletedUsers, deletedAuthRows };
   },
 });
+
+// Nettoie les comptes d'authentification ORPHELINS : un `users` sans aucune fiche
+// `agents` (inscription abandonnée / interrompue avant completeRegistration).
+// Sans ça, l'identifiant reste « pris » et la personne voit « un compte existe
+// déjà ». On applique un délai de grâce pour ne pas supprimer une inscription
+// en cours. Appelé par le cron (chaque heure) et exécutable à la main.
+//   npx convex run maintenance:cleanupOrphanAuth
+export const cleanupOrphanAuth = internalMutation({
+  args: { graceMinutes: v.optional(v.number()) },
+  handler: async (ctx, { graceMinutes }) => {
+    const cutoff = Date.now() - (graceMinutes ?? 30) * 60_000;
+    const linked = new Set((await ctx.db.query("agents").collect()).map((a) => a.userId as string));
+    const orphans = (await ctx.db.query("users").collect()).filter((u) => !linked.has(u._id as string) && u._creationTime < cutoff);
+    if (orphans.length === 0) return { orphans: 0 };
+    const orphanIds = new Set(orphans.map((u) => u._id as string));
+
+    // Sessions + refresh tokens rattachés.
+    const sessionIds = new Set<string>();
+    for (const s of await ctx.db.query("authSessions").collect()) {
+      const uid = (s as { userId?: Id<"users"> }).userId;
+      if (uid && orphanIds.has(uid as string)) { sessionIds.add(s._id as string); await ctx.db.delete(s._id); }
+    }
+    for (const rt of await ctx.db.query("authRefreshTokens").collect()) {
+      const sid = (rt as { sessionId?: Id<"authSessions"> }).sessionId;
+      if (sid && sessionIds.has(sid as string)) await ctx.db.delete(rt._id);
+    }
+    // Comptes (password provider) + codes de vérification rattachés.
+    const accountIds = new Set<string>();
+    for (const acc of await ctx.db.query("authAccounts").collect()) {
+      const uid = (acc as { userId?: Id<"users"> }).userId;
+      if (uid && orphanIds.has(uid as string)) { accountIds.add(acc._id as string); await ctx.db.delete(acc._id); }
+    }
+    for (const vc of await ctx.db.query("authVerificationCodes").collect()) {
+      const aid = (vc as { accountId?: Id<"authAccounts"> }).accountId;
+      if (aid && accountIds.has(aid as string)) await ctx.db.delete(vc._id);
+    }
+    for (const u of orphans) await ctx.db.delete(u._id);
+
+    return { orphans: orphans.length };
+  },
+});
