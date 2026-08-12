@@ -13,14 +13,21 @@ const STALE_MS = 5 * 60 * 1000;
 
 // Forme de l'instantané : la table le stocke en v.any(), ce type restitue le
 // contrat au client, qui perdrait sinon tout typage.
+type TopAgent = { matricule: number | null; name: string; count: number };
+type PeriodStats = {
+  arrests: number;
+  citations: number;
+  topAgents: TopAgent[];
+  topAgentsCasiers: TopAgent[];
+  topAgentsContraventions: TopAgent[];
+};
+export const STAT_PERIODS = [7, 14, 30] as const;
 export type StatsData = {
   counts: { agentsActive: number; citizensCount: number; vehiclesCount: number; weaponsCount: number; mandatsActive: number };
-  arrests: { total: number; week: number; month: number };
-  citations: { total: number; week: number; month: number };
-  fines: { collected: number; unpaid: number };
-  topAgents: { matricule: number | null; name: string; count: number }[];
+  // Statistiques par fenêtre glissante (jours). Le front choisit la période.
+  periods: Record<string, PeriodStats>;
   topCharges: { name: string; count: number }[];
-  days: { day: string; arr: number; cit: number }[];
+  days: { day: string; arr: number; cit: number }[]; // série journalière sur 30 j
   defcon: { name: string; color: string | null } | null;
 };
 
@@ -60,8 +67,6 @@ export const recompute = internalMutation({
   args: {},
   handler: async (ctx) => {
     const now = Date.now();
-    const weekAgo = now - 7 * DAY;
-    const monthAgo = now - 30 * DAY;
 
     // ---- Compteurs globaux ----
     const allAgents = await ctx.db.query("agents").collect();
@@ -73,46 +78,56 @@ export const recompute = internalMutation({
     const vehiclesCount = (await ctx.db.query("vehicles").take(5000)).filter((v) => !v.deletedAt).length;
     const weaponsCount = (await ctx.db.query("weapons").take(5000)).filter((w) => !w.deletedAt).length;
 
+    // ---- Fenêtres glissantes (7 / 14 / 30 j) ----
+    // Un même acte est compté dans toutes les fenêtres qui l'englobent.
+    const bump = (m: Map<string, number>, id: string) => m.set(id, (m.get(id) ?? 0) + 1);
+    type Bucket = { arrests: number; citations: number; agent: Map<string, number>; casier: Map<string, number>; citation: Map<string, number> };
+    const buckets: Record<number, Bucket> = {} as Record<number, Bucket>;
+    for (const p of STAT_PERIODS) buckets[p] = { arrests: 0, citations: 0, agent: new Map(), casier: new Map(), citation: new Map() };
+    const since = (p: number) => now - p * DAY;
+
     // ---- Arrestations (casier) ----
     const casiers = await ctx.db.query("casierEntries").order("desc").take(2000);
-    let arrTotal = 0, arrWeek = 0, arrMonth = 0, fineCollected = 0, fineUnpaid = 0;
-    const agentTally = new Map<string, number>();
     for (const e of casiers) {
       if (e.deletedAt || e.status === "ANNULEE") continue;
-      arrTotal++;
-      if (e.at >= weekAgo) arrWeek++;
-      if (e.at >= monthAgo) arrMonth++;
-      if (e.totalFine > 0) {
-        if (e.finePaid === true) fineCollected += e.totalFine;
-        else fineUnpaid += e.totalFine;
-      }
-      if (e.at >= monthAgo) {
-        const off = e.officerIds[0] ?? e.createdBy;
-        if (off && off !== ownerId) agentTally.set(off, (agentTally.get(off) ?? 0) + 1);
+      const off = e.officerIds[0] ?? e.createdBy;
+      for (const p of STAT_PERIODS) {
+        if (e.at < since(p)) continue;
+        buckets[p].arrests++;
+        if (off && off !== ownerId) { bump(buckets[p].agent, off); bump(buckets[p].casier, off); }
       }
     }
 
     // ---- Contraventions ----
     const citations = await ctx.db.query("citations").order("desc").take(2000);
-    let citTotal = 0, citWeek = 0, citMonth = 0;
     for (const c of citations) {
       if (c.deletedAt || c.status === "ANNULEE") continue;
-      citTotal++;
-      if (c.at >= weekAgo) citWeek++;
-      if (c.at >= monthAgo) citMonth++;
-      if (c.totalFine > 0) {
-        if (c.finePaid === true) fineCollected += c.totalFine;
-        else fineUnpaid += c.totalFine;
+      for (const p of STAT_PERIODS) {
+        if (c.at < since(p)) continue;
+        buckets[p].citations++;
+        if (c.officerId !== ownerId) { bump(buckets[p].agent, c.officerId); bump(buckets[p].citation, c.officerId); }
       }
-      if (c.at >= monthAgo && c.officerId !== ownerId) agentTally.set(c.officerId, (agentTally.get(c.officerId) ?? 0) + 1);
     }
 
-    // ---- Top agents (30 j) ----
-    const topAgentsRaw = [...agentTally.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6);
-    const topAgents = [];
-    for (const [id, count] of topAgentsRaw) {
-      const label = await agentLabel(ctx, id as import("./_generated/dataModel").Id<"agents">);
-      topAgents.push({ ...label, count });
+    // ---- Top agents par fenêtre : global / casiers / contraventions ----
+    const buildTop = async (tally: Map<string, number>) => {
+      const raw = [...tally.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6);
+      const list = [];
+      for (const [id, count] of raw) {
+        const label = await agentLabel(ctx, id as import("./_generated/dataModel").Id<"agents">);
+        list.push({ ...label, count });
+      }
+      return list;
+    };
+    const periods: Record<string, PeriodStats> = {};
+    for (const p of STAT_PERIODS) {
+      periods[String(p)] = {
+        arrests: buckets[p].arrests,
+        citations: buckets[p].citations,
+        topAgents: await buildTop(buckets[p].agent),
+        topAgentsCasiers: await buildTop(buckets[p].casier),
+        topAgentsContraventions: await buildTop(buckets[p].citation),
+      };
     }
 
     // ---- Top charges (casier + contraventions) ----
@@ -125,9 +140,10 @@ export const recompute = internalMutation({
     }
     const topCharges = [...chargeTally.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([name, count]) => ({ name, count }));
 
-    // ---- Activité par jour (14 derniers jours) : arrestations + contraventions ----
+    // ---- Activité par jour (30 derniers jours) : arrestations + contraventions ----
+    // Le front tronque à la période choisie (7 / 14 / 30 j).
     const days: { day: string; arr: number; cit: number }[] = [];
-    for (let i = 13; i >= 0; i--) {
+    for (let i = 29; i >= 0; i--) {
       const start = new Date(now - i * DAY);
       start.setHours(0, 0, 0, 0);
       const s = start.getTime();
@@ -150,12 +166,9 @@ export const recompute = internalMutation({
     // ---- Mandats actifs ----
     const mandatsActive = (await ctx.db.query("mandats").withIndex("by_status", (q) => q.eq("status", "ACTIF")).collect()).filter((m) => !m.deletedAt).length;
 
-    const data = {
+    const data: StatsData = {
       counts: { agentsActive, citizensCount, vehiclesCount, weaponsCount, mandatsActive },
-      arrests: { total: arrTotal, week: arrWeek, month: arrMonth },
-      citations: { total: citTotal, week: citWeek, month: citMonth },
-      fines: { collected: fineCollected, unpaid: fineUnpaid },
-      topAgents,
+      periods,
       topCharges,
       days,
       defcon: currentDefcon ? { name: currentDefcon.name, color: currentDefcon.color ?? null } : null,

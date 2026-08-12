@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/lib/api";
 import { fmtMatricule } from "@/components/common/AgentTag";
@@ -14,9 +14,15 @@ function Stat({ label, value, sub, color }: { label: string; value: string; sub?
   );
 }
 
+type TopFilter = "all" | "casiers" | "contraventions";
+const PERIODS = [7, 14, 30] as const;
+type Period = (typeof PERIODS)[number];
+
 export function Statistiques() {
   const s = useQuery(api.stats.overview);
   const requestRefresh = useMutation(api.stats.requestRefresh);
+  const [topFilter, setTopFilter] = useState<TopFilter>("all");
+  const [period, setPeriod] = useState<Period>(14);
 
   // Consulter la page demande un rafraîchissement, ignoré si l'instantané a
   // moins de cinq minutes. C'est aussi ce qui produit le tout premier calcul.
@@ -36,16 +42,30 @@ export function Statistiques() {
     );
   }
 
-  const maxDay = Math.max(1, ...s.days.map((d) => d.arr + d.cit));
+  // Le back renvoie une série de 30 jours ; on tronque à la période choisie.
+  const chartDays = s.days.slice(-period);
+  const maxDay = Math.max(1, ...chartDays.map((d) => d.arr + d.cit));
+  const pstats = s.periods?.[String(period)] ?? { arrests: 0, citations: 0, topAgents: [], topAgentsCasiers: [], topAgentsContraventions: [] };
 
   return (
     <div className="p-[22px_26px]" style={{ animation: "mdtFade .2s ease" }}>
-      <div className="mb-[18px] flex items-center gap-3">
+      <div className="mb-[18px] flex flex-wrap items-center gap-3">
         <div>
           <h1 className="m-0 text-[21px] font-bold tracking-tight">Statistiques</h1>
           <div className="mt-[3px] text-[13px] text-muted">Activité et indicateurs de la station</div>
         </div>
         <div className="flex-1" />
+        <div className="flex gap-[3px] rounded-[8px] bg-surface-2 p-[3px]">
+          {PERIODS.map((p) => (
+            <button
+              key={p}
+              onClick={() => setPeriod(p)}
+              className={`rounded-[6px] px-[11px] py-[6px] text-[12px] font-semibold transition-colors ${period === p ? "bg-accent text-accent-contrast" : "text-muted hover:text-text"}`}
+            >
+              {p} j
+            </button>
+          ))}
+        </div>
         {s.defcon && (
           <span className="rounded-[7px] px-[12px] py-[7px] text-[12px] font-bold" style={{ background: `color-mix(in srgb, ${s.defcon.color ?? "var(--accent)"} 16%, transparent)`, color: s.defcon.color ?? "var(--accent)" }}>
             DEFCON · {s.defcon.name}
@@ -64,16 +84,16 @@ export function Statistiques() {
 
       <div className="grid grid-cols-1 items-start gap-[18px] lg:grid-cols-[1.5fr_1fr]">
         <div className="flex flex-col gap-[18px]">
-          {/* Activité 14 jours */}
+          {/* Activité sur la période */}
           <div className="rounded-card border border-border bg-surface p-4">
             <div className="mb-[14px] flex items-center gap-2">
-              <h2 className="m-0 text-[13.5px] font-bold">Activité · 14 derniers jours</h2>
+              <h2 className="m-0 text-[13.5px] font-bold">Activité · {period} derniers jours</h2>
               <div className="flex-1" />
               <span className="flex items-center gap-[5px] text-[11px] text-muted"><span className="h-[8px] w-[8px] rounded-[2px]" style={{ background: "var(--danger)" }} /> Arrestations</span>
               <span className="flex items-center gap-[5px] text-[11px] text-muted"><span className="h-[8px] w-[8px] rounded-[2px]" style={{ background: "var(--warning)" }} /> Contraventions</span>
             </div>
             <div className="flex items-end gap-[6px]" style={{ height: 160 }}>
-              {s.days.map((d, i) => {
+              {chartDays.map((d, i) => {
                 const total = d.arr + d.cit;
                 const h = (total / maxDay) * 140;
                 const arrH = total > 0 ? (d.arr / total) * h : 0;
@@ -84,7 +104,7 @@ export function Statistiques() {
                       <div className="w-full rounded-t-[3px]" style={{ height: citH, background: "var(--warning)" }} />
                       <div className="w-full" style={{ height: arrH, background: "var(--danger)", borderTopLeftRadius: citH === 0 ? 3 : 0, borderTopRightRadius: citH === 0 ? 3 : 0 }} />
                     </div>
-                    <span className="text-[9px] text-faint">{d.day}</span>
+                    <span className="text-[9px] text-faint">{period > 14 && i % 3 !== 0 ? "" : d.day}</span>
                   </div>
                 );
               })}
@@ -114,30 +134,57 @@ export function Statistiques() {
         </div>
 
         <div className="flex flex-col gap-[18px]">
-          {/* Arrestations / contraventions résumé */}
+          {/* Arrestations / contraventions résumé (période choisie) */}
           <div className="grid grid-cols-2 gap-px overflow-hidden rounded-card border border-border bg-border">
-            <Stat label="Arrestations (7j)" value={String(s.arrests.week)} sub={`${s.arrests.month} sur 30j`} />
-            <Stat label="Contraventions (7j)" value={String(s.citations.week)} sub={`${s.citations.month} sur 30j`} />
+            <Stat label={`Arrestations (${period}j)`} value={String(pstats.arrests)} />
+            <Stat label={`Contraventions (${period}j)`} value={String(pstats.citations)} />
           </div>
 
           {/* Top agents */}
-          <div className="overflow-hidden rounded-card border border-border bg-surface">
-            <div className="border-b border-border px-4 py-[13px]"><h2 className="m-0 text-[13.5px] font-bold">Agents les plus actifs</h2><div className="mt-[2px] text-[11px] text-faint">30 derniers jours · arrestations + contraventions</div></div>
-            {s.topAgents.length === 0 ? (
-              <div className="p-4 text-[13px] text-faint">Aucune donnée.</div>
-            ) : (
-              s.topAgents.map((a, i) => (
-                <div key={i} className="flex items-center gap-[10px] border-b border-border px-4 py-[10px]">
-                  <span className="w-[16px] text-center font-data text-[12px] font-bold text-faint">{i + 1}</span>
-                  <div className="min-w-0 flex-1 text-[12.5px] font-semibold">
-                    {fmtMatricule(a.matricule) && <span className="font-data text-accent">{fmtMatricule(a.matricule)} </span>}
-                    {a.name}
+          {(() => {
+            const list = (topFilter === "casiers" ? pstats.topAgentsCasiers : topFilter === "contraventions" ? pstats.topAgentsContraventions : pstats.topAgents) ?? [];
+            const sub = topFilter === "casiers" ? "casiers" : topFilter === "contraventions" ? "contraventions" : "arrestations + contraventions";
+            const tabs: { key: TopFilter; label: string }[] = [
+              { key: "all", label: "Tout" },
+              { key: "casiers", label: "Casiers" },
+              { key: "contraventions", label: "Contraventions" },
+            ];
+            return (
+              <div className="overflow-hidden rounded-card border border-border bg-surface">
+                <div className="border-b border-border px-4 py-[13px]">
+                  <div className="flex items-center gap-2">
+                    <h2 className="m-0 flex-1 text-[13.5px] font-bold">Agents les plus actifs</h2>
+                    <div className="flex gap-[3px] rounded-[7px] bg-surface-2 p-[3px]">
+                      {tabs.map((t) => (
+                        <button
+                          key={t.key}
+                          onClick={() => setTopFilter(t.key)}
+                          className={`rounded-[5px] px-[8px] py-[3px] text-[11px] font-semibold transition-colors ${topFilter === t.key ? "bg-accent text-accent-contrast" : "text-muted hover:text-text"}`}
+                        >
+                          {t.label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                  <span className="font-data text-[13px] font-bold">{a.count}</span>
+                  <div className="mt-[3px] text-[11px] text-faint">{period} derniers jours · {sub}</div>
                 </div>
-              ))
-            )}
-          </div>
+                {list.length === 0 ? (
+                  <div className="p-4 text-[13px] text-faint">Aucune donnée.</div>
+                ) : (
+                  list.map((a, i) => (
+                    <div key={i} className="flex items-center gap-[10px] border-b border-border px-4 py-[10px]">
+                      <span className="w-[16px] text-center font-data text-[12px] font-bold text-faint">{i + 1}</span>
+                      <div className="min-w-0 flex-1 text-[12.5px] font-semibold">
+                        {fmtMatricule(a.matricule) && <span className="font-data text-accent">{fmtMatricule(a.matricule)} </span>}
+                        {a.name}
+                      </div>
+                      <span className="font-data text-[13px] font-bold">{a.count}</span>
+                    </div>
+                  ))
+                )}
+              </div>
+            );
+          })()}
         </div>
       </div>
     </div>
