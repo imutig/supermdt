@@ -212,7 +212,7 @@ function Gated() {
         <Route path="/mandats" element={<RequirePerm perm="mandats.view"><MandatsPage /></RequirePerm>} />
         <Route path="/rapports" element={<RequirePerm perm="rapports.view"><Rapports /></RequirePerm>} />
         <Route path="/rapport/:id" element={<RequirePerm perm="rapports.view"><RapportEditor /></RequirePerm>} />
-        <Route path="/contraventions" element={FEATURES.judicialWrite ? <RequirePerm perm="contraventions.view"><Contraventions /></RequirePerm> : <Navigate to="/" replace />} />
+        <Route path="/contraventions" element={<RequirePerm perm="contraventions.view"><Contraventions /></RequirePerm>} />
         <Route path="/archive" element={<RequirePerm perm="archive.view"><Archive /></RequirePerm>} />
         <Route path="/division/:id" element={<DivisionSpace />} />
         <Route path="/statistiques" element={<RequirePerm perm="stats.view"><Statistiques /></RequirePerm>} />

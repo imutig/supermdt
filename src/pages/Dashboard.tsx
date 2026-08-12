@@ -35,7 +35,7 @@ export function Dashboard() {
   const { can } = useCan();
   const mandatsQ = useQuery(api.mandats.active, can("mandats.view") ? {} : "skip");
   const presenceQ = useQuery(api.agents.presence, can("effectif.view") ? {} : "skip");
-  const feedQ = useQuery(api.activity.home, can("casier.view") ? {} : "skip");
+  const feedQ = useQuery(api.activity.home, can("casier.view") || can("contraventions.view") || can("rapports.view") ? {} : "skip");
   const upcomingQ = useQuery(api.calendar.upcoming, can("calendrier.view") ? {} : "skip");
   const mandats = mandatsQ ?? [];
   const presenceList = presenceQ ?? [];
@@ -166,28 +166,31 @@ export function Dashboard() {
           <div className="overflow-hidden rounded-card border border-border bg-surface">
             <div className="flex items-center gap-[9px] border-b border-border px-4 py-[13px]">
               <h2 className="m-0 text-[13.5px] font-bold">Activité récente</h2>
-              <span className="text-[11px] text-faint">dernières entrées de casier &amp; rapports</span>
+              <span className="text-[11px] text-faint">derniers casiers, contraventions &amp; rapports</span>
             </div>
             {feedQ === undefined && <div className="p-4"><SkeletonRows rows={4} /></div>}
             {feedQ !== undefined && feed.length === 0 && (
-              <EmptyState compact title="Aucune activité récente" message="Les nouveaux casiers et rapports apparaîtront ici." />
+              <EmptyState compact title="Aucune activité récente" message="Les nouveaux casiers, contraventions et rapports apparaîtront ici." />
             )}
-            {feed.map((f) => (
+            {feed.map((f) => {
+              const style =
+                f.kind === "casier"
+                  ? { color: "var(--danger)", label: "Casier", bg: "color-mix(in srgb, var(--danger) 12%, transparent)" }
+                  : f.kind === "citation"
+                    ? { color: "var(--warning)", label: "Contrav.", bg: "color-mix(in srgb, var(--warning) 14%, transparent)" }
+                    : { color: "var(--accent)", label: "Rapport", bg: "var(--accent-soft)" };
+              return (
               <div
                 key={`${f.kind}-${f._id}`}
-                onClick={() => navigate(f.kind === "casier" ? `/citoyen/${f.citizenId}` : `/rapport/${f.reportId}`)}
+                onClick={() => navigate(f.kind === "report" ? `/rapport/${f.reportId}` : `/citoyen/${f.citizenId}`)}
                 className="flex cursor-pointer items-center gap-[13px] border-b border-border px-4 py-[12px] hover:bg-surface-2"
               >
-                <Clover color={f.kind === "casier" ? "var(--danger)" : "var(--accent)"} size={13} />
+                <Clover color={style.color} size={13} />
                 <span
                   className="h-fit rounded-[5px] px-[8px] py-[3px] text-[10px] font-bold uppercase tracking-[0.05em]"
-                  style={
-                    f.kind === "casier"
-                      ? { background: "color-mix(in srgb, var(--danger) 12%, transparent)", color: "var(--danger)" }
-                      : { background: "var(--accent-soft)", color: "var(--accent)" }
-                  }
+                  style={{ background: style.bg, color: style.color }}
                 >
-                  {f.kind === "casier" ? "Casier" : "Rapport"}
+                  {style.label}
                 </span>
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-[13px] font-semibold">{f.title}</div>
@@ -195,7 +198,8 @@ export function Dashboard() {
                 </div>
                 <span className="font-data text-[11px] text-faint">{relTime(f.at)}</span>
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 

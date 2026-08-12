@@ -83,11 +83,12 @@ export const home = query({
   handler: async (ctx) => {
     const agent = await requireAgent(ctx);
     const canCasier = await can(ctx, agent, "casier.view");
+    const canContraventions = await can(ctx, agent, "contraventions.view");
     const canReports = await can(ctx, agent, "rapports.view");
 
     const out: {
       _id: string;
-      kind: "casier" | "report";
+      kind: "casier" | "citation" | "report";
       title: string;
       subtitle: string;
       citizenId: string | null;
@@ -113,6 +114,25 @@ export const home = query({
           citizenId: e.citizenId,
           reportId: null,
           at: e.at,
+        });
+      }
+    }
+    if (canContraventions) {
+      const cits = (await ctx.db.query("citations").withIndex("by_at").order("desc").take(40)).filter((c) => !c.deletedAt).slice(0, 12);
+      for (const c of cits) {
+        const citizen = await ctx.db.get(c.citizenId);
+        const charges = await ctx.db
+          .query("citationCharges")
+          .withIndex("by_citation", (q) => q.eq("citationId", c._id))
+          .collect();
+        out.push({
+          _id: c._id,
+          kind: "citation",
+          title: citizen ? `${citizen.prenom} ${citizen.nom}` : "-",
+          subtitle: charges.map((x) => x.snapshot.name).join(", ") || "Contravention",
+          citizenId: c.citizenId,
+          reportId: null,
+          at: c.at,
         });
       }
     }
