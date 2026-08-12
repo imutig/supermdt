@@ -8,6 +8,7 @@ import type { Id } from "convex/_generated/dataModel";
 import { useMe } from "@/hooks/useMe";
 import { useCan } from "@/hooks/useCan";
 import { useToast } from "@/providers/toast";
+import { useDialogs } from "@/components/detective/dialogs";
 import { EmptyState } from "@/components/common/EmptyState";
 import { SkeletonRows } from "@/components/common/Skeleton";
 import { Button } from "@/components/common/Button";
@@ -120,6 +121,7 @@ function InterviewPanel({ id, onClose }: { id: Id<"interviews">; onClose: () => 
   const save = useMutation(api.interviews.save);
   const remove = useMutation(api.interviews.remove);
   const toast = useToast();
+  const { confirm } = useDialogs();
   const [prenom, setPrenom] = useState("");
   const [nom, setNom] = useState("");
   const [dob, setDob] = useState("");
@@ -192,7 +194,7 @@ function InterviewPanel({ id, onClose }: { id: Id<"interviews">; onClose: () => 
 
             <div className="flex flex-shrink-0 items-center gap-2 border-t border-border px-[18px] py-3">
               <button
-                onClick={async () => { if (confirm("Supprimer cet entretien ? Il sera archivé.")) { await toast.guard(remove({ id }), "Suppression impossible"); onClose(); } }}
+                onClick={async () => { if (await confirm({ title: "Supprimer cet entretien ?", message: "Il sera archivé.", danger: true, confirmLabel: "Supprimer" })) { await toast.guard(remove({ id }), "Suppression impossible"); onClose(); } }}
                 className="flex h-[34px] w-[34px] items-center justify-center rounded-sm border border-border bg-surface-2 text-faint hover:text-danger" title="Supprimer"
               ><Trash2 className="h-[15px] w-[15px]" /></button>
               <div className="flex-1" />
@@ -284,6 +286,7 @@ function ConfigRow({ item, first, last }: { item: ConfigItem; first: boolean; la
   const moveItem = useMutation(api.interviews.moveItem);
   const toggleItem = useMutation(api.interviews.toggleItem);
   const toast = useToast();
+  const { confirm } = useDialogs();
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState(item.text);
   const [expl, setExpl] = useState(item.explanation);
@@ -312,7 +315,7 @@ function ConfigRow({ item, first, last }: { item: ConfigItem; first: boolean; la
       </div>
       <label className="flex flex-shrink-0 items-center gap-[4px] text-[11px] text-faint"><input type="checkbox" checked={item.active} onChange={(e) => void toggleItem({ itemId: item._id as Id<"interviewItems">, active: e.target.checked })} /> actif</label>
       <button onClick={() => setEditing(true)} className="flex-shrink-0 rounded-sm border border-border bg-surface-2 px-[8px] py-[5px] text-[11.5px] font-semibold text-muted hover:text-text">Modifier</button>
-      <button onClick={() => { if (confirm("Supprimer cet élément de la banque ?")) void removeItem({ itemId: item._id as Id<"interviewItems"> }); }} className="flex-shrink-0 text-faint hover:text-danger"><Trash2 className="h-[14px] w-[14px]" /></button>
+      <button onClick={async () => { if (await confirm({ title: "Supprimer cet élément de la banque ?", danger: true, confirmLabel: "Supprimer" })) void removeItem({ itemId: item._id as Id<"interviewItems"> }); }} className="flex-shrink-0 text-faint hover:text-danger"><Trash2 className="h-[14px] w-[14px]" /></button>
     </div>
   );
 }

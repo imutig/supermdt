@@ -5,11 +5,13 @@ import { api, type Id } from "@/lib/api";
 import { useToast } from "@/providers/toast";
 import { TacticalMap, type TacticalMapHandle, type Shape } from "@/components/carte/TacticalMap";
 import { EmptyState } from "@/components/common/EmptyState";
+import { useDialogs } from "@/components/detective/dialogs";
 
 function parse(s: string): Shape[] { try { return JSON.parse(s) as Shape[]; } catch { return []; } }
 
 export function Carte() {
   const toast = useToast();
+  const { prompt } = useDialogs();
   const mine = useQuery(api.plans.mine);
   const [openId, setOpenId] = useState<Id<"mapPlans"> | null>(null);
   const [code, setCode] = useState("");
@@ -25,7 +27,7 @@ export function Carte() {
   const mapRef = useRef<TacticalMapHandle>(null);
 
   async function newPlan() {
-    const name = window.prompt("Nom du plan :")?.trim();
+    const name = (await prompt({ title: "Nouveau plan", label: "Nom du plan", placeholder: "ex. Braquage Fleeca" }))?.trim();
     if (!name) return;
     const id = await toast.guard(create({ name }), "Création impossible");
     if (id) { setViewCode(null); setOpenId(id as Id<"mapPlans">); }

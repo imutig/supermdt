@@ -7,6 +7,7 @@ import {
 import { api } from "@/lib/api";
 import type { Id } from "convex/_generated/dataModel";
 import { useToast } from "@/providers/toast";
+import { useDialogs } from "@/components/detective/dialogs";
 import { uploadImage } from "@/lib/uploadImage";
 import { EmptyState } from "@/components/common/EmptyState";
 import { SkeletonRows } from "@/components/common/Skeleton";
@@ -437,6 +438,7 @@ function RanksConfig({ divisionId }: { divisionId: Id<"divisions"> }) {
   const setPerms = useMutation(api.divisionSpace.setRankPerms);
   const rename = useMutation(api.divisionSpace.rankUpdate);
   const toast = useToast();
+  const { confirm } = useDialogs();
   const [newName, setNewName] = useState("");
   if (data === undefined) return <section className="rounded-card border border-border bg-surface p-4"><SkeletonRows rows={3} /></section>;
   const { ranks, catalog } = data;
@@ -453,7 +455,7 @@ function RanksConfig({ divisionId }: { divisionId: Id<"divisions"> }) {
               </div>
               <input defaultValue={r.name} onBlur={(e) => { if (e.target.value.trim() && e.target.value !== r.name) void rename({ rankId: r._id as Id<"divisionRanks">, name: e.target.value.trim() }); }}
                 className="h-8 flex-1 rounded-sm border border-border bg-surface px-2 text-[13px] font-semibold outline-none focus:border-accent" />
-              <button onClick={() => { if (confirm("Supprimer ce grade ?")) void remove({ rankId: r._id as Id<"divisionRanks"> }); }} className="text-faint hover:text-danger"><Trash2 className="h-[14px] w-[14px]" /></button>
+              <button onClick={async () => { if (await confirm({ title: "Supprimer ce grade ?", danger: true, confirmLabel: "Supprimer" })) void remove({ rankId: r._id as Id<"divisionRanks"> }); }} className="text-faint hover:text-danger"><Trash2 className="h-[14px] w-[14px]" /></button>
             </div>
             <div className="flex flex-wrap gap-[6px]">
               {catalog.map((c) => {

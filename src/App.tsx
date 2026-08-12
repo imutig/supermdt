@@ -37,6 +37,7 @@ const Statistiques = lazyReload(() => import("@/pages/Statistiques").then((m) =>
 import { Profil } from "@/pages/Profil";
 import { LoginPage } from "@/auth/LoginPage";
 import { JoinPage } from "@/auth/JoinPage";
+import { DialogsProvider } from "@/components/detective/dialogs";
 import { Onboarding } from "@/auth/Onboarding";
 import { PendingScreen } from "@/auth/PendingScreen";
 import { ChangePasswordScreen } from "@/auth/ChangePasswordScreen";
@@ -153,7 +154,7 @@ function Gated() {
   if ((!MDT_ENABLED || portal === "lspa") && !inLspa) return <Navigate to="/lspa" replace />;
 
   return (
-    <>
+    <DialogsProvider>
       {entryPending && (
         <EntryTransition
           agentName={`${me.agent.prenomRP.charAt(0)}. ${me.agent.nomRP}`}
@@ -220,6 +221,6 @@ function Gated() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>
-    </>
+    </DialogsProvider>
   );
 }

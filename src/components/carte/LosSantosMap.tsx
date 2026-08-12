@@ -60,11 +60,11 @@ export function LosSantosMap({
 
   useEffect(() => {
     if (!elRef.current || mapRef.current) return;
-    const map = L.map(elRef.current, { crs: L.CRS.Simple, minZoom: 0, maxZoom: 8, attributionControl: false });
+    const map = L.map(elRef.current, { crs: L.CRS.Simple, minZoom: 0, maxZoom: NATIVE_MAX, attributionControl: false });
     mapRef.current = map;
     const bounds = L.latLngBounds(map.unproject([0, WORLD], NATIVE_MAX), map.unproject([WORLD, 0], NATIVE_MAX));
     boundsRef.current = bounds;
-    L.tileLayer(TILE, { minZoom: 0, maxZoom: 8, maxNativeZoom: NATIVE_MAX, noWrap: true, bounds, tileSize: 256 }).addTo(map);
+    L.tileLayer(TILE, { minZoom: 0, maxZoom: NATIVE_MAX, noWrap: true, bounds, tileSize: 256 }).addTo(map);
     map.setMaxBounds(bounds);
     map.fitBounds(bounds);
     overlay.current = L.layerGroup().addTo(map);

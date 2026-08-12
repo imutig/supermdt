@@ -4,6 +4,7 @@ import "leaflet/dist/leaflet.css";
 import "@geoman-io/leaflet-geoman-free";
 import "@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css";
 import { Pentagon, PenTool, Spline, MapPin, Type as TypeIcon, CircleDashed, Pencil, Trash2, Eraser } from "lucide-react";
+import { useDialogs } from "@/components/detective/dialogs";
 
 // Carte tactique Leaflet (moteur Geoman), barre d'outils maison en français.
 // Modèle de formes en % (0-100), indépendant des tuiles → sérialisable et
@@ -62,6 +63,11 @@ export const TacticalMap = forwardRef<TacticalMapHandle, {
   const [color, setColor] = useState("#e23b3b");
   const [tool, setTool] = useState<Tool>(null);
 
+  // Dialogue de saisie in-app (jamais de prompt() natif). Réf pour l'utiliser
+  // dans les écouteurs Leaflet enregistrés une seule fois.
+  const { prompt: askDialog } = useDialogs();
+  const promptRef = useRef(askDialog);
+  useEffect(() => { promptRef.current = askDialog; }, [askDialog]);
   useEffect(() => { colorRef.current = color; }, [color]);
 
   // --- Conversions % <-> latlng (via les bornes des tuiles) ---
@@ -141,11 +147,11 @@ export const TacticalMap = forwardRef<TacticalMapHandle, {
 
   useEffect(() => {
     if (!elRef.current || mapRef.current) return;
-    const map = L.map(elRef.current, { crs: L.CRS.Simple, minZoom: 0, maxZoom: 8, attributionControl: false });
+    const map = L.map(elRef.current, { crs: L.CRS.Simple, minZoom: 0, maxZoom: NATIVE_MAX, attributionControl: false });
     mapRef.current = map;
     const bounds = L.latLngBounds(map.unproject([0, WORLD], NATIVE_MAX), map.unproject([WORLD, 0], NATIVE_MAX));
     boundsRef.current = bounds;
-    tileRef.current = L.tileLayer(TILE(style), { minZoom: 0, maxZoom: 8, maxNativeZoom: NATIVE_MAX, noWrap: true, bounds, tileSize: 256 }).addTo(map);
+    tileRef.current = L.tileLayer(TILE(style), { minZoom: 0, maxZoom: NATIVE_MAX, noWrap: true, bounds, tileSize: 256 }).addTo(map);
     map.setMaxBounds(bounds);
     map.fitBounds(bounds);
     (map as unknown as { pm: { setLang: (l: string) => void } }).pm.setLang("fr");
@@ -156,32 +162,36 @@ export const TacticalMap = forwardRef<TacticalMapHandle, {
       styleShape(map);
       map.on("pm:create", (e: { shape: string; layer: LayerWithMeta }) => {
         const c = colorRef.current;
+        (map as unknown as { pm: { disableDraw: () => void } }).pm.disableDraw(); // une forme par clic d'outil
         if (e.shape !== "Marker" && "setStyle" in e.layer) (e.layer as L.Path).setStyle({ color: c, fillColor: c, fillOpacity: 0.18, weight: 2 });
-        if (e.shape === "Marker") {
-          (e.layer as L.Marker).setIcon(pinIcon(c));
-          const txt = window.prompt("Texte du marqueur (optionnel) :")?.trim();
-          if (txt) (e.layer as L.Marker).bindTooltip(txt, { permanent: true, direction: "top", className: "gta-tt" });
-          e.layer._meta = { t: "marker", color: c, text: txt || undefined };
-        } else {
-          e.layer._meta = { t: e.shape === "Line" ? "line" : e.shape === "Circle" ? "circle" : "poly", color: c };
-        }
         if (e.shape === "Line") addArrows(map, e.layer as L.Polyline, c);
+        e.layer._meta = { t: e.shape === "Marker" ? "marker" : e.shape === "Line" ? "line" : e.shape === "Circle" ? "circle" : "poly", color: c };
         drawn.current.push(e.layer);
         setTool(null);
+        if (e.shape === "Marker") {
+          (e.layer as L.Marker).setIcon(pinIcon(c));
+          void promptRef.current({ title: "Marqueur", label: "Texte du marqueur (optionnel)", placeholder: "ex. PC, point d'entrée…" }).then((txt) => {
+            const t = txt?.trim();
+            if (t) { (e.layer as L.Marker).bindTooltip(t, { permanent: true, direction: "top", className: "gta-tt" }); e.layer._meta!.text = t; }
+          });
+        }
       });
 
       // Texte libre (clic simple) sans fond.
       map.on("click", (e: L.LeafletMouseEvent) => {
         if (!placeText.current) return;
-        const txt = window.prompt("Texte à placer :")?.trim();
+        const latlng = e.latlng;
         placeText.current = false;
         map.getContainer().style.cursor = "";
         setTool(null);
-        if (!txt) return;
-        const c = colorRef.current;
-        const m = L.marker(e.latlng, { icon: textIcon(c, txt) }) as LayerWithMeta;
-        m._meta = { t: "text", color: c, text: txt };
-        m.addTo(map); drawn.current.push(m);
+        void promptRef.current({ title: "Texte", label: "Texte à placer", placeholder: "ex. Zone d'assaut" }).then((txt) => {
+          const t = txt?.trim();
+          if (!t) return;
+          const c = colorRef.current;
+          const m = L.marker(latlng, { icon: textIcon(c, t) }) as LayerWithMeta;
+          m._meta = { t: "text", color: c, text: t };
+          m.addTo(map); drawn.current.push(m);
+        });
       });
 
       // Freehand secteur.

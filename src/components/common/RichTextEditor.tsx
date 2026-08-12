@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from "react";
+import { useDialogs } from "@/components/detective/dialogs";
 import { useEditor, EditorContent, type Editor, type Extensions } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Underline from "@tiptap/extension-underline";
@@ -138,10 +139,11 @@ const ICON = "h-[15px] w-[15px]";
 // rapports, qui construit son instance Tiptap lui-même.
 export function RichTextToolbar({ editor }: { editor: Editor }) {
   const [menu, setMenu] = useState<"color" | "highlight" | null>(null);
+  const { prompt } = useDialogs();
 
-  const setLink = () => {
+  const setLink = async () => {
     const previous = editor.getAttributes("link").href as string | undefined;
-    const url = window.prompt("Adresse du lien", previous ?? "https://");
+    const url = await prompt({ title: "Lien", label: "Adresse du lien", defaultValue: previous ?? "https://", placeholder: "https://…" });
     if (url === null) return;
     if (!url.trim()) { editor.chain().focus().unsetLink().run(); return; }
     editor.chain().focus().extendMarkRange("link").setLink({ href: url.trim() }).run();
