@@ -636,24 +636,70 @@ export async function handleDirectMessage(msg: Message) {
   const ticket = await mdt.ticketByOwner(msg.author.id);
   if (ticket) {
     const ok = await relayCandidateMessage(msg, ticket.channelId, `${ticket.prenom} ${ticket.nom}`);
-    if (ok) await msg.react("📨").catch(() => {});
+    if (ok) {
+      await msg.react("📨").catch(() => {});
+      // La réponse du candidat annule une éventuelle fermeture programmée.
+      const cancel = await mdt.ticketCancelScheduledClose(ticket.channelId).catch(() => ({ cancelled: false }));
+      if (cancel.cancelled) {
+        const chan = await msg.client.channels.fetch(ticket.channelId).catch(() => null);
+        if (chan && chan.type === ChannelType.GuildText) {
+          await (chan as TextChannel).send({ embeds: [baseEmbed(BRAND.green).setDescription("✅ Le candidat a répondu : la fermeture automatique est **annulée**.")] }).catch(() => {});
+        }
+      }
+    }
     return;
   }
   await dmSay(msg.author, BRAND.muted, "Pour déposer une candidature à la Police Academy, envoie-moi simplement le mot **Candidature**.");
 }
 
-// Message dans un salon serveur : commandes recruteur !r / !a.
+// Délai type "24h" / "3j" / "3d" -> millisecondes (h = heures, j/d = jours).
+function parseDelay(s: string): number | null {
+  const m = /^(\d+)\s*([hjd])$/i.exec(s.trim());
+  if (!m) return null;
+  const n = +m[1];
+  if (n <= 0) return null;
+  return m[2].toLowerCase() === "h" ? n * 3_600_000 : n * 86_400_000;
+}
+function delayLabel(s: string): string {
+  const m = /^(\d+)\s*([hjd])$/i.exec(s.trim());
+  if (!m) return s;
+  const n = +m[1];
+  return m[2].toLowerCase() === "h" ? `${n} heure${n > 1 ? "s" : ""}` : `${n} jour${n > 1 ? "s" : ""}`;
+}
+
+// !close <délai> : programme la fermeture auto de la candidature sans réponse.
+async function handleScheduledClose(msg: Message, ticket: { ownerId: string }, arg: string) {
+  const ms = parseDelay(arg);
+  if (ms === null) { await msg.reply("Format : `!close 24h`, `!close 3j` ou `!close 3d`.").catch(() => {}); return; }
+  const closeAt = Date.now() + ms;
+  const res = await mdt.ticketScheduleClose(msg.channel.id, closeAt, msg.member?.displayName ?? msg.author.username);
+  if (!res) { await msg.react("⚠️").catch(() => {}); return; }
+  const label = delayLabel(arg);
+  const sec = Math.floor(closeAt / 1000);
+  try {
+    const cand = await msg.client.users.fetch(ticket.ownerId);
+    await cand.send({ embeds: [baseEmbed(BRAND.warning).setTitle("⏳ Réponse attendue")
+      .setDescription(`Sans réponse de ta part **dans ${label}** (avant le <t:${sec}:F>), ta candidature sera **automatiquement fermée** et tu devras **recandidater de zéro**.\n\nPour la maintenir active, réponds-moi simplement ici en message privé.`)] });
+  } catch { /* MP fermés */ }
+  await (msg.channel as TextChannel).send({ embeds: [baseEmbed(BRAND.warning).setDescription(`⏳ Fermeture automatique programmée dans **${label}** (<t:${sec}:R>) sauf réponse du candidat. Le candidat a été prévenu en MP.`)] }).catch(() => {});
+  await msg.delete().catch(() => {});
+}
+
+// Message dans un salon serveur : commandes recruteur !r / !a / !close.
 export async function handleTicketChannelMessage(msg: Message) {
-  const m = /^!([ra])\b\s*([\s\S]*)$/i.exec(msg.content ?? "");
-  if (!m) return;
+  const content = msg.content ?? "";
+  const closeM = /^!close\b\s*(.*)$/i.exec(content);
+  const relayM = /^!([ra])\b\s*([\s\S]*)$/i.exec(content);
+  if (!closeM && !relayM) return;
   const ticket = await mdt.ticketByChannel(msg.channel.id);
   if (!ticket) return;
   const cfg = await mdt.ticketConfigGet();
   const member = msg.member ?? (msg.guild ? await msg.guild.members.fetch(msg.author.id).catch(() => null) : null);
   if (!isRecruiter(member, cfg)) { await msg.react("⛔").catch(() => {}); return; }
-  const body = m[2].trim();
+  if (closeM) { await handleScheduledClose(msg, ticket, closeM[1]); return; }
+  const body = relayM![2].trim();
   if (!body) { await msg.react("❓").catch(() => {}); return; }
-  await relayRecruiterMessage(msg, ticket.ownerId, body, m[1].toLowerCase() === "a");
+  await relayRecruiterMessage(msg, ticket.ownerId, body, relayM![1].toLowerCase() === "a");
   await msg.delete().catch(() => {});
 }
 

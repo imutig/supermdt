@@ -689,6 +689,57 @@ export const ticketClose = mutation({
   },
 });
 
+// !close <délai> : programme une fermeture automatique faute de réponse.
+export const ticketScheduleClose = mutation({
+  args: { secret: v.string(), channelId: v.string(), closeAt: v.number(), by: v.optional(v.string()) },
+  handler: async (ctx, { secret, channelId, closeAt, by }) => {
+    assertBot(secret);
+    const t = await ctx.db.query("tickets").withIndex("by_channel", (q) => q.eq("channelId", channelId)).first();
+    if (!t || t.status !== "OPEN") return null;
+    await ctx.db.patch(t._id, { scheduledCloseAt: closeAt });
+    await logEvent(ctx, t, { type: "status", label: `Fermeture automatique programmée le ${new Date(closeAt).toLocaleString("fr-FR", { timeZone: "Europe/Paris", dateStyle: "short", timeStyle: "short" })} sans réponse`, by });
+    return { ownerId: t.ownerId, prenom: t.prenom, nom: t.nom };
+  },
+});
+
+// Le candidat a répondu : on annule la fermeture programmée (le cas échéant).
+export const ticketCancelScheduledClose = mutation({
+  args: { secret: v.string(), channelId: v.string() },
+  handler: async (ctx, { secret, channelId }) => {
+    assertBot(secret);
+    const t = await ctx.db.query("tickets").withIndex("by_channel", (q) => q.eq("channelId", channelId)).first();
+    if (!t || t.scheduledCloseAt == null) return { cancelled: false as const };
+    await ctx.db.patch(t._id, { scheduledCloseAt: undefined });
+    await logEvent(ctx, t, { type: "status", label: "Réponse du candidat : fermeture automatique annulée" });
+    return { cancelled: true as const };
+  },
+});
+
+// Tickets dont la fermeture programmée est échue.
+export const ticketsDueForClose = query({
+  args: { secret: v.string(), now: v.number() },
+  handler: async (ctx, { secret, now }) => {
+    assertBot(secret);
+    const rows = (await ctx.db.query("tickets").collect())
+      .filter((t) => t.status === "OPEN" && t.scheduledCloseAt != null && t.scheduledCloseAt <= now);
+    return rows.map((t) => ({ channelId: t.channelId, ownerId: t.ownerId, prenom: t.prenom, nom: t.nom }));
+  },
+});
+
+// Fermeture automatique effective : la candidature repart de zéro (statut CLOSED
+// => plus prise en compte par ticketByOwner, le candidat peut recandidater).
+export const ticketAutoClose = mutation({
+  args: { secret: v.string(), channelId: v.string() },
+  handler: async (ctx, { secret, channelId }) => {
+    assertBot(secret);
+    const t = await ctx.db.query("tickets").withIndex("by_channel", (q) => q.eq("channelId", channelId)).first();
+    if (!t) return null;
+    await ctx.db.patch(t._id, { status: "CLOSED", scheduledCloseAt: undefined, closeReason: "Fermeture automatique (absence de réponse du candidat)", closedBy: "Système" });
+    await logEvent(ctx, t, { type: "close", label: "Ticket fermé automatiquement (absence de réponse du candidat)" });
+    return { ownerId: t.ownerId, prenom: t.prenom, nom: t.nom };
+  },
+});
+
 export const ticketReopen = mutation({
   args: { secret: v.string(), channelId: v.string(), by: v.optional(v.string()) },
   handler: async (ctx, { secret, channelId, by }) => {

@@ -111,6 +111,22 @@ export function startTasks(client: Client) {
       }
     }
 
+    // --- Fermetures de ticket programmées (!close <délai>) échues ---
+    try {
+      const due = await mdt.ticketsDueForClose(Date.now());
+      for (const t of due) {
+        const res = await mdt.ticketAutoClose(t.channelId);
+        if (!res) continue;
+        const cand = await client.users.fetch(t.ownerId).catch(() => null);
+        if (cand) {
+          await cand.send({ embeds: [baseEmbed(BRAND.muted).setTitle("Candidature fermée")
+            .setDescription("Faute de réponse dans le délai imparti, ta candidature a été **fermée**. Tu peux repartir de zéro à tout moment en m'envoyant le mot **Candidature**.")] }).catch(() => {});
+        }
+        const chan = await channel(client, t.channelId);
+        if (chan) await chan.send({ embeds: [baseEmbed(BRAND.muted).setDescription(`🔒 Ticket de **${t.prenom} ${t.nom}** fermé automatiquement (absence de réponse du candidat).`)] }).catch(() => {});
+      }
+    } catch (err) { console.error("[ticket] fermetures auto :", err); }
+
     // --- Catégories de promo : crée celles qui manquent, nettoie les supprimées ---
     await reconcilePromoCategories(client).catch(() => {});
     await reconcilePromoDeletions(client).catch(() => {});
