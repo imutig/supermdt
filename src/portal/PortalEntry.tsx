@@ -4,7 +4,7 @@ import { Sun, Moon, Lock, ArrowRight, ArrowLeft } from "lucide-react";
 import { api } from "@/lib/api";
 import { readableError } from "@/lib/errors";
 import { useApp } from "@/providers/app-state";
-import { usePortal } from "./portal-context";
+import { usePortal, type Portal } from "./portal-context";
 
 // Premier écran du site, avant toute connexion : on choisit la surface à
 // ouvrir. Le MDT peut demander un code d'accès ; le portail de l'académie est
@@ -20,18 +20,18 @@ export function PortalEntry({
   mdtDenied?: boolean;
 }) {
   const { mode, toggleMode } = useApp();
-  const { mdtLocked, mdtUnlocked, choose, markUnlocked } = usePortal();
-  const [asking, setAsking] = useState(false);
+  const { locked, unlocked, choose, markUnlocked } = usePortal();
+  const [asking, setAsking] = useState<Portal | null>(null);
 
   function pick(p: "mdt" | "lspa") {
     choose(p);
     onChosen?.(p);
   }
 
-  function openMdt() {
-    if (mdtDenied) return;
-    if (!mdtLocked || mdtUnlocked) pick("mdt");
-    else setAsking(true);
+  function open(p: Portal) {
+    if (p === "mdt" && mdtDenied) return;
+    if (!locked(p) || unlocked(p)) pick(p);
+    else setAsking(p);
   }
 
   return (
@@ -56,7 +56,7 @@ export function PortalEntry({
         </div>
 
         {asking ? (
-          <UnlockCard onBack={() => setAsking(false)} onUnlocked={(exp) => { markUnlocked(exp); pick("mdt"); }} />
+          <UnlockCard portal={asking} onBack={() => setAsking(null)} onUnlocked={(exp) => { markUnlocked(asking, exp); pick(asking); }} />
         ) : (
           <>
             <div className="mb-[20px] text-center text-[13.5px] text-muted">
@@ -70,10 +70,10 @@ export function PortalEntry({
                 title="MDT · Station 13"
                 subtitle="Mobile Data Terminal"
                 lines={["Dossiers citoyens et casiers", "Dispatch et patrouilles", "Rapports, mandats, véhicules"]}
-                cta={mdtDenied ? "Réservé aux agents assermentés" : mdtLocked && !mdtUnlocked ? "Code d'accès requis" : "Entrer"}
-                locked={mdtDenied || (mdtLocked && !mdtUnlocked)}
+                cta={mdtDenied ? "Réservé aux agents assermentés" : locked("mdt") && !unlocked("mdt") ? "Code d'accès requis" : "Entrer"}
+                locked={mdtDenied || (locked("mdt") && !unlocked("mdt"))}
                 disabled={mdtDenied}
-                onOpen={openMdt}
+                onOpen={() => open("mdt")}
               />
               <Card
                 index={1}
@@ -82,8 +82,9 @@ export function PortalEntry({
                 title="Portail LSPA"
                 subtitle="Los Santos Police Academy"
                 lines={["Formation des cadets", "Quiz et évaluations", "Suivi de promotion"]}
-                cta="Entrer"
-                onOpen={() => pick("lspa")}
+                cta={locked("lspa") && !unlocked("lspa") ? "Code d'accès requis" : "Entrer"}
+                locked={locked("lspa") && !unlocked("lspa")}
+                onOpen={() => open("lspa")}
               />
             </div>
           </>
@@ -176,11 +177,12 @@ function Card({
   );
 }
 
-function UnlockCard({ onBack, onUnlocked }: { onBack: () => void; onUnlocked: (expiresAt: number | null) => void }) {
+function UnlockCard({ portal, onBack, onUnlocked }: { portal: Portal; onBack: () => void; onUnlocked: (expiresAt: number | null) => void }) {
   const unlock = useMutation(api.access.unlock);
   const [code, setCode] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const label = portal === "lspa" ? "portail LSPA" : "MDT";
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -188,7 +190,7 @@ function UnlockCard({ onBack, onUnlocked }: { onBack: () => void; onUnlocked: (e
     setBusy(true);
     setErr(null);
     try {
-      const r = await unlock({ code });
+      const r = await unlock({ code, portal });
       onUnlocked(r.expiresAt);
     } catch (e) {
       setErr(readableError(e, "Code d'accès incorrect."));
@@ -207,8 +209,8 @@ function UnlockCard({ onBack, onUnlocked }: { onBack: () => void; onUnlocked: (e
           <Lock className="h-[18px] w-[18px]" />
         </span>
         <div>
-          <h2 className="m-0 text-[16px] font-bold">Accès au MDT</h2>
-          <div className="mt-[2px] text-[12.5px] text-muted">Saisissez le code d'accès du terminal.</div>
+          <h2 className="m-0 text-[16px] font-bold">Accès au {label}</h2>
+          <div className="mt-[2px] text-[12.5px] text-muted">Saisissez le code d'accès du {label}.</div>
         </div>
       </div>
 

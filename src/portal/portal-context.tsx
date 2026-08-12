@@ -4,24 +4,25 @@ import { api } from "@/lib/api";
 import { MDT_ENABLED } from "@/lib/features";
 
 // Choix du portail. Il se fait AVANT la connexion : c'est le premier écran du
-// site, et il décide quelle surface (MDT ou LSPA) s'ouvre ensuite.
+// site, et il décide quelle surface (MDT ou LSPA) s'ouvre ensuite. Chaque portail
+// peut demander son propre code d'accès (rideau, voir convex/access.ts).
 export type Portal = "mdt" | "lspa";
 
 const PORTAL_KEY = "s13.portal";
-const UNLOCK_KEY = "s13.mdtUnlock";
+const UNLOCK_KEY = (p: Portal) => `s13.unlock.${p}`;
 
 type Ctx = {
   portal: Portal | null;
-  /** Le serveur a-t-il répondu sur l'état du verrou ? */
+  /** Le serveur a-t-il répondu sur l'état des verrous ? */
   ready: boolean;
-  /** Un code d'accès est configuré côté serveur. */
-  mdtLocked: boolean;
-  /** Le navigateur a un déverrouillage valide en mémoire. */
-  mdtUnlocked: boolean;
+  /** Un code d'accès est configuré côté serveur pour ce portail. */
+  locked: (p: Portal) => boolean;
+  /** Le navigateur a un déverrouillage valide en mémoire pour ce portail. */
+  unlocked: (p: Portal) => boolean;
   choose: (p: Portal) => void;
   /** Retour à l'écran de choix. */
   clear: () => void;
-  markUnlocked: (expiresAt: number | null) => void;
+  markUnlocked: (p: Portal, expiresAt: number | null) => void;
 };
 
 const PortalCtx = createContext<Ctx | null>(null);
@@ -31,8 +32,8 @@ function readPortal(): Portal | null {
   return v === "mdt" || v === "lspa" ? v : null;
 }
 
-function readUnlockValid(): boolean {
-  const raw = localStorage.getItem(UNLOCK_KEY);
+function readUnlockValid(p: Portal): boolean {
+  const raw = localStorage.getItem(UNLOCK_KEY(p));
   if (!raw) return false;
   // "0" = déverrouillage sans échéance (aucun code n'était configuré).
   const until = Number(raw);
@@ -42,23 +43,26 @@ function readUnlockValid(): boolean {
 
 export function PortalProvider({ children }: { children: React.ReactNode }) {
   const [portalState, setPortal] = useState<Portal | null>(() => readPortal());
-  const [mdtUnlocked, setMdtUnlocked] = useState(() => readUnlockValid());
+  const [unlockTick, setUnlockTick] = useState(0); // force le recalcul après un déverrouillage
   const status = useQuery(api.access.status);
   const ready = status !== undefined;
-  const mdtLocked = status?.mdtLocked ?? false;
+
+  const locked = useCallback((p: Portal) => (p === "lspa" ? status?.lspaLocked : status?.mdtLocked) ?? false, [status]);
+  const unlocked = useCallback((p: Portal) => { void unlockTick; return readUnlockValid(p); }, [unlockTick]);
+
   // MDT désactivé : la seule surface est la LSPA, on force le portail quel que
   // soit ce qui traîne en mémoire.
   const portal: Portal | null = MDT_ENABLED ? portalState : "lspa";
 
-  // Le déverrouillage expire ; sans ce contrôle, un navigateur resté sur le MDT
-  // n'aurait jamais à ressaisir le code.
+  // Le déverrouillage expire ; sans ce contrôle, un navigateur resté sur un
+  // portail verrouillé n'aurait jamais à ressaisir le code.
   useEffect(() => {
-    if (!MDT_ENABLED || !ready) return;
-    if (portal === "mdt" && mdtLocked && !mdtUnlocked) {
+    if (!ready || !portal) return;
+    if (locked(portal) && !readUnlockValid(portal)) {
       localStorage.removeItem(PORTAL_KEY);
       setPortal(null);
     }
-  }, [ready, portal, mdtLocked, mdtUnlocked]);
+  }, [ready, portal, unlockTick, locked]);
 
   const choose = useCallback((p: Portal) => {
     localStorage.setItem(PORTAL_KEY, p);
@@ -70,14 +74,14 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
     setPortal(null);
   }, []);
 
-  const markUnlocked = useCallback((expiresAt: number | null) => {
-    localStorage.setItem(UNLOCK_KEY, String(expiresAt ?? 0));
-    setMdtUnlocked(true);
+  const markUnlocked = useCallback((p: Portal, expiresAt: number | null) => {
+    localStorage.setItem(UNLOCK_KEY(p), String(expiresAt ?? 0));
+    setUnlockTick((t) => t + 1);
   }, []);
 
   const value = useMemo(
-    () => ({ portal, ready, mdtLocked, mdtUnlocked, choose, clear, markUnlocked }),
-    [portal, ready, mdtLocked, mdtUnlocked, choose, clear, markUnlocked],
+    () => ({ portal, ready, locked, unlocked, choose, clear, markUnlocked }),
+    [portal, ready, locked, unlocked, choose, clear, markUnlocked],
   );
   return <PortalCtx.Provider value={value}>{children}</PortalCtx.Provider>;
 }

@@ -1,24 +1,27 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 
-// Verrou d'accès au MDT, en amont de toute connexion.
+// Verrou d'accès aux portails (MDT et LSPA), en amont de toute connexion.
 //
-// Le code vit dans la variable d'environnement Convex MDT_ACCESS_CODE, jamais
-// dans le bundle : une variable VITE_* serait lisible par quiconque ouvre les
-// sources de la page. La vérification se fait donc côté serveur.
+// Les codes vivent dans les variables d'environnement Convex MDT_ACCESS_CODE et
+// LSPA_ACCESS_CODE, jamais dans le bundle : une variable VITE_* serait lisible
+// par quiconque ouvre les sources de la page. La vérification se fait donc côté
+// serveur.
 //
-// Portée de ce verrou : c'est un rideau, pas une serrure. Il empêche de tomber
-// sur le MDT en arrivant sur le site ; il ne remplace pas l'authentification,
+// Portée de ces verrous : c'est un rideau, pas une serrure. Il empêche de tomber
+// sur un portail en arrivant sur le site ; il ne remplace pas l'authentification,
 // qui reste le seul contrôle sur les données. Une fois le code validé, le
 // déverrouillage est retenu par le navigateur et un utilisateur déterminé peut
 // le forger : rien de sensible ne doit dépendre de ce seul verrou.
 //
-// Le portail LSPA n'est jamais concerné : il reste ouvert.
+// Chaque portail a son propre code, indépendant. Sans code configuré pour un
+// portail, il reste ouvert (comportement prévisible, évite de s'enfermer dehors).
 
 const UNLOCK_DAYS = 7;
+const PORTAL = v.union(v.literal("mdt"), v.literal("lspa"));
 
-function accessCode(): string {
-  return (process.env.MDT_ACCESS_CODE ?? "").trim();
+function accessCode(which: "mdt" | "lspa"): string {
+  return ((which === "lspa" ? process.env.LSPA_ACCESS_CODE : process.env.MDT_ACCESS_CODE) ?? "").trim();
 }
 
 // Comparaison à durée constante : une comparaison naïve s'arrête au premier
@@ -30,18 +33,19 @@ function sameSecret(a: string, b: string): boolean {
   return diff === 0;
 }
 
-// Le MDT est-il protégé ? Aucune information sur le code lui-même n'est
-// renvoyée. Sans code configuré, pas de verrou : c'est le comportement le plus
-// prévisible, et il évite de s'enfermer dehors sur un déploiement neuf.
+// Quels portails sont protégés ? Aucune information sur les codes eux-mêmes.
 export const status = query({
   args: {},
-  handler: async () => ({ mdtLocked: accessCode().length > 0 }),
+  handler: async () => ({
+    mdtLocked: accessCode("mdt").length > 0,
+    lspaLocked: accessCode("lspa").length > 0,
+  }),
 });
 
 export const unlock = mutation({
-  args: { code: v.string() },
-  handler: async (_ctx, { code }) => {
-    const expected = accessCode();
+  args: { code: v.string(), portal: v.optional(PORTAL) },
+  handler: async (_ctx, { code, portal }) => {
+    const expected = accessCode(portal ?? "mdt");
     if (!expected) return { ok: true as const, expiresAt: null };
     if (!sameSecret(code.trim(), expected)) throw new Error("Code d'accès incorrect.");
     return { ok: true as const, expiresAt: Date.now() + UNLOCK_DAYS * 24 * 3600 * 1000 };
