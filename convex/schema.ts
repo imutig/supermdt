@@ -1844,6 +1844,10 @@ export default defineSchema({
     interviewMsgId: v.optional(v.string()), // message d'entretien dans le ticket
     voteMsgId: v.optional(v.string()), // message de vote pour/contre (statut VOTE)
     scheduledCloseAt: v.optional(v.number()), // !close <délai> : fermeture auto sans réponse du candidat
+    // Abonnements aux pings sur réponse du candidat (ids Discord des recruteurs).
+    // pingOnce : ping à la PROCHAINE réponse puis retiré. pingAlways : à chaque réponse.
+    pingOnce: v.optional(v.array(v.string())),
+    pingAlways: v.optional(v.array(v.string())),
     promotionId: v.optional(v.id("promotions")), // promo rejointe (après « Présent »)
     createdAt: v.number(),
     // Journal du ticket + raison de fermeture (repris dans l'archive).

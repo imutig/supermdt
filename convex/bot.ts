@@ -776,6 +776,40 @@ export const ticketCancelScheduledClose = mutation({
   },
 });
 
+// !ping / !alwaysping / !unping : abonnement d'un recruteur aux pings sur
+// réponse du candidat. mode ONCE = prochaine réponse ; ALWAYS = chaque réponse ;
+// OFF = se désabonner des deux.
+export const ticketPingSubscribe = mutation({
+  args: { secret: v.string(), channelId: v.string(), userId: v.string(), mode: v.union(v.literal("ONCE"), v.literal("ALWAYS"), v.literal("OFF")) },
+  handler: async (ctx, { secret, channelId, userId, mode }) => {
+    assertBot(secret);
+    const t = await ctx.db.query("tickets").withIndex("by_channel", (q) => q.eq("channelId", channelId)).first();
+    if (!t || t.status !== "OPEN") return null;
+    let once = (t.pingOnce ?? []).filter((id) => id !== userId);
+    let always = (t.pingAlways ?? []).filter((id) => id !== userId);
+    if (mode === "ONCE") once = [...once, userId];
+    else if (mode === "ALWAYS") always = [...always, userId];
+    await ctx.db.patch(t._id, { pingOnce: once, pingAlways: always });
+    return { mode };
+  },
+});
+
+// Le candidat a répondu : renvoie les recruteurs à notifier (once + always) et
+// vide la liste « once » (les « always » restent abonnés).
+export const ticketPingConsume = mutation({
+  args: { secret: v.string(), channelId: v.string() },
+  handler: async (ctx, { secret, channelId }) => {
+    assertBot(secret);
+    const t = await ctx.db.query("tickets").withIndex("by_channel", (q) => q.eq("channelId", channelId)).first();
+    if (!t) return [];
+    const once = t.pingOnce ?? [];
+    const always = t.pingAlways ?? [];
+    if (once.length === 0 && always.length === 0) return [];
+    if (once.length) await ctx.db.patch(t._id, { pingOnce: [] });
+    return [...new Set([...once, ...always])];
+  },
+});
+
 // Tickets dont la fermeture programmée est échue.
 export const ticketsDueForClose = query({
   args: { secret: v.string(), now: v.number() },

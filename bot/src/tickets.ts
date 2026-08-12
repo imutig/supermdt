@@ -527,6 +527,7 @@ async function createCandidatureTicket(client: Client, user: User, state: CandSt
       { name: "Candidat", value: `${state.prenom} ${state.nom}`, inline: true },
       { name: "Naissance", value: state.naissance || "-", inline: true },
       { name: "Discord", value: `<@${user.id}> · \`${user.username}\`` },
+      { name: "Commandes recruteur", value: "`!r <msg>` répondre · `!a <msg>` répondre anonymement · `!ping` être ping à la prochaine réponse · `!alwaysping` à chaque réponse · `!unping` stop · `!close 24h` fermeture auto sans réponse" },
     )
     .setFooter({ text: "Dossier en cours de complétion..." }).setTimestamp(new Date());
   const controls = new ActionRowBuilder<ButtonBuilder>().addComponents(
@@ -646,6 +647,14 @@ export async function handleDirectMessage(msg: Message) {
           await (chan as TextChannel).send({ embeds: [baseEmbed(BRAND.green).setDescription("✅ Le candidat a répondu : la fermeture automatique est **annulée**.")] }).catch(() => {});
         }
       }
+      // Recruteurs abonnés aux pings (!ping / !alwaysping) : on les notifie.
+      const toPing = await mdt.ticketPingConsume(ticket.channelId).catch(() => [] as string[]);
+      if (toPing.length) {
+        const chan = await msg.client.channels.fetch(ticket.channelId).catch(() => null);
+        if (chan && chan.type === ChannelType.GuildText) {
+          await (chan as TextChannel).send({ content: `📨 Réponse du candidat · ${toPing.map((id) => `<@${id}>`).join(" ")}`, allowedMentions: { users: toPing } }).catch(() => {});
+        }
+      }
     }
     return;
   }
@@ -685,18 +694,34 @@ async function handleScheduledClose(msg: Message, ticket: { ownerId: string }, a
   await msg.delete().catch(() => {});
 }
 
-// Message dans un salon serveur : commandes recruteur !r / !a / !close.
+// !ping / !alwaysping / !unping : le recruteur s'abonne aux pings à la réponse
+// du candidat (prochaine, ou chacune), ou se désabonne.
+async function handlePingSubscribe(msg: Message, cmd: string) {
+  const mode = cmd === "alwaysping" ? "ALWAYS" : cmd === "unping" ? "OFF" : "ONCE";
+  const res = await mdt.ticketPingSubscribe(msg.channel.id, msg.author.id, mode);
+  if (!res) { await msg.react("⚠️").catch(() => {}); return; }
+  const text = mode === "ALWAYS" ? "🔔 Tu seras ping à **chaque** réponse du candidat."
+    : mode === "ONCE" ? "🔔 Tu seras ping à la **prochaine** réponse du candidat."
+    : "🔕 Tu ne seras plus ping pour ce ticket.";
+  await (msg.channel as TextChannel).send({ content: `<@${msg.author.id}> ${text}`, allowedMentions: { users: [msg.author.id] } }).catch(() => {});
+  await msg.delete().catch(() => {});
+}
+
+// Message dans un salon serveur : commandes recruteur !r / !a / !close / !ping.
 export async function handleTicketChannelMessage(msg: Message) {
   const content = msg.content ?? "";
   const closeM = /^!close\b\s*(.*)$/i.exec(content);
+  // !ping (prochaine réponse), !alwaysping (chaque réponse), !unping (se désabonner).
+  const pingM = /^!(alwaysping|unping|ping)\b/i.exec(content);
   const relayM = /^!([ra])\b\s*([\s\S]*)$/i.exec(content);
-  if (!closeM && !relayM) return;
+  if (!closeM && !pingM && !relayM) return;
   const ticket = await mdt.ticketByChannel(msg.channel.id);
   if (!ticket) return;
   const cfg = await mdt.ticketConfigGet();
   const member = msg.member ?? (msg.guild ? await msg.guild.members.fetch(msg.author.id).catch(() => null) : null);
   if (!isRecruiter(member, cfg)) { await msg.react("⛔").catch(() => {}); return; }
   if (closeM) { await handleScheduledClose(msg, ticket, closeM[1]); return; }
+  if (pingM) { await handlePingSubscribe(msg, pingM[1].toLowerCase()); return; }
   const body = relayM![2].trim();
   if (!body) { await msg.react("❓").catch(() => {}); return; }
   await relayRecruiterMessage(msg, ticket.ownerId, body, relayM![1].toLowerCase() === "a");
