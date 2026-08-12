@@ -158,8 +158,8 @@ async function fetchAllPaged(path: string, key: string, token: string): Promise<
 
 // =============================== ACTION SYNC =================================
 export const sync = internalAction({
-  args: { token: v.optional(v.string()), dryRun: v.optional(v.boolean()), resetPenal: v.optional(v.boolean()) },
-  handler: async (ctx, { token, dryRun, resetPenal }) => {
+  args: { token: v.optional(v.string()), dryRun: v.optional(v.boolean()), resetPenal: v.optional(v.boolean()), createMissingCitizens: v.optional(v.boolean()) },
+  handler: async (ctx, { token, dryRun, resetPenal, createMissingCitizens }) => {
     const t0 = Date.now();
     const tk = token || process.env.VIZU_TOKEN;
     if (!tk)
@@ -189,6 +189,10 @@ export const sync = internalAction({
       vehiculesRep = await ctx.runMutation(internal.migration._upsertVehicles, { rows: vehsRaw.map(mapVehicle), dryRun });
     }
 
+    // Casiers (dossiers d'arrestation) : après les citoyens/code pénal, pour un
+    // meilleur rattachement. Import robuste (voir casiersImport.ts).
+    const casiersRep: unknown = await ctx.runAction(internal.casiersImport.casiersSync, { token: tk, dryRun, createMissing: createMissingCitizens });
+
     return {
       ok: true,
       mode: dryRun ? "APERÇU (rien écrit)" : "SYNCHRONISÉ",
@@ -197,6 +201,7 @@ export const sync = internalAction({
       armes: armesRep,
       codePenal: codePenalRep,
       vehicules: vehiculesRep,
+      casiers: casiersRep,
     };
   },
 });

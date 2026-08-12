@@ -1249,9 +1249,14 @@ export default defineSchema({
     deletedAt: v.optional(v.number()),
     deletedBy: v.optional(v.id("agents")),
     createdBy: v.id("agents"),
+    // Import depuis le MDT Nexus : référence source (idempotence) + JSON brut du
+    // dossier d'origine (robustesse : re-mappable sans re-fetch si le format change).
+    importRef: v.optional(v.string()),
+    importRaw: v.optional(v.string()),
   })
     .index("by_citizen", ["citizenId"])
-    .index("by_deleted", ["deletedAt"]),
+    .index("by_deleted", ["deletedAt"])
+    .index("by_import", ["importRef"]),
 
   casierCharges: defineTable({
     entryId: v.id("casierEntries"),

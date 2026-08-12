@@ -1,0 +1,325 @@
+import { internalAction, internalMutation, action, query } from "./_generated/server";
+import { internal, api } from "./_generated/api";
+import { v } from "convex/values";
+import { getAuthUserId } from "@convex-dev/auth/server";
+import type { Id } from "./_generated/dataModel";
+import { can } from "./rbac";
+
+// ============================================================================
+// Import des CASIERS (dossiers d'arrestation) depuis le MDT Nexus (vizu).
+//
+// Robustesse voulue (le format Nexus peut bouger) :
+//  - accès défensif aux champs via pick() (plusieurs noms possibles),
+//  - on stocke le JSON brut du dossier (importRaw) sur chaque casier importé,
+//    donc un changement de format futur se corrige avec `remapCasiers` SANS
+//    re-fetch (le Nexus peut être down),
+//  - import idempotent par `importRef` (nexus:<numero>).
+//
+//   1) Token (voir migration.ts) :  npx convex env set VIZU_TOKEN "eyJ..."
+//   2) Aperçu :   npx convex run casiersImport:casiersSync '{"dryRun":true}'
+//      Import :    npx convex run casiersImport:casiersSync
+//      Re-mapper l'existant (après amélioration du mapping / format changé) :
+//                  npx convex run casiersImport:remapCasiers
+// ============================================================================
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+const BASE = "https://mdt.vizu-world.com";
+
+// ------------------------------ helpers -----------------------------------
+function norm(s: string) {
+  return (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+}
+function fmtMoney(n: number) {
+  return "$" + Math.round(n || 0).toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+}
+// Premier champ défini parmi plusieurs noms possibles (supporte "a.b").
+function pick(o: any, ...keys: string[]): any {
+  for (const k of keys) {
+    const val = k.split(".").reduce((a: any, c: string) => (a == null ? undefined : a[c]), o);
+    if (val !== undefined && val !== null && val !== "") return val;
+  }
+  return undefined;
+}
+function num(x: any): number | undefined {
+  const n = Number(x);
+  return Number.isFinite(n) ? n : undefined;
+}
+// "HH:MM:SS" (ou "MM:SS") -> secondes ; "PERPÉTUITÉ" toléré (renvoie 0 + perp).
+function parseJail(t: string): number {
+  const s = (t || "").trim().toUpperCase();
+  if (!s || s.includes("PERP")) return 0;
+  const m = s.match(/^(\d{1,3}):(\d{2})(?::(\d{2}))?$/);
+  if (!m) return 0;
+  return m[3] ? +m[1] * 3600 + +m[2] * 60 + +m[3] : +m[1] * 60 + +m[2];
+}
+function stripHtml(s: string): string {
+  return (s || "")
+    .replace(/<br\s*\/?>/gi, "\n").replace(/<\/p>/gi, "\n").replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+    .replace(/&#39;|&apos;/g, "'").replace(/&quot;/g, '"')
+    .replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+}
+function tzOffsetMs(tz: string, utcMs: number): number {
+  const dtf = new Intl.DateTimeFormat("en-US", { timeZone: tz, hour12: false, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  const p: Record<string, string> = {};
+  for (const part of dtf.formatToParts(new Date(utcMs))) p[part.type] = part.value;
+  return Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour === 24 ? 0 : +p.hour, +p.minute, +p.second) - utcMs;
+}
+function parisWallToEpoch(y: number, mo: number, d: number, h: number, mi: number): number {
+  const guess = Date.UTC(y, mo - 1, d, h, mi);
+  let e = guess - tzOffsetMs("Europe/Paris", guess);
+  const o2 = tzOffsetMs("Europe/Paris", e);
+  if (guess - o2 !== e) e = guess - o2;
+  return e;
+}
+// "12/08/2026 A 04H18" -> epoch (Paris). Fallbacks : ISO createdAt, puis now.
+function parseArrestDate(dateArr: string, createdAt: string): number {
+  const m = /(\d{1,2})\/(\d{1,2})\/(\d{4}).*?(\d{1,2})\s*[hH:]\s*(\d{2})/.exec(dateArr || "");
+  if (m) return parisWallToEpoch(+m[3], +m[2], +m[1], +m[4], +m[5]);
+  const m2 = /(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(dateArr || "");
+  if (m2) return parisWallToEpoch(+m2[3], +m2[2], +m2[1], 12, 0);
+  const iso = Date.parse(createdAt || "");
+  return Number.isNaN(iso) ? Date.now() : iso;
+}
+
+// ---------------------- mapping défensif du dossier ------------------------
+function mapCharge(c: any) {
+  const aggr = !!pick(c, "aggravationActive", "aggravation_active");
+  const qty = Math.max(1, num(pick(c, "quantite", "quantity", "qty")) ?? 1);
+  const amende = (num(aggr ? pick(c, "amendeAggravation", "amende") : pick(c, "amende", "fine", "montant")) ?? 0) * qty;
+  const jail = parseJail(aggr ? pick(c, "tempsPrisonAggravation", "tempsPrison") : pick(c, "tempsPrison", "prison", "jail")) * qty;
+  return {
+    name: String(pick(c, "charge", "nom", "name", "charge.nom") ?? "").trim(),
+    fineAmount: amende,
+    jailSeconds: jail,
+    quantite: qty,
+    aggravation: aggr,
+  };
+}
+export function mapDossier(d: any) {
+  const chargesRaw = pick(d, "charges", "infractions") ?? [];
+  const charges = (Array.isArray(chargesRaw) ? chargesRaw : []).map(mapCharge).filter((c: any) => c.name);
+  const numero = pick(d, "numero", "number", "num");
+  const agents = pick(d, "agents", "officiers") ?? [];
+  const photos = pick(d, "photos", "images") ?? [];
+  const avocats = pick(d, "avocats", "lawyers") ?? [];
+  const rapport = String(pick(d, "rapport", "report", "compteRendu") ?? "");
+  return {
+    importRef: `nexus:${numero ?? pick(d, "_id", "id")}`,
+    numero,
+    prenom: String(pick(d, "citoyen.prenom", "citizen.prenom", "prenom") ?? "").trim(),
+    nom: String(pick(d, "citoyen.nom", "citizen.nom", "nom") ?? "").trim(),
+    at: parseArrestDate(String(pick(d, "dateArrestation", "date_arrestation", "arrestDate") ?? ""), String(pick(d, "createdAt", "created_at") ?? "")),
+    createdByMatricule: num(pick(d, "createdBy.matricule", "createdBy.badge")),
+    agentMatricules: (Array.isArray(agents) ? agents : []).map((a: any) => num(pick(a, "matricule", "badge"))).filter((n: any): n is number => n != null),
+    statut: (String(pick(d, "statut", "status") ?? "").trim()) || undefined,
+    lieu: (String(pick(d, "postePolice", "lieu", "poste") ?? "").trim()) || undefined,
+    forceUsed: !!pick(d, "forceUtilisee", "force"),
+    mirandaAt: (String(pick(d, "dateLectureDroits", "miranda") ?? "").trim()) || undefined,
+    cuffedAt: (String(pick(d, "dateArrestation") ?? "").trim()) || undefined,
+    avocat: ((Array.isArray(avocats) ? avocats : []).map((a: any) => pick(a, "nom", "name") || a).filter(Boolean).join(", ")) || undefined,
+    reportBody: rapport.trim() || undefined,
+    derouleFaits: stripHtml(rapport) || undefined,
+    imageUrls: (Array.isArray(photos) ? photos : []).filter((u: any) => typeof u === "string"),
+    charges,
+    totalFine: charges.reduce((s: number, c: any) => s + c.fineAmount, 0),
+    totalJail: charges.reduce((s: number, c: any) => s + c.jailSeconds, 0),
+  };
+}
+
+// ------------------------------- fetch ------------------------------------
+async function apiGet(path: string, token: string): Promise<any> {
+  const res = await fetch(`${BASE}${path}`, { headers: { Authorization: `Bearer ${token}` } });
+  if (res.status === 401) throw new Error("Token invalide/expiré. npx convex env set VIZU_TOKEN \"...\"");
+  if (!res.ok) throw new Error(`Erreur API ${res.status} sur ${path}`);
+  return res.json();
+}
+async function fetchAllDossiers(token: string): Promise<any[]> {
+  const first = await apiGet("/api/dossiers?entity=lspd&page=1&limit=100", token);
+  let all = (first.dossiers || []).slice();
+  const pages = first.pages || 1;
+  for (let p = 2; p <= pages; p++) all = all.concat((await apiGet(`/api/dossiers?entity=lspd&page=${p}&limit=100`, token)).dossiers || []);
+  return all;
+}
+
+// =============================== ACTIONS ===================================
+export const casiersSync = internalAction({
+  args: { token: v.optional(v.string()), dryRun: v.optional(v.boolean()), limit: v.optional(v.number()), createMissing: v.optional(v.boolean()) },
+  handler: async (ctx, { token, dryRun, limit, createMissing }): Promise<unknown> => {
+    const tk = token || process.env.VIZU_TOKEN;
+    if (!tk) throw new Error("Aucun token. npx convex env set VIZU_TOKEN \"...\" (ou {\"token\":\"...\"}).");
+    const raw = await fetchAllDossiers(tk);
+    const sliced = limit ? raw.slice(0, limit) : raw;
+    return await ctx.runMutation(internal.casiersImport._upsertCasiers, { raws: sliced.map((d) => JSON.stringify(d)), dryRun, createMissing });
+  },
+});
+
+// Déclenchement manuel autorisé (owner / rbac.manage), pour l'UI Administration.
+export const runCasiersSync = action({
+  args: { dryRun: v.optional(v.boolean()), createMissing: v.optional(v.boolean()) },
+  handler: async (ctx, { dryRun, createMissing }): Promise<unknown> => {
+    const ok = await ctx.runQuery(api.migration.canSync, {});
+    if (!ok) throw new Error("Non autorisé.");
+    if (!process.env.VIZU_TOKEN) throw new Error("VIZU_TOKEN non configuré côté Convex.");
+    return await ctx.runAction(internal.casiersImport.casiersSync, { dryRun, createMissing });
+  },
+});
+
+// =============================== UPSERT =====================================
+async function resolveRefs(ctx: any) {
+  const citizens = await ctx.db.query("citizens").collect();
+  const byName = new Map<string, Id<"citizens">>();
+  for (const c of citizens) { byName.set(norm(`${c.prenom} ${c.nom}`), c._id); byName.set(norm(`${c.nom} ${c.prenom}`), c._id); }
+  const agents = await ctx.db.query("agents").collect();
+  const byMat = new Map<number, Id<"agents">>();
+  for (const a of agents) if (a.matricule != null) byMat.set(a.matricule, a._id);
+  const owner = agents.find((a: any) => a.isOwner);
+  const cats = new Map((await ctx.db.query("penalCategories").collect()).map((c: any) => [c._id as string, c]));
+  const sevs = new Map((await ctx.db.query("severityLevels").collect()).map((s: any) => [s._id as string, s]));
+  const penalByName = new Map<string, any>();
+  for (const p of await ctx.db.query("penalCharges").collect()) penalByName.set(norm(p.name), p);
+  return { byName, byMat, owner, cats, sevs, penalByName };
+}
+
+function buildCharges(d: any, refs: any) {
+  return d.charges.map((c: any) => {
+    const pc = refs.penalByName.get(norm(c.name));
+    const cat = pc ? refs.cats.get(pc.categoryId as string) : undefined;
+    const sev = pc?.severityId ? refs.sevs.get(pc.severityId as string) : undefined;
+    return {
+      penalChargeId: pc?._id as Id<"penalCharges"> | undefined,
+      snapshot: { name: c.name, category: cat?.name ?? "Importé", severity: sev?.name ?? "", sensitive: cat?.sensitive ?? false, fineRaw: fmtMoney(c.fineAmount), jailSeconds: c.jailSeconds || undefined, dojRequest: false, sanctions: [] as string[] },
+      formulaParam: c.quantite > 1 ? { quantite: c.quantite } : undefined,
+      computedFine: c.fineAmount, computedJailSeconds: c.jailSeconds, linked: !!pc,
+    };
+  });
+}
+
+export const _upsertCasiers = internalMutation({
+  args: { raws: v.array(v.string()), dryRun: v.optional(v.boolean()), createMissing: v.optional(v.boolean()) },
+  handler: async (ctx, { raws, dryRun, createMissing }) => {
+    const refs = await resolveRefs(ctx);
+    if (!refs.owner) throw new Error("Aucun compte owner pour rattacher les casiers importés.");
+    const allEntries = await ctx.db.query("casierEntries").collect();
+    const existing = new Set(allEntries.map((e) => e.importRef).filter(Boolean) as string[]);
+    // Références présentes dans le flux Nexus actuel (matchées ou non) : sert à
+    // supprimer les casiers importés qui ont disparu du Nexus.
+    const incomingRefs = new Set<string>();
+    for (const rawStr of raws) { try { incomingRefs.add(mapDossier(JSON.parse(rawStr)).importRef); } catch { /* compté plus bas */ } }
+
+    let ajoutes = 0, dejaImporte = 0, sansCitoyen = 0, citoyensCrees = 0, chargesLiees = 0, chargesLibres = 0, officiersLies = 0, parseErr = 0;
+    const exemplesSansCitoyen: string[] = [];
+    for (const rawStr of raws) {
+      let d: any;
+      try { d = mapDossier(JSON.parse(rawStr)); } catch { parseErr++; continue; }
+      if (existing.has(d.importRef)) { dejaImporte++; continue; }
+      let citizenId = refs.byName.get(norm(`${d.prenom} ${d.nom}`));
+      if (!citizenId) {
+        // Citoyen absent (souvent supprimé du Nexus). On l'ignore, ou on crée une
+        // fiche minimale (prénom+nom) pour ne perdre aucun casier.
+        if (!createMissing || !d.prenom || !d.nom) {
+          sansCitoyen++;
+          if (exemplesSansCitoyen.length < 10) exemplesSansCitoyen.push(`${d.prenom} ${d.nom} (n°${d.numero})`);
+          continue;
+        }
+        citoyensCrees++;
+        if (!dryRun) {
+          citizenId = await ctx.db.insert("citizens", { prenom: d.prenom, nom: d.nom, photoStorageIds: [], status: "ACTIVE" as const, searchText: norm(`${d.prenom} ${d.nom}`) });
+          refs.byName.set(norm(`${d.prenom} ${d.nom}`), citizenId);
+          refs.byName.set(norm(`${d.nom} ${d.prenom}`), citizenId);
+        }
+      }
+      ajoutes++;
+      const charges = buildCharges(d, refs);
+      for (const c of charges) (c.linked ? chargesLiees++ : chargesLibres++);
+      const officerIds = [...new Set(d.agentMatricules.map((m: number) => refs.byMat.get(m)).filter(Boolean))] as Id<"agents">[];
+      officiersLies += officerIds.length;
+      if (dryRun) continue;
+      const createdBy = (d.createdByMatricule != null && refs.byMat.get(d.createdByMatricule)) || refs.owner._id;
+      const entryId = await ctx.db.insert("casierEntries", {
+        citizenId: citizenId as Id<"citizens">, at: d.at, officerIds,
+        defconSnapshot: { name: "Import", fineMultiplier: 1, sensitiveFineMultiplier: 1 },
+        totalFine: d.totalFine, totalJailSeconds: d.totalJail, dojRequired: false, sanctions: [],
+        derouleFaits: d.derouleFaits, lieu: d.lieu, notes: `Importé du MDT Nexus · dossier n°${d.numero}`,
+        status: "EMISE" as const, arrestType: "DOSSIER" as const,
+        reportBody: d.reportBody, imageUrls: d.imageUrls.length ? d.imageUrls : undefined,
+        avocat: d.avocat, dossierStatus: d.statut, forceUsed: d.forceUsed,
+        cuffedAt: d.cuffedAt, mirandaAt: d.mirandaAt,
+        createdBy, importRef: d.importRef, importRaw: rawStr,
+      });
+      for (const c of charges) {
+        await ctx.db.insert("casierCharges", { entryId, penalChargeId: c.penalChargeId, snapshot: c.snapshot, formulaParam: c.formulaParam, isRecidive: false, computedFine: c.computedFine, computedJailSeconds: c.computedJailSeconds, onDecision: false });
+      }
+    }
+
+    // Réconciliation : les casiers IMPORTÉS (importRef) absents du flux Nexus
+    // actuel = supprimés côté Nexus -> on les supprime aussi. Jamais les casiers
+    // natifs du MDT. Sécurité : rien si le flux est vide (ex. erreur API).
+    let supprimes = 0, chargesSupprimees = 0;
+    const orphelins = raws.length > 0 ? allEntries.filter((e) => e.importRef && !e.deletedAt && !incomingRefs.has(e.importRef)) : [];
+    for (const e of orphelins) {
+      supprimes++;
+      if (dryRun) continue;
+      for (const c of await ctx.db.query("casierCharges").withIndex("by_entry", (q) => q.eq("entryId", e._id)).collect()) { await ctx.db.delete(c._id); chargesSupprimees++; }
+      await ctx.db.delete(e._id);
+    }
+
+    return { source: raws.length, ajoutes, dejaImporte, sansCitoyen, citoyensCrees, exemplesSansCitoyen, chargesLiees, chargesLibres, officiersLies, parseErr, supprimes, chargesSupprimees };
+  },
+});
+
+// Re-mappe les casiers déjà importés à partir de leur JSON brut (importRaw), sans
+// re-fetch. À lancer après amélioration du mapping ou changement de format Nexus.
+export const remapCasiers = internalMutation({
+  args: { dryRun: v.optional(v.boolean()) },
+  handler: async (ctx, { dryRun }) => {
+    const refs = await resolveRefs(ctx);
+    const entries = (await ctx.db.query("casierEntries").collect()).filter((e) => e.importRaw && !e.deletedAt);
+    let updated = 0, skipped = 0;
+    for (const e of entries) {
+      let d: any;
+      try { d = mapDossier(JSON.parse(e.importRaw!)); } catch { skipped++; continue; }
+      updated++;
+      if (dryRun) continue;
+      const charges = buildCharges(d, refs);
+      const officerIds = [...new Set(d.agentMatricules.map((m: number) => refs.byMat.get(m)).filter(Boolean))] as Id<"agents">[];
+      await ctx.db.patch(e._id, {
+        at: d.at, officerIds, totalFine: d.totalFine, totalJailSeconds: d.totalJail,
+        derouleFaits: d.derouleFaits, lieu: d.lieu, reportBody: d.reportBody,
+        imageUrls: d.imageUrls.length ? d.imageUrls : undefined, avocat: d.avocat,
+        dossierStatus: d.statut, forceUsed: d.forceUsed, cuffedAt: d.cuffedAt, mirandaAt: d.mirandaAt,
+      });
+      for (const old of await ctx.db.query("casierCharges").withIndex("by_entry", (q) => q.eq("entryId", e._id)).collect()) await ctx.db.delete(old._id);
+      for (const c of charges) await ctx.db.insert("casierCharges", { entryId: e._id, penalChargeId: c.penalChargeId, snapshot: c.snapshot, formulaParam: c.formulaParam, isRecidive: false, computedFine: c.computedFine, computedJailSeconds: c.computedJailSeconds, onDecision: false });
+    }
+    return { entries: entries.length, updated, skipped };
+  },
+});
+
+// Annule un import : supprime (dur) tous les casiers importés (importRef) + leurs
+// charges. Pour repartir propre. `npx convex run casiersImport:clearImported`.
+export const clearImported = internalMutation({
+  args: { dryRun: v.optional(v.boolean()) },
+  handler: async (ctx, { dryRun }) => {
+    const imported = (await ctx.db.query("casierEntries").collect()).filter((e) => e.importRef);
+    if (dryRun) return { aSupprimer: imported.length };
+    let charges = 0;
+    for (const e of imported) {
+      for (const c of await ctx.db.query("casierCharges").withIndex("by_entry", (q) => q.eq("entryId", e._id)).collect()) { await ctx.db.delete(c._id); charges++; }
+      await ctx.db.delete(e._id);
+    }
+    return { casiersSupprimes: imported.length, chargesSupprimees: charges };
+  },
+});
+
+// Autorisation UI (réutilise la logique de migration).
+export const canImport = query({
+  args: {},
+  handler: async (ctx) => {
+    const uid = await getAuthUserId(ctx);
+    if (!uid) return false;
+    const agent = await ctx.db.query("agents").withIndex("by_userId", (q) => q.eq("userId", uid)).unique();
+    if (!agent || agent.status !== "ACTIVE") return false;
+    return agent.isOwner || (await can(ctx, agent, "rbac.manage"));
+  },
+});
