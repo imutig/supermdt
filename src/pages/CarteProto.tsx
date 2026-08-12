@@ -1,11 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import L from "leaflet";
-import "leaflet/dist/leaflet.css";
-import "@geoman-io/leaflet-geoman-free";
-import "@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css";
 import * as maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { LosSantosMap } from "@/components/carte/LosSantosMap";
+import { TacticalMap } from "@/components/carte/TacticalMap";
 
 // Prototype comparatif de moteurs de carte (voir la discussion « carte type GTA »).
 // Trois onglets : Leaflet (tuiles raster + dessin Geoman), MapLibre (WebGL, zoom
@@ -13,7 +10,6 @@ import { LosSantosMap } from "@/components/carte/LosSantosMap";
 const TILE = (style: "atlas" | "satellite") =>
   `https://cdn.jsdelivr.net/gh/meesvrh/GTAV-Map-Tiles/tiles/${style}/{z}/{x}/{y}.jpg`;
 const NATIVE_MAX = 5; // niveaux de tuiles disponibles (0..5)
-const WORLD = 256 * 2 ** NATIVE_MAX; // 8192 px au zoom natif max
 
 type Tab = "leaflet" | "maplibre" | "image";
 
@@ -59,7 +55,7 @@ export function CarteProto() {
         )}
       </div>
 
-      {tab === "leaflet" && <LeafletMap style={style} />}
+      {tab === "leaflet" && <TacticalMap style={style} />}
       {tab === "maplibre" && <MapLibreMap style={style} />}
       {tab === "image" && (
         <div>
@@ -69,36 +65,6 @@ export function CarteProto() {
       )}
     </div>
   );
-}
-
-// --- Leaflet : pyramide de tuiles (CRS.Simple) + dessin Geoman ---
-function LeafletMap({ style }: { style: "atlas" | "satellite" }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<L.Map | null>(null);
-  const layerRef = useRef<L.TileLayer | null>(null);
-
-  useEffect(() => {
-    if (!ref.current || mapRef.current) return;
-    const map = L.map(ref.current, { crs: L.CRS.Simple, minZoom: 0, maxZoom: 8, attributionControl: false, zoomControl: true });
-    mapRef.current = map;
-    const bounds = L.latLngBounds(map.unproject([0, WORLD], NATIVE_MAX), map.unproject([WORLD, 0], NATIVE_MAX));
-    layerRef.current = L.tileLayer(TILE(style), {
-      minZoom: 0, maxZoom: 8, maxNativeZoom: NATIVE_MAX, noWrap: true, bounds, tileSize: 256,
-    }).addTo(map);
-    map.setMaxBounds(bounds);
-    map.fitBounds(bounds);
-    // Outils de dessin : polygones (zones), lignes (itinéraires), marqueurs, texte.
-    map.pm.addControls({ position: "topleft", drawCircleMarker: false, rotateMode: false });
-    map.pm.setGlobalOptions({ layerGroup: undefined });
-    return () => { map.remove(); mapRef.current = null; };
-  }, []);
-
-  // Changement de fond sans recréer la carte.
-  useEffect(() => {
-    if (layerRef.current) layerRef.current.setUrl(TILE(style));
-  }, [style]);
-
-  return <div ref={ref} className="w-full rounded-sm border border-border" style={{ height: 620, background: "#0b0d11" }} />;
 }
 
 // --- MapLibre GL : mêmes tuiles raster, rendu WebGL (zoom continu fluide) ---
