@@ -41,6 +41,10 @@ export function LoginPage() {
       setErr("Veuillez saisir votre mot de passe.");
       return;
     }
+    if (!isLogin && pw.length < 8) {
+      setErr("Le mot de passe doit comporter au moins 8 caractères.");
+      return;
+    }
     setErr(null);
     setBusy(true);
     try {
@@ -55,7 +59,14 @@ export function LoginPage() {
       // un simple conflit d'identifiant, ce qui envoie chercher au mauvais endroit.
       const raw = e instanceof Error ? e.message : "";
       const clean = readableError(e, "");
-      const known = /InvalidAccountId|already exists|Invalid password|InvalidSecret/i.test(raw);
+      // Mot de passe refusé par les règles (trop court) : message explicite plutôt
+      // que « identifiant déjà utilisé ».
+      if (/Invalid password/i.test(raw)) {
+        setErr("Le mot de passe doit comporter au moins 8 caractères.");
+        setBusy(false);
+        return;
+      }
+      const known = /InvalidAccountId|already exists|InvalidSecret/i.test(raw);
       setErr(
         known || !clean
           ? isLogin

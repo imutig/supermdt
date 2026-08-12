@@ -52,11 +52,14 @@ export function JoinPage() {
 
   const inputCls = "h-[46px] w-full rounded-[10px] border border-border bg-surface-2 px-[14px] text-[14px] text-text outline-none focus:border-accent";
   const loginValid = norm(prenom).length >= 2 && norm(nom).length >= 2;
-  const canSubmit = loginValid && pw.length >= 1 && !busy;
+  const pwValid = pw.length >= 8;
+  const canSubmit = loginValid && pwValid && !busy;
 
   function fail(e: unknown) {
     const raw = e instanceof Error ? e.message : "";
-    if (/already exists|InvalidAccountId/i.test(raw)) {
+    if (/Invalid password/i.test(raw)) {
+      setErr("Mot de passe trop court : au moins 8 caractères.");
+    } else if (/already exists|InvalidAccountId/i.test(raw)) {
       setErr("Un compte existe déjà avec cet identifiant. Connecte-toi depuis la page d'accueil.");
     } else {
       setErr(readableError(e, "Impossible de créer le compte. Réessaie ou contacte l'État-Major."));
@@ -189,6 +192,9 @@ export function JoinPage() {
           <button type="button" onClick={() => setShowPw((v) => !v)} className="border-none bg-transparent text-[11px] font-semibold tracking-[0.04em] text-faint hover:text-muted">
             {showPw ? "MASQUER" : "AFFICHER"}
           </button>
+        </div>
+        <div className="mt-[6px] text-[11px]" style={{ color: pw.length === 0 ? "var(--faint)" : pwValid ? "var(--success)" : "var(--warning)" }}>
+          Au moins 8 caractères{pw.length > 0 && !pwValid ? ` (encore ${8 - pw.length})` : ""}.
         </div>
 
         {loginValid && (
