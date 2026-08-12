@@ -192,7 +192,8 @@ export const completeRegistration = mutation({
     if (!invite || invite.revoked) throw new Error("Code d'invitation invalide.");
     if (invite.expiresAt && invite.expiresAt < Date.now()) throw new Error("Invitation expirée.");
     if (invite.usesCount >= invite.maxUses) throw new Error("Invitation épuisée.");
-    await ctx.db.patch(invite._id, { usesCount: invite.usesCount + 1 });
+    // Invitation ciblée consommée : on retire la marque « MP en attente ».
+    await ctx.db.patch(invite._id, { usesCount: invite.usesCount + 1, ...(invite.dmPending ? { dmPending: false } : {}) });
 
     // Code rattaché à une promo : le compte est admis directement comme cadet,
     // actif d'emblée, et inscrit dans la promo. Sinon, inscription classique en
@@ -214,6 +215,8 @@ export const completeRegistration = mutation({
       gradeId: asCadet ? cadetGrade!._id : undefined,
       dateEntree: enrolled ? Date.now() : undefined,
       isOwner: false,
+      // Invitation ciblée « Envoyer un compte » : liaison automatique au Discord.
+      discordId: invite.discordId,
     });
     const agent = await ctx.db.get(agentId);
     if (enrolled) {
@@ -495,7 +498,8 @@ export const getAgent = query({
       avatarUrl: a.avatarUrl ?? null,
       dateEntree: a.dateEntree ?? null,
       lockedUntil: a.lockedUntil ?? null,
-      grade: grade ? { _id: grade._id, name: grade.name, position: grade.position } : null,
+      discordId: a.discordId ?? null,
+      grade: grade ? { _id: grade._id, name: grade.name, position: grade.position, discordRoleId: grade.discordRoleId ?? null } : null,
       divisions,
       qualifications,
       onDuty: !!openSession,

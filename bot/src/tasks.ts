@@ -1,7 +1,7 @@
 import { type Client, type TextChannel } from "discord.js";
 import { mdt } from "./convex.js";
 import { presenceEmbed, dailyEmbed } from "./embeds.js";
-import { openRollcall, closeRollcall, remindNonVoters } from "./rollcall.js";
+import { openRollcall, closeRollcall, remindNonVoters, LSPD_ROLE } from "./rollcall.js";
 import { reconcilePromoCategories, reconcilePromoDeletions, deprogramInterview } from "./tickets.js";
 import { baseEmbed, BRAND } from "./theme.js";
 
@@ -38,6 +38,7 @@ export function startTasks(client: Client) {
   // Date (YYYY-MM-DD) du dernier récap envoyé, pour n'en envoyer qu'un par jour.
   let lastDailySent = "";
   let lastRollcallOpened = "";
+  let lastMemberSync = 0; // horodatage de la dernière synchro des membres LSPD
 
   const tick = async () => {
     let cfg;
@@ -155,6 +156,53 @@ export function startTasks(client: Client) {
         await mdt.markInterviewReminded(it.channelId);
       }
     } catch (err) { console.error("[interview] rappels :", err); }
+
+    // --- Liaison des comptes : synchro des membres LSPD (toutes les ~10 min) ---
+    if (Date.now() - lastMemberSync > 10 * 60_000) {
+      lastMemberSync = Date.now();
+      try {
+        const guild = client.guilds.cache.first();
+        if (guild) {
+          const members = await guild.members.fetch();
+          const lspd = [...members.values()].filter((m) => !m.user.bot && m.roles.cache.has(LSPD_ROLE))
+            .map((m) => ({ discordId: m.id, username: m.user.username, displayName: m.displayName }));
+          await mdt.syncDiscordMembers(lspd);
+        }
+      } catch (err) { console.error("[discord] synchro membres (Server Members Intent ?) :", err); }
+    }
+
+    // --- « Envoyer un compte » : MP en attente ---
+    try {
+      const queue = await mdt.accountDMQueue();
+      for (const q of queue) {
+        const user = await client.users.fetch(q.discordId).catch(() => null);
+        if (user) {
+          const link = q.baseUrl || "le site du MDT";
+          await user.send({ embeds: [baseEmbed(BRAND.green).setTitle("🎫 Ton compte MDT - LSPD Station 13")
+            .setDescription(`Bienvenue ! Voici de quoi créer ton compte sur le MDT.\n\n**1.** Rends-toi sur ${q.baseUrl ? `**${q.baseUrl}**` : "le site du MDT"}\n**2.** Crée ton compte (identifiant \`prénom.nom\` + un mot de passe).\n**3.** Quand on te le demande, entre ce **code d'invitation** :`)
+            .addFields({ name: "Code d'invitation", value: `\`\`\`${q.code}\`\`\`` })
+            .setFooter({ text: "Ton compte sera automatiquement relié à ce Discord." })] }).catch(() => {});
+        }
+        await mdt.markAccountDMSent(q.code);
+      }
+    } catch (err) { console.error("[discord] envoi des comptes :", err); }
+
+    // --- Montées en grade : tâches de rôle Discord ---
+    try {
+      const jobs = await mdt.roleJobsPending();
+      const guild = client.guilds.cache.first();
+      for (const job of jobs) {
+        try {
+          if (!guild) throw new Error("guilde introuvable");
+          const member = await guild.members.fetch(job.discordId);
+          for (const rid of job.removeRoleIds) if (member.roles.cache.has(rid)) await member.roles.remove(rid, job.reason ?? "Montée en grade MDT");
+          if (job.addRoleId && !member.roles.cache.has(job.addRoleId)) await member.roles.add(job.addRoleId, job.reason ?? "Montée en grade MDT");
+          await mdt.markRoleJob(job._id, "DONE");
+        } catch (e) {
+          await mdt.markRoleJob(job._id, "ERROR", e instanceof Error ? e.message : String(e)).catch(() => {});
+        }
+      }
+    } catch (err) { console.error("[discord] montées en grade :", err); }
 
     // --- Récapitulatif quotidien ---
     if (cfg.dailyChannel && cfg.dailyAt === hhmm && lastDailySent !== today) {

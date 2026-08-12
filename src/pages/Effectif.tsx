@@ -1,23 +1,38 @@
 import { useState } from "react";
 import { useQuery } from "convex/react";
+import { MessagesSquare } from "lucide-react";
 import { api, type Id } from "@/lib/api";
 import { AgentModal } from "@/components/effectif/AgentModal";
+import { DiscordAccounts } from "@/components/effectif/DiscordAccounts";
 import { fmtMatricule } from "@/components/common/AgentTag";
 import { fmtAnciennete } from "@/lib/anciennete";
 import { EmptyState } from "@/components/common/EmptyState";
 import { SkeletonRows } from "@/components/common/Skeleton";
+import { useCan } from "@/hooks/useCan";
 
 export function Effectif() {
   const roster = useQuery(api.agents.roster);
+  const { can } = useCan();
   const [openAgent, setOpenAgent] = useState<Id<"agents"> | null>(null);
+  const [discordOpen, setDiscordOpen] = useState(false);
 
   return (
     <div className="p-[22px_26px]" style={{ animation: "mdtFade .2s ease" }}>
-      <div className="mb-[18px]">
-        <h1 className="m-0 text-[21px] font-bold tracking-tight">Effectif</h1>
-        <div className="mt-[3px] text-[13px] text-muted">
-          {roster ? `${roster.length} agent${roster.length > 1 ? "s" : ""} actif${roster.length > 1 ? "s" : ""}` : "…"}
+      <div className="mb-[18px] flex items-start gap-3">
+        <div className="flex-1">
+          <h1 className="m-0 text-[21px] font-bold tracking-tight">Effectif</h1>
+          <div className="mt-[3px] text-[13px] text-muted">
+            {roster ? `${roster.length} agent${roster.length > 1 ? "s" : ""} actif${roster.length > 1 ? "s" : ""}` : "…"}
+          </div>
         </div>
+        {can("invites.manage") && (
+          <button
+            onClick={() => setDiscordOpen(true)}
+            className="mdt-press flex items-center gap-[7px] rounded-sm border border-border bg-surface-2 px-[13px] py-[9px] text-[12.5px] font-semibold text-muted hover:border-border-strong hover:text-text"
+          >
+            <MessagesSquare className="h-[15px] w-[15px]" /> Comptes Discord
+          </button>
+        )}
       </div>
 
       <div className="overflow-hidden rounded-card border border-border bg-surface">
@@ -72,6 +87,7 @@ export function Effectif() {
       </div>
 
       {openAgent && <AgentModal agentId={openAgent} onClose={() => setOpenAgent(null)} />}
+      {discordOpen && <DiscordAccounts onClose={() => setDiscordOpen(false)} />}
     </div>
   );
 }

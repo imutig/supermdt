@@ -47,6 +47,9 @@ export default defineSchema({
       v.literal("SUSPENDED"),
     ),
     isOwner: v.boolean(),
+    // Compte Discord relié (liaison via invitation ciblée) : facilite l'attribution
+    // de grades/divisions et l'exécution des montées en grade côté Discord.
+    discordId: v.optional(v.string()),
     avatarStorageId: v.optional(v.id("_storage")),
     avatarUrl: v.optional(v.string()),
     dateEntree: v.optional(v.number()),
@@ -72,7 +75,8 @@ export default defineSchema({
     .index("by_userId", ["userId"])
     .index("by_login", ["login"])
     .index("by_matricule", ["matricule"])
-    .index("by_status", ["status"]),
+    .index("by_status", ["status"])
+    .index("by_discord", ["discordId"]),
 
   agentDivisions: defineTable({
     agentId: v.id("agents"),
@@ -93,6 +97,8 @@ export default defineSchema({
     external: v.optional(v.boolean()),
     // Grade d'académie (ex. Cadet) : n'ouvre que le portail LSPA, pas le MDT.
     academyOnly: v.optional(v.boolean()),
+    // Rôle Discord correspondant : sert aux montées en grade automatiques (bot).
+    discordRoleId: v.optional(v.string()),
   }).index("by_position", ["position"]),
 
   divisions: defineTable({
@@ -490,7 +496,34 @@ export default defineSchema({
     // Rattachement à une promo : à l'inscription, le compte devient cadet de
     // cette promo, actif d'emblée (voir agents.completeRegistration).
     promotionId: v.optional(v.id("promotions")),
-  }).index("by_code", ["code"]),
+    // Invitation ciblée « Envoyer un compte » : le compte créé avec ce code sera
+    // relié à ce membre Discord. `dmPending` : le bot doit encore envoyer le MP.
+    discordId: v.optional(v.string()),
+    discordUsername: v.optional(v.string()),
+    dmPending: v.optional(v.boolean()),
+    dmSentAt: v.optional(v.number()),
+  }).index("by_code", ["code"]).index("by_dm_pending", ["dmPending"]),
+
+  // Membres du rôle LSPD synchronisés depuis Discord par le bot (pour l'écran
+  // de liaison des comptes dans Effectif).
+  discordMembers: defineTable({
+    discordId: v.string(),
+    username: v.string(),
+    displayName: v.string(),
+    syncedAt: v.number(),
+  }).index("by_discord", ["discordId"]),
+
+  // File de tâches de rôle Discord exécutées par le bot (montées en grade) :
+  // retire des rôles, ajoute un rôle, sur un membre.
+  discordRoleJobs: defineTable({
+    discordId: v.string(),
+    addRoleId: v.optional(v.string()),
+    removeRoleIds: v.array(v.string()),
+    reason: v.optional(v.string()),
+    status: v.union(v.literal("PENDING"), v.literal("DONE"), v.literal("ERROR")),
+    error: v.optional(v.string()),
+    createdAt: v.number(),
+  }).index("by_status", ["status"]),
 
   serviceSessions: defineTable({
     agentId: v.id("agents"),

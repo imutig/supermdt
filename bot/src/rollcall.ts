@@ -9,7 +9,7 @@ const LABELS: Record<RollStatus, string> = { PRESENT: "Présent", RETARD: "En re
 
 // Rôle LSPD : mentionné à la publication du roll call, et base des relances
 // (on ne re-ping que ses membres n'ayant pas encore voté).
-const LSPD_ROLE = "1434397107086692452";
+export const LSPD_ROLE = "1434397107086692452";
 
 // Boutons de vote, préfixés du rollcall pour survivre à un redémarrage du bot.
 function buttons(rollcallId: string) {

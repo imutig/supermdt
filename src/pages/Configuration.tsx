@@ -177,17 +177,18 @@ export function Configuration() {
           {section === "grades" && (
             <ListEditor
               title="Grades"
-              description="Ordre hiérarchique : le grade le PLUS BAS de la liste est le plus élevé de la station. Les flèches déplacent un grade, ce qui détermine qui peut agir sur qui. « Abrév. » = tag court sur les cartes du dispatch (vide = 3 premières lettres). « Couleur » teinte le grade dans l'organigramme et les tags. « Extérieur » = accès au MDT sans faire partie de l'effectif (DOJ, EMS)."
+              description="Ordre hiérarchique : le grade le PLUS BAS de la liste est le plus élevé de la station. Les flèches déplacent un grade, ce qui détermine qui peut agir sur qui. « Abrév. » = tag court sur les cartes du dispatch (vide = 3 premières lettres). « Couleur » teinte le grade dans l'organigramme et les tags. « Extérieur » = accès au MDT sans faire partie de l'effectif (DOJ, EMS). « Rôle Discord » = identifiant du rôle correspondant (sert aux montées en grade automatiques)."
               rows={data?.grades}
               columns={[
-                { key: "name", label: "Nom", width: "1.4fr" },
-                { key: "abbrev", label: "Abrév.", width: ".7fr" },
-                { key: "corps", label: "Corps", type: "select", options: CORPS, width: "1.2fr" },
-                { key: "color", label: "Couleur", type: "color", width: "1fr" },
-                { key: "external", label: "Extérieur", type: "bool", width: ".6fr" },
+                { key: "name", label: "Nom", width: "1.3fr" },
+                { key: "abbrev", label: "Abrév.", width: ".6fr" },
+                { key: "corps", label: "Corps", type: "select", options: CORPS, width: "1.1fr" },
+                { key: "color", label: "Couleur", type: "color", width: ".8fr" },
+                { key: "external", label: "Ext.", type: "bool", width: ".5fr" },
+                { key: "discordRoleId", label: "Rôle Discord", width: "1.1fr" },
               ]}
-              onCreate={(v) => gradeCreate(v as { name: string; abbrev?: string; corps: "OPERATIONNEL" | "SUPERVISION" | "ETAT_MAJOR"; color?: string; external?: boolean })}
-              onUpdate={(id, v) => gradeUpdate({ id: id as never, ...(v as { name: string; abbrev?: string; corps: "OPERATIONNEL" | "SUPERVISION" | "ETAT_MAJOR"; color?: string; external?: boolean }) })}
+              onCreate={(v) => gradeCreate(v as { name: string; abbrev?: string; corps: "OPERATIONNEL" | "SUPERVISION" | "ETAT_MAJOR"; color?: string; external?: boolean; discordRoleId?: string })}
+              onUpdate={(id, v) => gradeUpdate({ id: id as never, ...(v as { name: string; abbrev?: string; corps: "OPERATIONNEL" | "SUPERVISION" | "ETAT_MAJOR"; color?: string; external?: boolean; discordRoleId?: string }) })}
               onRemove={(id) => gradeRemove({ id: id as never })}
               onMove={(id, direction) => gradeMove({ id: id as never, direction })}
             />

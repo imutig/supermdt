@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { X, Scissors, Plus, IdCard, KeyRound, Lock } from "lucide-react";
+import { X, Scissors, Plus, IdCard, KeyRound, Lock, RefreshCw, Link2Off } from "lucide-react";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { api, type Id } from "@/lib/api";
 import { useToast } from "@/providers/toast";
@@ -30,6 +30,8 @@ export function AgentModal({ agentId, onClose }: { agentId: Id<"agents">; onClos
   const resetPassword = useAction(api.accounts.resetPassword);
   const setLock = useMutation(api.agents.setLock);
   const cutService = useMutation(api.services.cut);
+  const syncGradeRole = useMutation(api.discordLink.syncGradeRole);
+  const unlinkDiscord = useMutation(api.discordLink.unlink);
 
   const [matInput, setMatInput] = useState("");
   const [sanctionModal, setSanctionModal] = useState(false);
@@ -42,6 +44,7 @@ export function AgentModal({ agentId, onClose }: { agentId: Id<"agents">; onClos
   const canResetPw = can("effectif.resetpw");
   const canManageSvc = can("services.manage");
   const canDiscipline = can("discipline.create");
+  const canLinkDiscord = can("invites.manage");
 
   const divIds = new Set((a?.divisions ?? []).map((d) => d._id));
   const qualIds = new Set((a?.qualifications ?? []).map((q) => q._id));
@@ -366,6 +369,46 @@ export function AgentModal({ agentId, onClose }: { agentId: Id<"agents">; onClos
                   </div>
                 )}
               </div>
+
+              {/* Liaison Discord */}
+              {(canLinkDiscord || (a.discordId && canEditAgent)) && (
+                <div>
+                  <div className="mb-[8px] text-[10.5px] font-bold uppercase tracking-[0.09em] text-faint">Liaison Discord</div>
+                  {a.discordId ? (
+                    <div className="flex flex-col gap-[8px] rounded-sm border border-border bg-surface-2 px-[13px] py-[11px]">
+                      <div className="flex items-center gap-2">
+                        <span className="h-[8px] w-[8px] rounded-full" style={{ background: "var(--success)" }} />
+                        <span className="flex-1 text-[12.5px] font-semibold">Compte relié au Discord</span>
+                        <span className="font-data text-[11px] text-faint">{a.discordId}</span>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {canEditAgent && (
+                          <button
+                            onClick={() => toast.guard(syncGradeRole({ agentId }), "Synchronisation impossible").then((r) => r !== undefined && toast.success("Rôle Discord en cours de synchronisation."))}
+                            disabled={!a.grade?.discordRoleId}
+                            title={a.grade?.discordRoleId ? "Appliquer le rôle Discord du grade" : "Aucun rôle Discord configuré pour ce grade"}
+                            className="flex items-center gap-[6px] rounded-sm border border-border bg-surface px-[11px] py-[7px] text-[12px] font-semibold text-muted hover:border-border-strong disabled:cursor-default disabled:opacity-50"
+                          >
+                            <RefreshCw className="h-[14px] w-[14px]" /> Synchroniser le rôle du grade
+                          </button>
+                        )}
+                        {canLinkDiscord && (
+                          <button
+                            onClick={() => toast.guard(unlinkDiscord({ agentId }), "Action impossible").then((r) => r !== undefined && toast.success("Compte délié du Discord."))}
+                            className="flex items-center gap-[6px] rounded-sm border border-border bg-surface px-[11px] py-[7px] text-[12px] font-semibold text-muted hover:border-danger hover:text-danger"
+                          >
+                            <Link2Off className="h-[14px] w-[14px]" /> Délier
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="rounded-sm border border-border bg-surface-2 px-[13px] py-[10px] text-[12.5px] text-faint">
+                      Aucun compte Discord relié. Reliez-le depuis « Comptes Discord » dans l'effectif.
+                    </div>
+                  )}
+                </div>
+              )}
             </>
           )}
 

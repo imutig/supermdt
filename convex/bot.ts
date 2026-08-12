@@ -232,6 +232,67 @@ export const rollcallState = query({
   },
 });
 
+// ============ Liaison des comptes Discord (côté bot) ============
+
+// Synchronise les membres du rôle LSPD : réconcilie la table discordMembers
+// (upsert les présents, retire ceux qui ne sont plus dans le lot).
+export const syncDiscordMembers = mutation({
+  args: { secret: v.string(), members: v.array(v.object({ discordId: v.string(), username: v.string(), displayName: v.string() })) },
+  handler: async (ctx, { secret, members }) => {
+    assertBot(secret);
+    const now = Date.now();
+    const incoming = new Map(members.map((m) => [m.discordId, m]));
+    const existing = await ctx.db.query("discordMembers").collect();
+    for (const row of existing) {
+      const m = incoming.get(row.discordId);
+      if (!m) { await ctx.db.delete(row._id); continue; }
+      await ctx.db.patch(row._id, { username: m.username, displayName: m.displayName, syncedAt: now });
+      incoming.delete(row.discordId);
+    }
+    for (const m of incoming.values()) await ctx.db.insert("discordMembers", { ...m, syncedAt: now });
+    return { count: members.length };
+  },
+});
+
+// Invitations « Envoyer un compte » dont le MP reste à envoyer.
+export const accountDMQueue = query({
+  args: { secret: v.string() },
+  handler: async (ctx, { secret }) => {
+    assertBot(secret);
+    const rows = (await ctx.db.query("invitations").withIndex("by_dm_pending", (q) => q.eq("dmPending", true)).collect())
+      .filter((i) => !i.revoked && !i.dmSentAt && i.discordId);
+    const baseUrl = (await ctx.db.query("integrationConfig").first())?.baseUrl ?? "";
+    return rows.map((i) => ({ code: i.code, discordId: i.discordId!, baseUrl }));
+  },
+});
+
+export const markAccountDMSent = mutation({
+  args: { secret: v.string(), code: v.string() },
+  handler: async (ctx, { secret, code }) => {
+    assertBot(secret);
+    const inv = await ctx.db.query("invitations").withIndex("by_code", (q) => q.eq("code", code)).first();
+    if (inv) await ctx.db.patch(inv._id, { dmPending: false, dmSentAt: Date.now() });
+  },
+});
+
+// Tâches de rôle Discord à exécuter (montées en grade).
+export const roleJobsPending = query({
+  args: { secret: v.string() },
+  handler: async (ctx, { secret }) => {
+    assertBot(secret);
+    const rows = await ctx.db.query("discordRoleJobs").withIndex("by_status", (q) => q.eq("status", "PENDING")).collect();
+    return rows.map((j) => ({ _id: j._id, discordId: j.discordId, addRoleId: j.addRoleId ?? null, removeRoleIds: j.removeRoleIds, reason: j.reason ?? null }));
+  },
+});
+
+export const markRoleJob = mutation({
+  args: { secret: v.string(), jobId: v.id("discordRoleJobs"), status: v.union(v.literal("DONE"), v.literal("ERROR")), error: v.optional(v.string()) },
+  handler: async (ctx, { secret, jobId, status, error }) => {
+    assertBot(secret);
+    await ctx.db.patch(jobId, { status, error });
+  },
+});
+
 export const rollcallVote = mutation({
   args: {
     secret: v.string(),

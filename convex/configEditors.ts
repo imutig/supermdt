@@ -171,10 +171,11 @@ export const gradeCreate = mutation({
     color: v.optional(v.string()),
     // Grade extérieur (DOJ, EMS...) : accès au MDT mais hors effectif et organigramme.
     external: v.optional(v.boolean()),
+    discordRoleId: v.optional(v.string()), // rôle Discord (montées en grade auto)
   },
   handler: async (ctx, a) => {
     const agent = await guard(ctx);
-    const id = await ctx.db.insert("grades", { ...a, external: !!a.external, position: await nextPos(ctx, "grades") });
+    const id = await ctx.db.insert("grades", { ...a, external: !!a.external, discordRoleId: a.discordRoleId?.trim() || undefined, position: await nextPos(ctx, "grades") });
     await log(ctx, agent, "grade", "create", a.name);
     return id;
   },
@@ -188,10 +189,11 @@ export const gradeUpdate = mutation({
     color: v.optional(v.string()),
     external: v.optional(v.boolean()),
     position: v.optional(v.number()),
+    discordRoleId: v.optional(v.string()),
   },
   handler: async (ctx, { id, ...f }) => {
     const agent = await guard(ctx);
-    await ctx.db.patch(id, { ...f, external: !!f.external });
+    await ctx.db.patch(id, { ...f, external: !!f.external, discordRoleId: f.discordRoleId?.trim() || undefined });
     await log(ctx, agent, "grade", "update", f.name);
   },
 });
