@@ -151,19 +151,22 @@ export function Statistiques() {
             ) : series.length === 0 ? (
               <div className="py-10 text-center text-[13px] text-faint">Aucune activité sur cette période.</div>
             ) : (
-              <div className="flex items-end gap-[4px] overflow-x-auto" style={{ height: 160 }}>
+              // Libellés en position absolue : hors du flux, ils ne peuvent pas
+              // élargir la colonne qui les porte -> toutes les barres restent de
+              // largeur égale et chaque date reste centrée sous sa barre.
+              <div className="flex items-end gap-[3px] pb-[18px]" style={{ height: 158 }}>
                 {series.map((d, i) => {
                   const total = d.arr + d.cit;
                   const h = (total / maxBar) * 140;
                   const arrH = total > 0 ? (d.arr / total) * h : 0;
                   const citH = total > 0 ? (d.cit / total) * h : 0;
                   return (
-                    <div key={i} className="flex min-w-[8px] flex-1 flex-col items-center gap-[5px]">
-                      <div className="flex w-full flex-col justify-end" style={{ height: 140 }} title={`${d.label} · ${d.arr} arrestation(s), ${d.cit} contravention(s)`}>
-                        <div className="w-full rounded-t-[3px]" style={{ height: citH, background: "var(--warning)" }} />
-                        <div className="w-full" style={{ height: arrH, background: "var(--danger)", borderTopLeftRadius: citH === 0 ? 3 : 0, borderTopRightRadius: citH === 0 ? 3 : 0 }} />
-                      </div>
-                      <span className="whitespace-nowrap text-[9px] text-faint">{i % labelStep === 0 ? d.label : ""}</span>
+                    <div key={i} className="relative flex min-w-0 flex-1 flex-col justify-end" style={{ height: 140 }} title={`${d.label} · ${d.arr} arrestation(s), ${d.cit} contravention(s)`}>
+                      <div className="w-full rounded-t-[3px]" style={{ height: citH, background: "var(--warning)" }} />
+                      <div className="w-full" style={{ height: arrH, background: "var(--danger)", borderTopLeftRadius: citH === 0 ? 3 : 0, borderTopRightRadius: citH === 0 ? 3 : 0 }} />
+                      {i % labelStep === 0 && (
+                        <span className="absolute left-1/2 top-full mt-[5px] -translate-x-1/2 whitespace-nowrap text-[9px] text-faint">{d.label}</span>
+                      )}
                     </div>
                   );
                 })}
