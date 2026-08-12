@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { X, Scissors, Plus, IdCard, KeyRound, Lock, RefreshCw, Link2Off, CalendarOff } from "lucide-react";
+import { X, Scissors, Plus, IdCard, KeyRound, Lock, RefreshCw, Link2Off, CalendarOff, Pencil } from "lucide-react";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { api, type Id } from "@/lib/api";
 import { useToast } from "@/providers/toast";
@@ -24,6 +24,7 @@ export function AgentModal({ agentId, onClose }: { agentId: Id<"agents">; onClos
 
   const updateGrade = useMutation(api.agents.updateGrade);
   const setMatricule = useMutation(api.agents.setMatricule);
+  const setName = useMutation(api.agents.setName);
   const setDivisions = useMutation(api.agents.setDivisions);
   const setQualifications = useMutation(api.agents.setQualifications);
   const setStatus = useMutation(api.agents.setStatus);
@@ -36,6 +37,7 @@ export function AgentModal({ agentId, onClose }: { agentId: Id<"agents">; onClos
   const createAbsence = useMutation(api.absences.createFor);
 
   const [matInput, setMatInput] = useState("");
+  const [nameEdit, setNameEdit] = useState<{ prenom: string; nom: string } | null>(null);
   const [sanctionModal, setSanctionModal] = useState(false);
   const [absOpen, setAbsOpen] = useState(false);
   const [absFrom, setAbsFrom] = useState("");
@@ -134,6 +136,11 @@ export function AgentModal({ agentId, onClose }: { agentId: Id<"agents">; onClos
               {a.status}
             </span>
           )}
+          {a && !a.isOwner && canEditAgent && (
+            <button onClick={() => setNameEdit({ prenom: a.prenomRP, nom: a.nomRP })} className="mdt-press flex h-[30px] w-[30px] items-center justify-center rounded-sm border border-border bg-surface-2 text-muted hover:border-border-strong hover:text-text" title="Renommer (prénom / nom)">
+              <Pencil className="h-[14px] w-[14px]" />
+            </button>
+          )}
           {a && !a.isOwner && (
             <button onClick={() => setFicheOpen(true)} className="mdt-press flex items-center gap-[6px] rounded-sm border border-border bg-surface-2 px-[11px] py-[7px] text-[12px] font-semibold text-muted hover:border-border-strong hover:text-text" title="Fiche de renseignement">
               <IdCard className="h-[15px] w-[15px]" /> Fiche
@@ -155,6 +162,39 @@ export function AgentModal({ agentId, onClose }: { agentId: Id<"agents">; onClos
             </div>
           ) : (
             <>
+              {/* Renommage identité RP (prénom / nom) — n'affecte pas le login */}
+              {nameEdit && canEditAgent && (
+                <div className="rounded-sm border border-border bg-surface-2 p-[13px]">
+                  <div className="mb-[10px] text-[10.5px] font-bold uppercase tracking-[0.09em] text-faint">Renommer l'agent</div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <div className="mb-[5px] text-[10px] font-semibold uppercase tracking-[0.06em] text-faint">Prénom</div>
+                      <input value={nameEdit.prenom} onChange={(e) => setNameEdit({ ...nameEdit, prenom: e.target.value })} className="h-9 w-full rounded-sm border border-border bg-surface px-2 text-[13px] outline-none focus:border-accent" />
+                    </div>
+                    <div>
+                      <div className="mb-[5px] text-[10px] font-semibold uppercase tracking-[0.06em] text-faint">Nom</div>
+                      <input value={nameEdit.nom} onChange={(e) => setNameEdit({ ...nameEdit, nom: e.target.value })} className="h-9 w-full rounded-sm border border-border bg-surface px-2 text-[13px] outline-none focus:border-accent" />
+                    </div>
+                  </div>
+                  <div className="mt-[6px] text-[11px] text-faint">L'identifiant de connexion (@{a.login}) ne change pas.</div>
+                  <div className="mt-[10px] flex gap-2">
+                    <button onClick={() => setNameEdit(null)} className="flex-1 rounded-sm border border-border bg-surface py-[8px] text-[12.5px] font-semibold hover:border-border-strong">Annuler</button>
+                    <button
+                      onClick={async () => {
+                        const prenom = nameEdit.prenom.trim(), nom = nameEdit.nom.trim();
+                        if (!prenom || !nom) { toast.error("Prénom et nom requis."); return; }
+                        const r = await toast.guard(setName({ agentId, prenomRP: prenom, nomRP: nom }), "Renommage impossible");
+                        if (r !== undefined) { toast.success("Agent renommé."); setNameEdit(null); }
+                      }}
+                      disabled={!nameEdit.prenom.trim() || !nameEdit.nom.trim()}
+                      className="flex-1 rounded-sm bg-accent py-[8px] text-[12.5px] font-semibold text-accent-contrast hover:brightness-[1.06] disabled:opacity-50"
+                    >
+                      Enregistrer
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* Service en cours */}
               <div className="flex items-center gap-3 rounded-sm border border-border bg-surface-2 px-[13px] py-[11px]">
                 <span className="h-[9px] w-[9px] rounded-full" style={{ background: a.onDuty ? "var(--success)" : "var(--faint)" }} />

@@ -657,6 +657,31 @@ export const setMatricule = mutation({
   },
 });
 
+// Renommage de l'identité RP d'un agent (prénom / nom). N'affecte PAS le login
+// de connexion (identifiant stable), seulement l'affichage.
+export const setName = mutation({
+  args: { agentId: v.id("agents"), prenomRP: v.string(), nomRP: v.string() },
+  handler: async (ctx, { agentId, prenomRP, nomRP }) => {
+    const actor = await requireAgent(ctx);
+    await requirePermission(ctx, actor, "effectif.edit");
+    const target = await ctx.db.get(agentId);
+    if (!target) throw new Error("Agent introuvable.");
+    await assertOutranks(ctx, actor, target);
+    const prenom = prenomRP.trim();
+    const nom = nomRP.trim();
+    if (!prenom || !nom) throw new Error("Prénom et nom requis.");
+    await ctx.db.patch(agentId, { prenomRP: prenom, nomRP: nom });
+    await writeAudit(ctx, actor, {
+      action: "agent.name_change",
+      resourceType: "agent",
+      resourceId: agentId,
+      resourceLabel: `${target.prenomRP} ${target.nomRP}`,
+      before: { name: `${target.prenomRP} ${target.nomRP}` },
+      after: { name: `${prenom} ${nom}` },
+    });
+  },
+});
+
 // Formations / spécialités d'un agent (HNT, Police Academy, MRD, Dispatcher...).
 export const setQualifications = mutation({
   args: { agentId: v.id("agents"), qualificationIds: v.array(v.id("qualifications")) },
