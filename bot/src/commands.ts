@@ -82,6 +82,15 @@ export async function registerCommands() {
 
 export async function handleCommand(interaction: ChatInputCommandInteraction) {
   try {
+    // Contrôle d'accès configuré sur le site (grade minimum et/ou rôles Discord).
+    // Ouvert par défaut ; refus explicite sinon (les gardes internes des tickets
+    // restent en plus).
+    const roleIds = interaction.inCachedGuild() ? [...interaction.member.roles.cache.keys()] : [];
+    const allowed = await mdt.commandAllowed(interaction.commandName, interaction.user.id, roleIds).catch(() => true);
+    if (!allowed) {
+      await interaction.reply({ content: "⛔ Tu n'as pas la permission d'utiliser cette commande.", flags: 64 });
+      return;
+    }
     if (interaction.commandName === "candidatures") { await openHub(interaction); return; }
     if (interaction.commandName === "template") {
       const sub = interaction.options.getSubcommand();

@@ -527,6 +527,14 @@ export default defineSchema({
     syncedAt: v.number(),
   }).index("by_discord", ["discordId"]),
 
+  // Contrôle d'accès des commandes Discord : par grade minimum (compte lié) et/ou
+  // liste d'IDs de rôle Discord autorisés. Vide = commande ouverte à tous.
+  discordCommandAccess: defineTable({
+    command: v.string(),
+    minGradeId: v.optional(v.id("grades")),
+    roleIds: v.array(v.string()),
+  }).index("by_command", ["command"]),
+
   // File de tâches de rôle Discord exécutées par le bot (montées en grade) :
   // retire des rôles, ajoute un rôle, sur un membre.
   discordRoleJobs: defineTable({

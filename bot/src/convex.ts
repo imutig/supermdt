@@ -85,6 +85,7 @@ export const mdt = {
   requestAbsence: (discordId: string, query: string | undefined, from: number, to: number, reason: string, discordName: string) =>
     client.mutation(anyApi.bot.requestAbsence, { secret: env.botSecret, discordId, query, from, to, reason, discordName }) as Promise<{ ok: boolean; reason?: string; name?: string }>,
   absentDiscordIds: () => client.query(anyApi.bot.absentDiscordIds, { secret: env.botSecret }) as Promise<string[]>,
+  commandAllowed: (command: string, discordId: string, roleIds: string[]) => client.query(anyApi.bot.commandAllowed, { secret: env.botSecret, command, discordId, roleIds }) as Promise<boolean>,
   absencesCurrent: () => client.query(anyApi.bot.absencesCurrent, { secret: env.botSecret }) as Promise<{ name: string; matricule: number | null; until: number; reason: string }[]>,
   presenceMessageGet: () => client.query(anyApi.bot.presenceMessageGet, { secret: env.botSecret }) as Promise<string | null>,
   presenceMessageSet: (messageId: string) => client.mutation(anyApi.bot.presenceMessageSet, { secret: env.botSecret, messageId }) as Promise<void>,

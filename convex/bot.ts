@@ -512,6 +512,29 @@ export const requestAbsence = mutation({
   },
 });
 
+// Contrôle d'accès d'une commande Discord. Ouvert par défaut (aucune config).
+// Sinon autorisé si : owner ; OU un des rôles du membre est listé ; OU l'agent
+// lié a un grade >= au grade minimum configuré.
+export const commandAllowed = query({
+  args: { secret: v.string(), command: v.string(), discordId: v.string(), roleIds: v.array(v.string()) },
+  handler: async (ctx, { secret, command, discordId, roleIds }) => {
+    assertBot(secret);
+    const cfg = await ctx.db.query("discordCommandAccess").withIndex("by_command", (q) => q.eq("command", command)).first();
+    const hasRoleRule = !!cfg && cfg.roleIds.length > 0;
+    const hasGradeRule = !!cfg && !!cfg.minGradeId;
+    if (!hasRoleRule && !hasGradeRule) return true; // non configurée = ouverte
+    const agent = await ctx.db.query("agents").withIndex("by_discord", (q) => q.eq("discordId", discordId)).first();
+    if (agent?.isOwner) return true;
+    if (hasRoleRule && roleIds.some((r) => cfg!.roleIds.includes(r))) return true;
+    if (hasGradeRule && agent?.gradeId) {
+      const min = await ctx.db.get(cfg!.minGradeId!);
+      const g = await ctx.db.get(agent.gradeId);
+      if (min && g && g.position >= min.position) return true;
+    }
+    return false;
+  },
+});
+
 // Discord IDs des agents en absence approuvée en cours (roll call : ne pas ping).
 export const absentDiscordIds = query({
   args: { secret: v.string() },

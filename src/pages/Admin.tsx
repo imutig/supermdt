@@ -13,6 +13,7 @@ const TABS = [
   { key: "validation", label: "Validation" },
   { key: "invitations", label: "Invitations" },
   { key: "permissions", label: "Permissions" },
+  { key: "discord", label: "Commandes Discord" },
   { key: "grades", label: "Grades" },
   { key: "defcon", label: "DEFCON" },
   { key: "audit", label: "Journal d'audit" },
@@ -43,6 +44,7 @@ export function Admin() {
       {tab === "validation" && <ValidationTab />}
       {tab === "invitations" && <InvitationsTab />}
       {tab === "permissions" && <PermissionsTab />}
+      {tab === "discord" && <DiscordCommandsTab />}
       {tab === "grades" && <GradesTab />}
       {tab === "defcon" && <DefconTab />}
       {tab === "audit" && <AuditTab />}
@@ -430,6 +432,69 @@ function DefconTab() {
           );
         })}
       </div>
+    </div>
+  );
+}
+
+/* ============ Commandes Discord (accès) ============ */
+function DiscordCommandsTab() {
+  const data = useQuery(api.discordAccess.list);
+  const setAccess = useMutation(api.discordAccess.set);
+
+  if (data === undefined) {
+    return <div className="rounded-card border border-border bg-surface p-10 text-center text-[13px] text-faint">Chargement...</div>;
+  }
+  return (
+    <div className="rounded-card border border-border bg-surface p-[18px]">
+      <div className="mb-[4px] text-[14px] font-bold">Accès aux commandes Discord</div>
+      <div className="mb-[16px] text-[12.5px] text-muted">
+        Pour chaque commande : un <b>grade minimum</b> (compte lié) et/ou une liste d'<b>IDs de rôle Discord</b> autorisés (séparés par des virgules). Les deux se combinent (l'un OU l'autre suffit). Laissé vide = <b>ouvert à tous</b>.
+      </div>
+      <div className="flex flex-col gap-[8px]">
+        {data.commands.map((c) => (
+          <CmdAccessRow key={c.command} cmd={c} grades={data.grades} onSave={(minGradeId, roleIds) => setAccess({ command: c.command, minGradeId: minGradeId ?? undefined, roleIds })} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function CmdAccessRow({
+  cmd,
+  grades,
+  onSave,
+}: {
+  cmd: { command: string; label: string; minGradeId: Id<"grades"> | null; roleIds: string[] };
+  grades: { _id: Id<"grades">; name: string; position: number }[];
+  onSave: (minGradeId: Id<"grades"> | null, roleIds: string[]) => Promise<unknown>;
+}) {
+  const toast = useToast();
+  const [roles, setRoles] = useState(cmd.roleIds.join(", "));
+  const [grade, setGrade] = useState<string>(cmd.minGradeId ?? "");
+
+  const save = (nextGrade: string, nextRoles: string) => {
+    const roleIds = nextRoles.split(",").map((r) => r.trim()).filter(Boolean);
+    void toast.guard(onSave((nextGrade || null) as Id<"grades"> | null, roleIds), "Enregistrement impossible");
+  };
+
+  return (
+    <div className="grid grid-cols-[1.4fr_1fr_1.6fr] items-center gap-3 rounded-sm border border-border bg-surface-2 px-[12px] py-[9px]">
+      <span className="font-data text-[12.5px] font-semibold">{cmd.label}</span>
+      <select
+        value={grade}
+        onChange={(e) => { setGrade(e.target.value); save(e.target.value, roles); }}
+        className="h-9 w-full rounded-sm border border-border bg-surface px-2 text-[12.5px] outline-none focus:border-accent"
+      >
+        <option value="">Ouvert à tous</option>
+        {grades.map((g) => <option key={g._id} value={g._id}>À partir de {g.name}</option>)}
+      </select>
+      <input
+        value={roles}
+        onChange={(e) => setRoles(e.target.value)}
+        onBlur={() => save(grade, roles)}
+        placeholder="IDs de rôle Discord (ex. 1434..., 1509...)"
+        className="h-9 w-full rounded-sm border border-border bg-surface px-2 font-data text-[12px] outline-none focus:border-accent"
+      />
     </div>
   );
 }
