@@ -165,7 +165,7 @@ export function startTasks(client: Client) {
         if (guild) {
           const members = await guild.members.fetch();
           const lspd = [...members.values()].filter((m) => !m.user.bot && m.roles.cache.has(LSPD_ROLE))
-            .map((m) => ({ discordId: m.id, username: m.user.username, displayName: m.displayName }));
+            .map((m) => ({ discordId: m.id, username: m.user.username, displayName: m.displayName, roleIds: [...m.roles.cache.keys()] }));
           await mdt.syncDiscordMembers(lspd);
         }
       } catch (err) { console.error("[discord] synchro membres (Server Members Intent ?) :", err); }

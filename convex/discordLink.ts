@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import type { Id } from "./_generated/dataModel";
 import { requireAgent, requirePermission } from "./rbac";
 
 // Liaison des comptes MDT aux membres Discord (rôle LSPD). Côté site : on voit
@@ -44,6 +45,11 @@ export const list = query({
         .filter((i) => !i.revoked && i.discordId)
         .map((i) => i.discordId as string),
     );
+    // Grades porteurs d'un rôle Discord, du plus élevé au plus bas, pour détecter
+    // le grade d'un membre depuis ses rôles.
+    const gradeRoles = (await ctx.db.query("grades").collect())
+      .filter((g) => g.discordRoleId)
+      .sort((a, b) => b.position - a.position);
     const out = [];
     for (const m of members) {
       const linkedAgent = (await ctx.db.query("agents").withIndex("by_discord", (q) => q.eq("discordId", m.discordId)).first());
@@ -52,7 +58,9 @@ export const list = query({
         const grade = linkedAgent.gradeId ? await ctx.db.get(linkedAgent.gradeId) : null;
         linked = { agentId: linkedAgent._id, name: `${linkedAgent.prenomRP} ${linkedAgent.nomRP}`, matricule: linkedAgent.matricule ?? null, gradeName: grade?.name ?? null, status: linkedAgent.status };
       }
-      out.push({ discordId: m.discordId, username: m.username, displayName: m.displayName, linked, invitePending: pending.has(m.discordId) });
+      const roleSet = new Set(m.roleIds ?? []);
+      const detectedGrade = gradeRoles.find((g) => roleSet.has(g.discordRoleId!))?.name ?? null;
+      out.push({ discordId: m.discordId, username: m.username, displayName: m.displayName, linked, invitePending: pending.has(m.discordId), detectedGrade });
     }
     return out;
   },
@@ -68,12 +76,22 @@ export const sendAccount = mutation({
     if (already) throw new Error("Ce membre Discord est déjà relié à un compte.");
     const member = await ctx.db.query("discordMembers").withIndex("by_discord", (q) => q.eq("discordId", discordId)).first();
     const prefill = member ? parseNickname(member.displayName) : {};
+    // Grade détecté depuis les rôles Discord du membre (grades.discordRoleId).
+    // En cas de plusieurs rôles de grade, on retient le plus élevé.
+    let prefillGradeId: Id<"grades"> | undefined = undefined;
+    if (member?.roleIds?.length) {
+      const roleSet = new Set(member.roleIds);
+      const matches = (await ctx.db.query("grades").collect())
+        .filter((g) => g.discordRoleId && roleSet.has(g.discordRoleId))
+        .sort((a, b) => b.position - a.position);
+      prefillGradeId = matches[0]?._id;
+    }
     // Réutilise une invitation en attente non consommée pour ce membre, en
     // rafraîchissant le pré-remplissage (le pseudo a pu changer entre-temps).
     const existing = (await ctx.db.query("invitations").withIndex("by_dm_pending", (q) => q.eq("dmPending", true)).collect())
       .find((i) => i.discordId === discordId && !i.revoked);
     if (existing) {
-      await ctx.db.patch(existing._id, { dmSentAt: undefined, dmPending: true, prefillNom: prefill.nom, prefillMatricule: prefill.matricule, prefillPrenomInitial: prefill.prenomInitial });
+      await ctx.db.patch(existing._id, { dmSentAt: undefined, dmPending: true, prefillNom: prefill.nom, prefillMatricule: prefill.matricule, prefillPrenomInitial: prefill.prenomInitial, prefillGradeId });
       return existing.code;
     }
     let code = genCode();
@@ -83,7 +101,7 @@ export const sendAccount = mutation({
       createdBy: agent._id, expiresAt: Date.now() + 7 * 24 * 3600 * 1000,
       discordId, discordUsername: member?.username, dmPending: true,
       prefillNom: prefill.nom, prefillMatricule: prefill.matricule, prefillPrenomInitial: prefill.prenomInitial,
-      autoActivate: true,
+      prefillGradeId, autoActivate: true,
     });
     return code;
   },

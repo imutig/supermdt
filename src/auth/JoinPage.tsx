@@ -137,6 +137,13 @@ export function JoinPage() {
           className={`${inputCls} font-data tracking-[0.06em]`}
         />
 
+        {preview.prefillGradeName && (
+          <div className="mt-[10px] flex items-center gap-[8px] rounded-[9px] border border-border bg-surface-2 px-[13px] py-[10px] text-[12px] text-muted">
+            <BadgeCheck className="h-[15px] w-[15px] text-accent" />
+            <span>Grade détecté : <b className="text-text">{preview.prefillGradeName}</b> · attribué automatiquement.</span>
+          </div>
+        )}
+
         <label className="mb-[7px] mt-4 block text-[11px] font-bold uppercase tracking-[0.08em] text-faint">Mot de passe</label>
         <div className="flex h-[46px] items-center gap-[9px] rounded-[10px] border border-border bg-surface-2 px-[14px]">
           <input

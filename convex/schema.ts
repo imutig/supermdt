@@ -507,6 +507,9 @@ export default defineSchema({
     prefillNom: v.optional(v.string()),
     prefillMatricule: v.optional(v.number()),
     prefillPrenomInitial: v.optional(v.string()),
+    // Grade détecté depuis le rôle Discord du membre (grades.discordRoleId) :
+    // affecté automatiquement au compte créé.
+    prefillGradeId: v.optional(v.id("grades")),
     // Invitation ciblée d'un membre vérifié (rôle LSPD) : le compte est actif
     // d'emblée, sans passer par la validation de l'État-Major.
     autoActivate: v.optional(v.boolean()),
@@ -518,6 +521,9 @@ export default defineSchema({
     discordId: v.string(),
     username: v.string(),
     displayName: v.string(),
+    // Rôles Discord du membre : sert à détecter automatiquement son grade (via
+    // grades.discordRoleId) à l'envoi d'un compte.
+    roleIds: v.optional(v.array(v.string())),
     syncedAt: v.number(),
   }).index("by_discord", ["discordId"]),
 

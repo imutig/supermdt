@@ -237,7 +237,7 @@ export const rollcallState = query({
 // Synchronise les membres du rôle LSPD : réconcilie la table discordMembers
 // (upsert les présents, retire ceux qui ne sont plus dans le lot).
 export const syncDiscordMembers = mutation({
-  args: { secret: v.string(), members: v.array(v.object({ discordId: v.string(), username: v.string(), displayName: v.string() })) },
+  args: { secret: v.string(), members: v.array(v.object({ discordId: v.string(), username: v.string(), displayName: v.string(), roleIds: v.optional(v.array(v.string())) })) },
   handler: async (ctx, { secret, members }) => {
     assertBot(secret);
     const now = Date.now();
@@ -246,10 +246,10 @@ export const syncDiscordMembers = mutation({
     for (const row of existing) {
       const m = incoming.get(row.discordId);
       if (!m) { await ctx.db.delete(row._id); continue; }
-      await ctx.db.patch(row._id, { username: m.username, displayName: m.displayName, syncedAt: now });
+      await ctx.db.patch(row._id, { username: m.username, displayName: m.displayName, roleIds: m.roleIds ?? [], syncedAt: now });
       incoming.delete(row.discordId);
     }
-    for (const m of incoming.values()) await ctx.db.insert("discordMembers", { ...m, syncedAt: now });
+    for (const m of incoming.values()) await ctx.db.insert("discordMembers", { discordId: m.discordId, username: m.username, displayName: m.displayName, roleIds: m.roleIds ?? [], syncedAt: now });
     return { count: members.length };
   },
 });

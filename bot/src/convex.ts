@@ -74,7 +74,7 @@ export const mdt = {
   rollcallVoters: (rollcallId: string) => client.query(anyApi.bot.rollcallVoters, { secret: env.botSecret, rollcallId }) as Promise<string[]>,
   rollcallMarkReminders: (rollcallId: string, slots: string[]) => client.mutation(anyApi.bot.rollcallMarkReminders, { secret: env.botSecret, rollcallId, slots }) as Promise<void>,
 
-  syncDiscordMembers: (members: { discordId: string; username: string; displayName: string }[]) => client.mutation(anyApi.bot.syncDiscordMembers, { secret: env.botSecret, members }) as Promise<{ count: number }>,
+  syncDiscordMembers: (members: { discordId: string; username: string; displayName: string; roleIds?: string[] }[]) => client.mutation(anyApi.bot.syncDiscordMembers, { secret: env.botSecret, members }) as Promise<{ count: number }>,
   accountDMQueue: () => client.query(anyApi.bot.accountDMQueue, { secret: env.botSecret }) as Promise<{ code: string; discordId: string; baseUrl: string }[]>,
   markAccountDMSent: (code: string) => client.mutation(anyApi.bot.markAccountDMSent, { secret: env.botSecret, code }) as Promise<void>,
   roleJobsPending: () => client.query(anyApi.bot.roleJobsPending, { secret: env.botSecret }) as Promise<{ _id: string; discordId: string; addRoleId: string | null; removeRoleIds: string[]; reason: string | null }[]>,

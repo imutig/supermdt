@@ -63,11 +63,13 @@ export const previewByCode = query({
     if (invite.revoked) return { status: "revoked" as const };
     if (invite.expiresAt && invite.expiresAt < Date.now()) return { status: "expired" as const };
     if (invite.usesCount >= invite.maxUses) return { status: "used" as const };
+    const grade = invite.prefillGradeId ? await ctx.db.get(invite.prefillGradeId) : null;
     return {
       status: "ok" as const,
       prefillNom: invite.prefillNom ?? null,
       prefillMatricule: invite.prefillMatricule ?? null,
       prefillPrenomInitial: invite.prefillPrenomInitial ?? null,
+      prefillGradeName: grade?.name ?? null,
       discordUsername: invite.discordUsername ?? null,
     };
   },

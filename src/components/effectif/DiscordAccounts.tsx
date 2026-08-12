@@ -91,7 +91,9 @@ export function DiscordAccounts({ onClose }: { onClose: () => void }) {
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-[13px] font-semibold">{m.displayName}</div>
-                    <div className="truncate text-[11.5px] text-faint">@{m.username}</div>
+                    <div className="truncate text-[11.5px] text-faint">
+                      @{m.username}{!m.linked && m.detectedGrade ? ` · grade détecté : ${m.detectedGrade}` : ""}
+                    </div>
                   </div>
                   {m.linked ? (
                     <span className="inline-flex items-center gap-[6px] rounded-[5px] px-[8px] py-[3px] text-[11px] font-semibold" style={{ background: "color-mix(in srgb, var(--success) 14%, transparent)", color: "var(--success)" }}>

@@ -210,6 +210,9 @@ export const completeRegistration = mutation({
     // Compte actif d'emblée si admis en promo, ou invitation ciblée d'un membre
     // vérifié (« Envoyer un compte »).
     const active = enrolled || !!invite.autoActivate;
+    // Grade : Cadet en promo, sinon le grade détecté depuis le rôle Discord.
+    let gradeId = asCadet ? cadetGrade!._id : invite.prefillGradeId ?? undefined;
+    if (gradeId && !(await ctx.db.get(gradeId))) gradeId = undefined; // grade supprimé entre-temps
 
     // Matricule pré-rempli (page « Rejoindre ») : posé s'il est libre.
     let mat: number | undefined = undefined;
@@ -225,7 +228,7 @@ export const completeRegistration = mutation({
       nomRP: args.nomRP,
       prenomRP: args.prenomRP,
       status: active ? "ACTIVE" : "PENDING",
-      gradeId: asCadet ? cadetGrade!._id : undefined,
+      gradeId,
       matricule: mat,
       dateEntree: active ? Date.now() : undefined,
       isOwner: false,
