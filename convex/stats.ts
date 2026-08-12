@@ -64,7 +64,11 @@ export const recompute = internalMutation({
     const monthAgo = now - 30 * DAY;
 
     // ---- Compteurs globaux ----
-    const agentsActive = (await ctx.db.query("agents").withIndex("by_status", (q) => q.eq("status", "ACTIVE")).collect()).filter((a) => !a.isOwner).length;
+    const allAgents = await ctx.db.query("agents").collect();
+    const agentsActive = allAgents.filter((a) => a.status === "ACTIVE" && !a.isOwner).length;
+    // Compte owner : sert de fallback createdBy sur les dossiers importés dont
+    // l'officier n'a pas de compte -> à exclure du classement "agents actifs".
+    const ownerId = allAgents.find((a) => a.isOwner)?._id;
     const citizensCount = (await ctx.db.query("citizens").take(5000)).filter((c) => c.status === "ACTIVE").length;
     const vehiclesCount = (await ctx.db.query("vehicles").take(5000)).filter((v) => !v.deletedAt).length;
     const weaponsCount = (await ctx.db.query("weapons").take(5000)).filter((w) => !w.deletedAt).length;
@@ -84,7 +88,7 @@ export const recompute = internalMutation({
       }
       if (e.at >= monthAgo) {
         const off = e.officerIds[0] ?? e.createdBy;
-        if (off) agentTally.set(off, (agentTally.get(off) ?? 0) + 1);
+        if (off && off !== ownerId) agentTally.set(off, (agentTally.get(off) ?? 0) + 1);
       }
     }
 
@@ -100,7 +104,7 @@ export const recompute = internalMutation({
         if (c.finePaid === true) fineCollected += c.totalFine;
         else fineUnpaid += c.totalFine;
       }
-      if (c.at >= monthAgo) agentTally.set(c.officerId, (agentTally.get(c.officerId) ?? 0) + 1);
+      if (c.at >= monthAgo && c.officerId !== ownerId) agentTally.set(c.officerId, (agentTally.get(c.officerId) ?? 0) + 1);
     }
 
     // ---- Top agents (30 j) ----

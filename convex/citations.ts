@@ -17,6 +17,21 @@ async function currentDefcon(ctx: QueryCtx) {
   return (await ctx.db.get(last.levelId)) ?? def;
 }
 
+// Officier verbalisateur avec état de rattachement. Contravention importée du
+// Nexus dont l'agent n'a pas de compte : officerId retombe sur l'owner -> on
+// affiche le nom brut (officerName), non relié.
+async function citationOfficer(
+  ctx: QueryCtx,
+  c: { officerId: import("./_generated/dataModel").Id<"agents">; officerName?: string },
+): Promise<{ matricule: number | null; name: string; linked: boolean }> {
+  if (c.officerName) {
+    const a = await ctx.db.get(c.officerId);
+    if (a?.isOwner) return { matricule: null, name: c.officerName, linked: false };
+  }
+  const l = await agentLabel(ctx, c.officerId);
+  return { ...l, linked: true };
+}
+
 export const byCitizen = query({
   args: { citizenId: v.id("citizens") },
   handler: async (ctx, { citizenId }) => {
@@ -39,7 +54,7 @@ export const byCitizen = query({
         at: c.at,
         status: c.status,
         totalFine: c.totalFine,
-        officer: await agentLabel(ctx, c.officerId),
+        officer: await citationOfficer(ctx, c),
         motif: charges.map((x) => x.snapshot.name).join(", ") || "-",
       });
     }
@@ -68,7 +83,7 @@ export const getEntry = query({
       citizenId: c.citizenId,
       citizenName: citizen ? `${citizen.prenom} ${citizen.nom}` : "-",
       mine: c.createdBy === agent._id,
-      officer: await agentLabel(ctx, c.officerId),
+      officer: await citationOfficer(ctx, c),
       defcon: c.defconSnapshot,
       totalFine: c.totalFine,
       notes: c.notes,
@@ -122,10 +137,11 @@ export const recent = query({
   handler: async (ctx) => {
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "contraventions.view");
-    const rows = await ctx.db.query("citations").order("desc").take(80);
+    // Tri par date d'infraction (by_at) : les contraventions importées du Nexus
+    // sont toutes créées au même instant, _creationTime ne les classe pas.
+    const rows = (await ctx.db.query("citations").withIndex("by_at").order("desc").take(120)).filter((c) => !c.deletedAt).slice(0, 80);
     const out = [];
     for (const c of rows) {
-      if (c.deletedAt) continue;
       const citizen = await ctx.db.get(c.citizenId);
       const charges = await ctx.db
         .query("citationCharges")
@@ -137,7 +153,7 @@ export const recent = query({
         citizenName: citizen ? `${citizen.prenom} ${citizen.nom}` : "-",
         motif: charges.map((x) => x.snapshot.name).join(", ") || "-",
         totalFine: c.totalFine,
-        officer: await agentLabel(ctx, c.officerId),
+        officer: await citationOfficer(ctx, c),
         status: c.status,
         at: c.at,
       });

@@ -114,19 +114,6 @@ export function Statistiques() {
         </div>
 
         <div className="flex flex-col gap-[18px]">
-          {/* Amendes */}
-          <div className="rounded-card border border-border bg-surface p-4">
-            <div className="mb-[12px] text-[10.5px] font-bold uppercase tracking-[0.09em] text-faint">Amendes</div>
-            <div className="flex items-baseline justify-between border-b border-border pb-[10px]">
-              <span className="text-[12.5px] text-muted">Collectées</span>
-              <span className="font-data text-[16px] font-bold" style={{ color: "var(--success)" }}>${s.fines.collected.toLocaleString("fr-FR")}</span>
-            </div>
-            <div className="flex items-baseline justify-between pt-[10px]">
-              <span className="text-[12.5px] text-muted">Impayées</span>
-              <span className="font-data text-[16px] font-bold" style={{ color: "var(--danger)" }}>${s.fines.unpaid.toLocaleString("fr-FR")}</span>
-            </div>
-          </div>
-
           {/* Arrestations / contraventions résumé */}
           <div className="grid grid-cols-2 gap-px overflow-hidden rounded-card border border-border bg-border">
             <Stat label="Arrestations (7j)" value={String(s.arrests.week)} sub={`${s.arrests.month} sur 30j`} />

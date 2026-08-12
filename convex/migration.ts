@@ -192,6 +192,8 @@ export const sync = internalAction({
     // Casiers (dossiers d'arrestation) : après les citoyens/code pénal, pour un
     // meilleur rattachement. Import robuste (voir casiersImport.ts).
     const casiersRep: unknown = await ctx.runAction(internal.casiersImport.casiersSync, { token: tk, dryRun, createMissing: createMissingCitizens });
+    // Contraventions (amendes Nexus) : même modèle que les casiers.
+    const contraventionsRep: unknown = await ctx.runAction(internal.casiersImport.contraventionsSync, { token: tk, dryRun, createMissing: createMissingCitizens });
 
     return {
       ok: true,
@@ -202,6 +204,7 @@ export const sync = internalAction({
       codePenal: codePenalRep,
       vehicules: vehiculesRep,
       casiers: casiersRep,
+      contraventions: contraventionsRep,
     };
   },
 });

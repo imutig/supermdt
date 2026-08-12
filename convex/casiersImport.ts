@@ -128,6 +128,41 @@ export function mapDossier(d: any) {
   };
 }
 
+// "12/08/2026" + "01:46" -> epoch (Paris). Fallbacks : ISO createdAt, puis now.
+function parseAmendeDate(dateStr: string, heureStr: string, createdAt: string): number {
+  const md = /(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(dateStr || "");
+  const mh = /(\d{1,2})\s*[hH:]\s*(\d{2})/.exec(heureStr || "");
+  if (md) return parisWallToEpoch(+md[3], +md[2], +md[1], mh ? +mh[1] : 12, mh ? +mh[2] : 0);
+  const iso = Date.parse(createdAt || "");
+  return Number.isNaN(iso) ? Date.now() : iso;
+}
+// ---------------- mapping défensif d'une amende (contravention) -------------
+export function mapAmende(a: any) {
+  const numero = pick(a, "numero", "number", "_id");
+  const statut = String(pick(a, "statut", "status") ?? "").trim();
+  const montant = num(pick(a, "montant", "amount", "montantAmende", "fine")) ?? 0;
+  const objet = String(pick(a, "objet", "motif", "libelle") ?? "").trim();
+  return {
+    importRef: `nexus-amende:${numero ?? pick(a, "_id", "id")}`,
+    numero: String(numero ?? ""),
+    prenom: String(pick(a, "citoyen.prenom", "citizen.prenom", "prenom") ?? "").trim(),
+    nom: String(pick(a, "citoyen.nom", "citizen.nom", "nom") ?? "").trim(),
+    at: parseAmendeDate(String(pick(a, "dateInfraction", "date") ?? ""), String(pick(a, "heureInfraction", "heure") ?? ""), String(pick(a, "createdAt", "created_at") ?? "")),
+    createdByMatricule: num(pick(a, "createdBy.matricule", "matriculeAgent", "createdBy.badge")),
+    createdByNom: String(pick(a, "createdBy.nom", "verbalisateurNom", "createdBy.name") ?? "").trim(),
+    montant,
+    statut: statut || undefined,
+    finePaid: /pay/i.test(statut),
+    annulee: /annul/i.test(statut),
+    lieu: (String(pick(a, "lieuInfraction", "lieu", "adressePrecise") ?? "").trim()) || undefined,
+    objet,
+    typeAmende: String(pick(a, "typeAmende") ?? "").trim(),
+    categorieAmende: String(pick(a, "categorieAmende") ?? "").trim(),
+    description: stripHtml(String(pick(a, "description") ?? "")) || undefined,
+    recidive: !!pick(a, "recidive"),
+  };
+}
+
 // ------------------------------- fetch ------------------------------------
 async function apiGet(path: string, token: string): Promise<any> {
   const res = await fetch(`${BASE}${path}`, { headers: { Authorization: `Bearer ${token}` } });
@@ -140,6 +175,13 @@ async function fetchAllDossiers(token: string): Promise<any[]> {
   let all = (first.dossiers || []).slice();
   const pages = first.pages || 1;
   for (let p = 2; p <= pages; p++) all = all.concat((await apiGet(`/api/dossiers?entity=lspd&page=${p}&limit=100`, token)).dossiers || []);
+  return all;
+}
+async function fetchAllAmendes(token: string): Promise<any[]> {
+  const first = await apiGet("/api/amendes?entity=lspd&page=1&limit=100", token);
+  let all = (first.amendes || []).slice();
+  const pages = first.pages || 1;
+  for (let p = 2; p <= pages; p++) all = all.concat((await apiGet(`/api/amendes?entity=lspd&page=${p}&limit=100`, token)).amendes || []);
   return all;
 }
 
@@ -163,6 +205,18 @@ export const runCasiersSync = action({
     if (!ok) throw new Error("Non autorisé.");
     if (!process.env.VIZU_TOKEN) throw new Error("VIZU_TOKEN non configuré côté Convex.");
     return await ctx.runAction(internal.casiersImport.casiersSync, { dryRun, createMissing });
+  },
+});
+
+// Import des contraventions (amendes Nexus) — même modèle que les casiers.
+export const contraventionsSync = internalAction({
+  args: { token: v.optional(v.string()), dryRun: v.optional(v.boolean()), limit: v.optional(v.number()), createMissing: v.optional(v.boolean()) },
+  handler: async (ctx, { token, dryRun, limit, createMissing }): Promise<unknown> => {
+    const tk = token || process.env.VIZU_TOKEN;
+    if (!tk) throw new Error("Aucun token. npx convex env set VIZU_TOKEN \"...\" (ou {\"token\":\"...\"}).");
+    const raw = await fetchAllAmendes(tk);
+    const sliced = limit ? raw.slice(0, limit) : raw;
+    return await ctx.runMutation(internal.casiersImport._upsertContraventions, { raws: sliced.map((a) => JSON.stringify(a)), dryRun, createMissing });
   },
 });
 
@@ -332,6 +386,94 @@ export const _upsertCasiers = internalMutation({
     }
 
     return { source: raws.length, ajoutes, dejaImporte, casiersRelies, officiersRelies, sansCitoyen, citoyensCrees, exemplesSansCitoyen, chargesLiees, chargesLibres, officiersLies, parseErr, supprimes, chargesSupprimees };
+  },
+});
+
+export const _upsertContraventions = internalMutation({
+  args: { raws: v.array(v.string()), dryRun: v.optional(v.boolean()), createMissing: v.optional(v.boolean()) },
+  handler: async (ctx, { raws, dryRun, createMissing }) => {
+    const refs = await resolveRefs(ctx);
+    if (!refs.owner) throw new Error("Aucun compte owner pour rattacher les contraventions importées.");
+    const all = await ctx.db.query("citations").collect();
+    const existingByRef = new Map<string, (typeof all)[number]>();
+    for (const c of all) if (c.importRef) existingByRef.set(c.importRef, c);
+    const incomingRefs = new Set<string>();
+    for (const rawStr of raws) { try { incomingRefs.add(mapAmende(JSON.parse(rawStr)).importRef); } catch { /* compté plus bas */ } }
+
+    let ajoutes = 0, dejaImporte = 0, sansCitoyen = 0, citoyensCrees = 0, chargesLiees = 0, chargesLibres = 0, officiersLies = 0, parseErr = 0;
+    let contravRelies = 0;
+    const exemplesSansCitoyen: string[] = [];
+    for (const rawStr of raws) {
+      let a: any;
+      try { a = mapAmende(JSON.parse(rawStr)); } catch { parseErr++; continue; }
+      const status = a.annulee ? ("ANNULEE" as const) : ("EMISE" as const);
+      const prev = existingByRef.get(a.importRef);
+      if (prev) {
+        dejaImporte++;
+        if (!dryRun) {
+          const officerId = resolveOfficer(refs, a.createdByMatricule, a.createdByNom);
+          const patch: Record<string, unknown> = {};
+          if (officerId && prev.officerId === refs.owner._id) { patch.officerId = officerId; contravRelies++; officiersLies++; }
+          if ((prev.officerName ?? undefined) !== (a.createdByNom || undefined)) patch.officerName = a.createdByNom || undefined;
+          if (prev.finePaid !== a.finePaid) patch.finePaid = a.finePaid;
+          if (prev.status !== status) patch.status = status;
+          if (prev.importRaw !== rawStr) patch.importRaw = rawStr;
+          if (Object.keys(patch).length) await ctx.db.patch(prev._id, patch);
+        }
+        continue;
+      }
+      let citizenId = refs.byName.get(norm(`${a.prenom} ${a.nom}`));
+      if (!citizenId) {
+        if (!createMissing || !a.prenom || !a.nom) {
+          sansCitoyen++;
+          if (exemplesSansCitoyen.length < 10) exemplesSansCitoyen.push(`${a.prenom} ${a.nom} (${a.numero})`);
+          continue;
+        }
+        citoyensCrees++;
+        if (!dryRun) {
+          citizenId = await ctx.db.insert("citizens", { prenom: a.prenom, nom: a.nom, photoStorageIds: [], status: "ACTIVE" as const, searchText: norm(`${a.prenom} ${a.nom}`) });
+          refs.byName.set(norm(`${a.prenom} ${a.nom}`), citizenId);
+          refs.byName.set(norm(`${a.nom} ${a.prenom}`), citizenId);
+        }
+      }
+      ajoutes++;
+      const officerId = resolveOfficer(refs, a.createdByMatricule, a.createdByNom);
+      if (officerId) officiersLies++;
+      const pc = refs.penalByName.get(norm(a.objet));
+      const cat: any = pc ? refs.cats.get(pc.categoryId as string) : undefined;
+      const sev: any = pc?.severityId ? refs.sevs.get(pc.severityId as string) : undefined;
+      if (pc) chargesLiees++; else chargesLibres++;
+      if (dryRun) continue;
+      const notesParts = [a.typeAmende, a.categorieAmende].filter(Boolean).join(" · ");
+      const citationId = await ctx.db.insert("citations", {
+        citizenId: citizenId as Id<"citizens">, at: a.at,
+        officerId: officerId || refs.owner._id,
+        officerName: a.createdByNom || undefined,
+        defconSnapshot: { name: "Import", fineMultiplier: 1, sensitiveFineMultiplier: 1 },
+        totalFine: a.montant, status,
+        finePaid: a.finePaid,
+        notes: [notesParts, a.description].filter(Boolean).join("\n") || `Importé du MDT Nexus · ${a.numero}`,
+        createdBy: officerId || refs.owner._id,
+        importRef: a.importRef, importRaw: rawStr,
+      });
+      await ctx.db.insert("citationCharges", {
+        citationId, penalChargeId: pc?._id as Id<"penalCharges"> | undefined,
+        snapshot: { name: a.objet || "Contravention", category: cat?.name ?? "Importé", severity: sev?.name ?? "", sensitive: cat?.sensitive ?? false, fineRaw: fmtMoney(a.montant), dojRequest: false, sanctions: [] },
+        isRecidive: a.recidive, computedFine: a.montant, onDecision: false,
+      });
+    }
+
+    // Réconciliation : contraventions IMPORTÉES absentes du flux Nexus -> supprimées.
+    let supprimes = 0, chargesSupprimees = 0;
+    const orphelins = raws.length > 0 ? all.filter((c) => c.importRef && !c.deletedAt && !incomingRefs.has(c.importRef)) : [];
+    for (const c of orphelins) {
+      supprimes++;
+      if (dryRun) continue;
+      for (const ch of await ctx.db.query("citationCharges").withIndex("by_citation", (q) => q.eq("citationId", c._id)).collect()) { await ctx.db.delete(ch._id); chargesSupprimees++; }
+      await ctx.db.delete(c._id);
+    }
+
+    return { source: raws.length, ajoutes, dejaImporte, contravRelies, sansCitoyen, citoyensCrees, exemplesSansCitoyen, chargesLiees, chargesLibres, officiersLies, parseErr, supprimes, chargesSupprimees };
   },
 });
 

@@ -47,14 +47,19 @@ export const casierAndCitations = query({
       });
     }
 
-    const citations = await ctx.db.query("citations").order("desc").take(25);
+    const citations = (await ctx.db.query("citations").withIndex("by_at").order("desc").take(60)).filter((c) => !c.deletedAt).slice(0, 25);
     for (const c of citations) {
-      if (c.deletedAt) continue;
       const citizen = await ctx.db.get(c.citizenId);
       const charges = await ctx.db
         .query("citationCharges")
         .withIndex("by_citation", (q) => q.eq("citationId", c._id))
         .collect();
+      // Verbalisateur non relié (import Nexus) : officerId retombe sur l'owner.
+      let officer = await agentLabel(ctx, c.officerId);
+      if (c.officerName) {
+        const a = await ctx.db.get(c.officerId);
+        if (a?.isOwner) officer = { matricule: null, name: c.officerName };
+      }
       out.push({
         _id: c._id,
         kind: "citation",
@@ -62,7 +67,7 @@ export const casierAndCitations = query({
         citizenName: citizen ? `${citizen.prenom} ${citizen.nom}` : "-",
         motif: charges.map((x) => x.snapshot.name).join(", ") || "-",
         totalFine: c.totalFine,
-        officer: await agentLabel(ctx, c.officerId),
+        officer,
         status: c.status,
         at: c.at,
       });

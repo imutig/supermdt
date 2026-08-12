@@ -1592,10 +1592,17 @@ export default defineSchema({
     deletedAt: v.optional(v.number()),
     deletedBy: v.optional(v.id("agents")),
     createdBy: v.id("agents"),
+    // Officier verbalisateur : nom écrit dans le rapport quand pas de compte relié.
+    officerName: v.optional(v.string()),
+    // Import depuis le MDT Nexus (/api/amendes) : idempotence + JSON brut.
+    importRef: v.optional(v.string()),
+    importRaw: v.optional(v.string()),
   })
     .index("by_citizen", ["citizenId"])
     .index("by_vehicle", ["vehicleId"])
-    .index("by_deleted", ["deletedAt"]),
+    .index("by_deleted", ["deletedAt"])
+    .index("by_import", ["importRef"])
+    .index("by_at", ["at"]),
 
   citationCharges: defineTable({
     citationId: v.id("citations"),
