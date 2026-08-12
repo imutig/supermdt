@@ -9,6 +9,8 @@ import { EmptyState } from "@/components/common/EmptyState";
 import { SkeletonRows } from "@/components/common/Skeleton";
 import { useToast } from "@/providers/toast";
 import { useDialogs } from "@/components/detective/dialogs";
+import { useNavigate } from "react-router-dom";
+import { usePermPreview } from "@/providers/perm-preview";
 
 const TABS = [
   { key: "validation", label: "Validation" },
@@ -542,12 +544,16 @@ const PERM_SECTIONS: { domain: string; label: string }[] = [
 function PermissionsTab() {
   const data = useQuery(api.config.permissionMatrix);
   const setPerm = useMutation(api.config.setGradePermission);
+  const setAllPerm = useMutation(api.config.setPermissionAllGrades);
   const copyPerms = useMutation(api.config.copyGradePermissions);
   const dialogs = useDialogs();
   const toast = useToast();
+  const navigate = useNavigate();
+  const { setPreview } = usePermPreview();
   const [q, setQ] = useState("");
   const [copyFrom, setCopyFrom] = useState("");
   const [copyTo, setCopyTo] = useState("");
+  const [previewPick, setPreviewPick] = useState("");
 
   async function doCopy() {
     if (!copyFrom || !copyTo || copyFrom === copyTo || !data) return;
@@ -620,6 +626,27 @@ function PermissionsTab() {
       <div className="border-b border-border px-4 py-[10px] text-[12.5px] text-muted">
         Coche pour attribuer une permission à un grade. L'owner conserve tous les droits quoi qu'il arrive.
       </div>
+      {/* Prévisualiser le MDT en tant qu'un grade */}
+      <div className="flex flex-wrap items-center gap-2 border-b border-border bg-surface-2 px-4 py-[10px]">
+        <span className="text-[11.5px] font-semibold text-muted">Prévisualiser en tant que</span>
+        <select value={previewPick} onChange={(e) => setPreviewPick(e.target.value)} className="h-8 rounded-sm border border-border bg-surface px-2 text-[12px] outline-none focus:border-accent">
+          <option value="">— grade —</option>
+          {data.grades.map((g) => <option key={g._id} value={g._id}>{g.name}</option>)}
+        </select>
+        <button
+          onClick={() => {
+            const g = data.grades.find((x) => x._id === previewPick);
+            if (!g) return;
+            setPreview(previewPick as Id<"grades">, g.name);
+            navigate("/");
+          }}
+          disabled={!previewPick}
+          className="h-8 rounded-sm bg-accent px-3 text-[12px] font-semibold text-accent-contrast hover:brightness-[1.06] disabled:opacity-40"
+        >
+          Prévisualiser
+        </button>
+        <span className="text-[11px] text-faint">Le MDT s'affiche comme ce grade le verrait. Une barre « Quitter l'aperçu » apparaît en bas.</span>
+      </div>
       {/* Copier les permissions d'un grade vers un autre */}
       <div className="flex flex-wrap items-center gap-2 border-b border-border bg-surface-2 px-4 py-[10px]">
         <span className="text-[11.5px] font-semibold text-muted">Copier depuis</span>
@@ -679,14 +706,27 @@ function PermissionsTab() {
                     {label}
                   </td>
                 </tr>
-                {perms.map((p) => (
+                {perms.map((p) => {
+                  const allOn = data.grades.length > 0 && data.grades.every((g) => granted.has(`${g._id}:${p._id}`));
+                  const someOn = data.grades.some((g) => granted.has(`${g._id}:${p._id}`));
+                  return (
                   <tr key={p._id} className="hover:bg-surface-2">
                     <td
                       className="border-b border-border bg-surface px-3 py-[6px]"
                       style={{ position: "sticky", left: 0, zIndex: 1 }}
                       title={p.slug}
                     >
-                      <span className="text-[12px]">{p.description}</span>
+                      <span className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={allOn}
+                          ref={(el) => { if (el) el.indeterminate = someOn && !allOn; }}
+                          onChange={() => setAllPerm({ permissionId: p._id, grant: !allOn })}
+                          className="cursor-pointer"
+                          title="Cocher / décocher pour tous les grades"
+                        />
+                        <span className="text-[12px]">{p.description}</span>
+                      </span>
                     </td>
                     {data.grades.map((g) => {
                       const on = granted.has(`${g._id}:${p._id}`);
@@ -704,7 +744,8 @@ function PermissionsTab() {
                       );
                     })}
                   </tr>
-                ))}
+                  );
+                })}
               </Fragment>
             ))}
           </tbody>

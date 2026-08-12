@@ -126,6 +126,31 @@ export const copyGradePermissions = mutation({
   },
 });
 
+// Attribue (ou retire) une permission à TOUS les grades d'un coup — pratique pour
+// les droits que tout le monde doit avoir.
+export const setPermissionAllGrades = mutation({
+  args: { permissionId: v.id("permissions"), grant: v.boolean() },
+  handler: async (ctx, { permissionId, grant }) => {
+    const agent = await requireAgent(ctx);
+    await requirePermission(ctx, agent, "rbac.manage");
+    const grades = await ctx.db.query("grades").collect();
+    for (const g of grades) {
+      const hit = await ctx.db
+        .query("gradePermissions")
+        .withIndex("by_grade_permission", (q) => q.eq("gradeId", g._id).eq("permissionId", permissionId))
+        .first();
+      if (grant && !hit) await ctx.db.insert("gradePermissions", { gradeId: g._id, permissionId });
+      if (!grant && hit) await ctx.db.delete(hit._id);
+    }
+    await writeAudit(ctx, agent, {
+      action: grant ? "permission.grant_all" : "permission.revoke_all",
+      resourceType: "permission",
+      resourceId: permissionId,
+      metadata: { grades: grades.length },
+    });
+  },
+});
+
 export const setGradePermission = mutation({
   args: { gradeId: v.id("grades"), permissionId: v.id("permissions"), grant: v.boolean() },
   handler: async (ctx, args) => {
