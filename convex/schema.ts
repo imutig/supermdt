@@ -1619,6 +1619,22 @@ export default defineSchema({
     createdBy: v.optional(v.id("agents")),
   }).index("by_at", ["at"]),
 
+  // ============ PLANS DE CARTE (perso, partageables par code) ============
+  // Chaque agent crée ses propres plans sur la carte (dessins libres). Un plan
+  // peut être partagé en lecture via son `shareCode` unique. `shapes` = JSON des
+  // formes (coordonnées en % 0-100, indépendantes des tuiles).
+  mapPlans: defineTable({
+    agentId: v.id("agents"),
+    name: v.string(),
+    shapes: v.string(), // JSON.stringify(Shape[])
+    shareCode: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    deletedAt: v.optional(v.number()),
+  })
+    .index("by_agent", ["agentId"])
+    .index("by_code", ["shareCode"]),
+
   // ============ CÉRÉMONIES ============
   // Une cérémonie planifie une date/heure (ajoutée au calendrier, 1 h), porte des
   // rappels (un par un) et des montées en grade (agent + grade futur), génère un
