@@ -1,8 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/lib/api";
 import { fmtMatricule } from "@/components/common/AgentTag";
 import { SkeletonRows } from "@/components/common/Skeleton";
+import { parisDayStart, parisDayEnd } from "@/lib/paris";
+
+const DAY = 86_400_000;
 
 function Stat({ label, value, sub, color }: { label: string; value: string; sub?: string; color?: string }) {
   return (
@@ -15,21 +18,57 @@ function Stat({ label, value, sub, color }: { label: string; value: string; sub?
 }
 
 type TopFilter = "all" | "casiers" | "contraventions";
-const PERIODS = [7, 14, 30] as const;
-type Period = (typeof PERIODS)[number];
+type RangeKind = "24h" | "7j" | "14j" | "30j" | "all" | "custom";
+const PRESETS: { key: RangeKind; label: string }[] = [
+  { key: "24h", label: "24 h" },
+  { key: "7j", label: "7 j" },
+  { key: "14j", label: "14 j" },
+  { key: "30j", label: "30 j" },
+  { key: "all", label: "Depuis toujours" },
+  { key: "custom", label: "Perso" },
+];
+const SUBLABEL: Record<RangeKind, string> = {
+  "24h": "dernières 24 h",
+  "7j": "7 derniers jours",
+  "14j": "14 derniers jours",
+  "30j": "30 derniers jours",
+  all: "depuis toujours",
+  custom: "période choisie",
+};
 
 export function Statistiques() {
   const s = useQuery(api.stats.overview);
   const requestRefresh = useMutation(api.stats.requestRefresh);
   const [topFilter, setTopFilter] = useState<TopFilter>("all");
-  const [period, setPeriod] = useState<Period>(14);
+  const [rangeKind, setRangeKind] = useState<RangeKind>("14j");
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
 
-  // Consulter la page demande un rafraîchissement, ignoré si l'instantané a
-  // moins de cinq minutes. C'est aussi ce qui produit le tout premier calcul.
+  // Consulter la page demande un rafraîchissement (compteurs + DEFCON), ignoré
+  // si l'instantané a moins de cinq minutes.
   useEffect(() => { void requestRefresh({}).catch(() => {}); }, [requestRefresh]);
 
-  // `null` = aucun instantané encore calculé : le premier passage est planifié
-  // dès la première écriture qui touche aux données agrégées.
+  // Bornes de la plage. L'ancre `now` est figée au changement de sélection pour
+  // ne pas ré-abonner la requête à chaque render.
+  const args = useMemo<{ from?: number; to?: number } | "skip">(() => {
+    const now = Date.now();
+    switch (rangeKind) {
+      case "24h": return { from: now - DAY };
+      case "7j": return { from: now - 7 * DAY };
+      case "14j": return { from: now - 14 * DAY };
+      case "30j": return { from: now - 30 * DAY };
+      case "all": return {};
+      case "custom": {
+        const f = parisDayStart(customFrom);
+        const t = parisDayEnd(customTo);
+        if (f == null || t == null) return "skip";
+        return { from: f, to: t };
+      }
+    }
+  }, [rangeKind, customFrom, customTo]);
+
+  const r = useQuery(api.stats.rangeStats, args);
+
   if (s === undefined || s === null) {
     return (
       <div className="p-[22px_26px]">
@@ -42,27 +81,27 @@ export function Statistiques() {
     );
   }
 
-  // Le back renvoie une série de 30 jours ; on tronque à la période choisie.
-  const chartDays = s.days.slice(-period);
-  const maxDay = Math.max(1, ...chartDays.map((d) => d.arr + d.cit));
-  const pstats = s.periods?.[String(period)] ?? { arrests: 0, citations: 0, topAgents: [], topAgentsCasiers: [], topAgentsContraventions: [] };
+  const sub = SUBLABEL[rangeKind];
+  const series = r?.series ?? [];
+  const maxBar = Math.max(1, ...series.map((d) => d.arr + d.cit));
+  const labelStep = Math.max(1, Math.ceil(series.length / 14));
 
   return (
     <div className="p-[22px_26px]" style={{ animation: "mdtFade .2s ease" }}>
-      <div className="mb-[18px] flex flex-wrap items-center gap-3">
+      <div className="mb-[16px] flex flex-wrap items-center gap-3">
         <div>
           <h1 className="m-0 text-[21px] font-bold tracking-tight">Statistiques</h1>
           <div className="mt-[3px] text-[13px] text-muted">Activité et indicateurs de la station</div>
         </div>
         <div className="flex-1" />
-        <div className="flex gap-[3px] rounded-[8px] bg-surface-2 p-[3px]">
-          {PERIODS.map((p) => (
+        <div className="flex flex-wrap gap-[3px] rounded-[8px] bg-surface-2 p-[3px]">
+          {PRESETS.map((p) => (
             <button
-              key={p}
-              onClick={() => setPeriod(p)}
-              className={`rounded-[6px] px-[11px] py-[6px] text-[12px] font-semibold transition-colors ${period === p ? "bg-accent text-accent-contrast" : "text-muted hover:text-text"}`}
+              key={p.key}
+              onClick={() => setRangeKind(p.key)}
+              className={`rounded-[6px] px-[10px] py-[6px] text-[12px] font-semibold transition-colors ${rangeKind === p.key ? "bg-accent text-accent-contrast" : "text-muted hover:text-text"}`}
             >
-              {p} j
+              {p.label}
             </button>
           ))}
         </div>
@@ -72,6 +111,21 @@ export function Statistiques() {
           </span>
         )}
       </div>
+
+      {/* Plage personnalisée */}
+      {rangeKind === "custom" && (
+        <div className="mb-[16px] flex flex-wrap items-end gap-3 rounded-card border border-border bg-surface px-4 py-[13px]">
+          <div>
+            <div className="mb-[5px] text-[10px] font-semibold uppercase tracking-[0.06em] text-faint">Du</div>
+            <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} className="h-9 rounded-sm border border-border bg-surface-2 px-2 font-data text-[13px] outline-none focus:border-accent" />
+          </div>
+          <div>
+            <div className="mb-[5px] text-[10px] font-semibold uppercase tracking-[0.06em] text-faint">Au</div>
+            <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} className="h-9 rounded-sm border border-border bg-surface-2 px-2 font-data text-[13px] outline-none focus:border-accent" />
+          </div>
+          {args === "skip" && <div className="pb-[8px] text-[12px] text-faint">Choisissez deux dates pour afficher la période.</div>}
+        </div>
+      )}
 
       {/* Compteurs globaux */}
       <div className="mb-[18px] grid grid-cols-2 gap-px overflow-hidden rounded-card border border-border bg-border sm:grid-cols-3 lg:grid-cols-5">
@@ -87,38 +141,44 @@ export function Statistiques() {
           {/* Activité sur la période */}
           <div className="rounded-card border border-border bg-surface p-4">
             <div className="mb-[14px] flex items-center gap-2">
-              <h2 className="m-0 text-[13.5px] font-bold">Activité · {period} derniers jours</h2>
+              <h2 className="m-0 text-[13.5px] font-bold">Activité · {sub}</h2>
               <div className="flex-1" />
               <span className="flex items-center gap-[5px] text-[11px] text-muted"><span className="h-[8px] w-[8px] rounded-[2px]" style={{ background: "var(--danger)" }} /> Arrestations</span>
               <span className="flex items-center gap-[5px] text-[11px] text-muted"><span className="h-[8px] w-[8px] rounded-[2px]" style={{ background: "var(--warning)" }} /> Contraventions</span>
             </div>
-            <div className="flex items-end gap-[6px]" style={{ height: 160 }}>
-              {chartDays.map((d, i) => {
-                const total = d.arr + d.cit;
-                const h = (total / maxDay) * 140;
-                const arrH = total > 0 ? (d.arr / total) * h : 0;
-                const citH = total > 0 ? (d.cit / total) * h : 0;
-                return (
-                  <div key={i} className="flex flex-1 flex-col items-center gap-[5px]">
-                    <div className="flex w-full flex-col justify-end" style={{ height: 140 }} title={`${d.arr} arrestation(s), ${d.cit} contravention(s)`}>
-                      <div className="w-full rounded-t-[3px]" style={{ height: citH, background: "var(--warning)" }} />
-                      <div className="w-full" style={{ height: arrH, background: "var(--danger)", borderTopLeftRadius: citH === 0 ? 3 : 0, borderTopRightRadius: citH === 0 ? 3 : 0 }} />
+            {r === undefined && args !== "skip" ? (
+              <div className="flex items-end gap-[6px]" style={{ height: 160 }}><SkeletonRows rows={1} /></div>
+            ) : series.length === 0 ? (
+              <div className="py-10 text-center text-[13px] text-faint">Aucune activité sur cette période.</div>
+            ) : (
+              <div className="flex items-end gap-[4px] overflow-x-auto" style={{ height: 160 }}>
+                {series.map((d, i) => {
+                  const total = d.arr + d.cit;
+                  const h = (total / maxBar) * 140;
+                  const arrH = total > 0 ? (d.arr / total) * h : 0;
+                  const citH = total > 0 ? (d.cit / total) * h : 0;
+                  return (
+                    <div key={i} className="flex min-w-[8px] flex-1 flex-col items-center gap-[5px]">
+                      <div className="flex w-full flex-col justify-end" style={{ height: 140 }} title={`${d.label} · ${d.arr} arrestation(s), ${d.cit} contravention(s)`}>
+                        <div className="w-full rounded-t-[3px]" style={{ height: citH, background: "var(--warning)" }} />
+                        <div className="w-full" style={{ height: arrH, background: "var(--danger)", borderTopLeftRadius: citH === 0 ? 3 : 0, borderTopRightRadius: citH === 0 ? 3 : 0 }} />
+                      </div>
+                      <span className="whitespace-nowrap text-[9px] text-faint">{i % labelStep === 0 ? d.label : ""}</span>
                     </div>
-                    <span className="text-[9px] text-faint">{period > 14 && i % 3 !== 0 ? "" : d.day}</span>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           {/* Top charges */}
           <div className="overflow-hidden rounded-card border border-border bg-surface">
-            <div className="border-b border-border px-4 py-[13px]"><h2 className="m-0 text-[13.5px] font-bold">Infractions les plus fréquentes</h2></div>
-            {s.topCharges.length === 0 ? (
+            <div className="border-b border-border px-4 py-[13px]"><h2 className="m-0 text-[13.5px] font-bold">Infractions les plus fréquentes</h2><div className="mt-[2px] text-[11px] text-faint">{sub}</div></div>
+            {!r || r.topCharges.length === 0 ? (
               <div className="p-4 text-[13px] text-faint">Aucune donnée.</div>
             ) : (
-              s.topCharges.map((c, i) => {
-                const max = s.topCharges[0].count;
+              r.topCharges.map((c, i) => {
+                const max = r.topCharges[0].count;
                 return (
                   <div key={i} className="flex items-center gap-3 border-b border-border px-4 py-[9px]">
                     <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium">{c.name}</span>
@@ -136,14 +196,14 @@ export function Statistiques() {
         <div className="flex flex-col gap-[18px]">
           {/* Arrestations / contraventions résumé (période choisie) */}
           <div className="grid grid-cols-2 gap-px overflow-hidden rounded-card border border-border bg-border">
-            <Stat label={`Arrestations (${period}j)`} value={String(pstats.arrests)} />
-            <Stat label={`Contraventions (${period}j)`} value={String(pstats.citations)} />
+            <Stat label="Arrestations" value={r ? String(r.arrests) : "…"} sub={sub} />
+            <Stat label="Contraventions" value={r ? String(r.citations) : "…"} sub={sub} />
           </div>
 
           {/* Top agents */}
           {(() => {
-            const list = (topFilter === "casiers" ? pstats.topAgentsCasiers : topFilter === "contraventions" ? pstats.topAgentsContraventions : pstats.topAgents) ?? [];
-            const sub = topFilter === "casiers" ? "casiers" : topFilter === "contraventions" ? "contraventions" : "arrestations + contraventions";
+            const list = (topFilter === "casiers" ? r?.topAgentsCasiers : topFilter === "contraventions" ? r?.topAgentsContraventions : r?.topAgents) ?? [];
+            const filterSub = topFilter === "casiers" ? "casiers" : topFilter === "contraventions" ? "contraventions" : "arrestations + contraventions";
             const tabs: { key: TopFilter; label: string }[] = [
               { key: "all", label: "Tout" },
               { key: "casiers", label: "Casiers" },
@@ -166,9 +226,11 @@ export function Statistiques() {
                       ))}
                     </div>
                   </div>
-                  <div className="mt-[3px] text-[11px] text-faint">{period} derniers jours · {sub}</div>
+                  <div className="mt-[3px] text-[11px] text-faint">{sub} · {filterSub}</div>
                 </div>
-                {list.length === 0 ? (
+                {!r ? (
+                  <div className="p-4"><SkeletonRows rows={3} /></div>
+                ) : list.length === 0 ? (
                   <div className="p-4 text-[13px] text-faint">Aucune donnée.</div>
                 ) : (
                   list.map((a, i) => (
