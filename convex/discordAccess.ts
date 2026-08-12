@@ -5,17 +5,12 @@ import { requireAgent, requirePermission } from "./rbac";
 // Catalogue des commandes Discord contrôlables. `label` pour l'UII ; le `command`
 // doit correspondre exactement au nom de la commande slash côté bot.
 export const DISCORD_COMMANDS: { command: string; label: string }[] = [
-  { command: "enservice", label: "/enservice - agents en service" },
-  { command: "effectif", label: "/effectif - état de la station" },
-  { command: "recap", label: "/recap - récapitulatif du jour" },
-  { command: "heures", label: "/heures - heures de service d'un agent" },
   { command: "plaque", label: "/plaque - fiche véhicule" },
   { command: "casier", label: "/casier - extrait de casier" },
   { command: "absence", label: "/absence - déclarer une absence" },
   { command: "absents", label: "/absents - liste des absents" },
   { command: "candidatures", label: "/candidatures - config recrutement" },
   { command: "template", label: "/template - modèles de message" },
-  { command: "annonce", label: "/annonce - annonce officielle" },
   { command: "integrer", label: "/integrer - intégrer un candidat" },
   { command: "validation", label: "/validation - valider un candidat" },
 ];

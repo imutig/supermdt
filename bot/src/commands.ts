@@ -5,20 +5,12 @@ import {
 import { env } from "./env.js";
 import { mdt } from "./convex.js";
 import {
-  presenceEmbed, dailyEmbed, overviewEmbed, weeklyHoursEmbed,
   vehicleEmbed, vehicleNotFoundEmbed, casierEmbed, absenceEmbed, absentsListEmbed, errorEmbed,
 } from "./embeds.js";
-import { openHub, sendTemplate, renderTemplatesCmd, startTemplateBuilder, openAnnounce, integrer, validation, parisWallToEpoch } from "./tickets.js";
+import { openHub, sendTemplate, renderTemplatesCmd, startTemplateBuilder, integrer, validation, parisWallToEpoch } from "./tickets.js";
 
 // Définition des commandes slash. Chaque réponse est un embed élaboré.
 export const commands = [
-  new SlashCommandBuilder().setName("enservice").setDescription("Voir les agents actuellement en service"),
-  new SlashCommandBuilder().setName("effectif").setDescription("État de la station en un coup d'œil"),
-  new SlashCommandBuilder().setName("recap").setDescription("Récapitulatif de la journée en cours"),
-  new SlashCommandBuilder()
-    .setName("heures")
-    .setDescription("Heures de service d'un agent sur la semaine")
-    .addStringOption((o) => o.setName("agent").setDescription("Prénom et nom RP de l'agent").setRequired(true)),
   new SlashCommandBuilder()
     .setName("plaque")
     .setDescription("Informations d'un véhicule enregistré")
@@ -45,8 +37,6 @@ export const commands = [
       .addStringOption((o) => o.setName("nom").setDescription("Nom du template").setRequired(true).setAutocomplete(true)))
     .addSubcommand((s) => s.setName("create").setDescription("Créer un template (avec aperçu)"))
     .addSubcommand((s) => s.setName("list").setDescription("Lister les templates")),
-  new SlashCommandBuilder().setName("annonce").setDescription("Publier une annonce officielle de Police Academy")
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
   new SlashCommandBuilder().setName("integrer").setDescription("Intégrer le candidat de ce ticket à la Police Academy")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages),
   new SlashCommandBuilder().setName("validation").setDescription("Valider le candidat de ce ticket : lui attribuer le rôle Cadet")
@@ -102,31 +92,8 @@ export async function handleCommand(interaction: ChatInputCommandInteraction) {
       else await renderTemplatesCmd(interaction);
       return;
     }
-    if (interaction.commandName === "annonce") { await openAnnounce(interaction); return; }
     if (interaction.commandName === "integrer") { await integrer(interaction); return; }
     if (interaction.commandName === "validation") { await validation(interaction); return; }
-    if (interaction.commandName === "enservice") {
-      await interaction.deferReply();
-      const agents = await mdt.agentsOnDuty();
-      await interaction.editReply({ embeds: [presenceEmbed(agents)] });
-      return;
-    }
-    if (interaction.commandName === "effectif") {
-      await interaction.deferReply();
-      await interaction.editReply({ embeds: [overviewEmbed(await mdt.overview())] });
-      return;
-    }
-    if (interaction.commandName === "recap") {
-      await interaction.deferReply();
-      await interaction.editReply({ embeds: [dailyEmbed(await mdt.dayStats())] });
-      return;
-    }
-    if (interaction.commandName === "heures") {
-      await interaction.deferReply();
-      const q = interaction.options.getString("agent", true);
-      await interaction.editReply({ embeds: [weeklyHoursEmbed(await mdt.weeklyHours(q), q)] });
-      return;
-    }
     if (interaction.commandName === "plaque") {
       await interaction.deferReply();
       const plate = interaction.options.getString("plaque", true);
