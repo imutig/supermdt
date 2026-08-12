@@ -482,28 +482,69 @@ export const casierByName = query({
 
 // Demande d'absence posée depuis Discord pour un agent nommé. Statut EN_ATTENTE,
 // à valider ensuite dans le MDT. Le demandeur Discord est tracé dans l'audit.
+// Déclaration d'absence via Discord. Sans `query`, on cible l'agent lié au
+// membre invoquant (par son discordId) = sa propre absence. Avec `query`, on
+// cible un agent par son nom (déclaration pour autrui, dont l'accès est contrôlé
+// côté commande). Validée d'emblée (APPROUVEE) : exclut aussitôt du roll call.
 export const requestAbsence = mutation({
-  args: { secret: v.string(), query: v.string(), from: v.number(), to: v.number(), reason: v.string(), discordName: v.string() },
-  handler: async (ctx, { secret, query, from, to, reason, discordName }) => {
+  args: { secret: v.string(), discordId: v.string(), query: v.optional(v.string()), from: v.number(), to: v.number(), reason: v.string(), discordName: v.string() },
+  handler: async (ctx, { secret, discordId, query, from, to, reason, discordName }) => {
     assertBot(secret);
-    const needle = nrm(query);
-    const agents = await ctx.db.query("agents").collect();
-    const agent =
-      agents.find((a) => a.status === "ACTIVE" && (nrm(`${a.prenomRP} ${a.nomRP}`) === needle || nrm(`${a.nomRP} ${a.prenomRP}`) === needle)) ??
-      agents.find((a) => a.status === "ACTIVE" && nrm(`${a.prenomRP} ${a.nomRP}`).includes(needle));
-    if (!agent) return { ok: false as const, reason: "introuvable" };
     if (to < from) return { ok: false as const, reason: "dates" };
+    let agent;
+    if (query && query.trim()) {
+      const needle = nrm(query);
+      const agents = await ctx.db.query("agents").collect();
+      agent =
+        agents.find((a) => a.status === "ACTIVE" && (nrm(`${a.prenomRP} ${a.nomRP}`) === needle || nrm(`${a.nomRP} ${a.prenomRP}`) === needle)) ??
+        agents.find((a) => a.status === "ACTIVE" && nrm(`${a.prenomRP} ${a.nomRP}`).includes(needle));
+    } else {
+      agent = await ctx.db.query("agents").withIndex("by_discord", (q) => q.eq("discordId", discordId)).first() ?? undefined;
+    }
+    if (!agent) return { ok: false as const, reason: query ? "introuvable" : "noncompte" };
 
-    const id = await ctx.db.insert("absences", { agentId: agent._id, reason: reason.trim(), from, to, status: "EN_ATTENTE", at: Date.now() });
+    const id = await ctx.db.insert("absences", { agentId: agent._id, reason: reason.trim() || "Absence", from, to, status: "APPROUVEE", at: Date.now() });
     await ctx.db.insert("auditLog", {
-      at: Date.now(),
-      action: "absence.request",
-      resourceType: "absence",
-      resourceId: id,
-      resourceLabel: `${agent.prenomRP} ${agent.nomRP}`,
-      metadata: { via: "discord", by: discordName },
+      at: Date.now(), action: "absence.create_for", resourceType: "absence", resourceId: id,
+      resourceLabel: `${agent.prenomRP} ${agent.nomRP}`, metadata: { via: "discord", by: discordName },
     });
     return { ok: true as const, name: `${agent.prenomRP} ${agent.nomRP}` };
+  },
+});
+
+// Discord IDs des agents en absence approuvée en cours (roll call : ne pas ping).
+export const absentDiscordIds = query({
+  args: { secret: v.string() },
+  handler: async (ctx, { secret }) => {
+    assertBot(secret);
+    const now = Date.now();
+    const rows = (await ctx.db.query("absences").withIndex("by_status", (q) => q.eq("status", "APPROUVEE")).collect())
+      .filter((ab) => ab.from <= now && ab.to >= now);
+    const ids: string[] = [];
+    for (const ab of rows) {
+      const a = await ctx.db.get(ab.agentId);
+      if (a?.discordId) ids.push(a.discordId);
+    }
+    return [...new Set(ids)];
+  },
+});
+
+// Liste des absents en cours (commande /absents) : nom + fin + motif.
+export const absencesCurrent = query({
+  args: { secret: v.string() },
+  handler: async (ctx, { secret }) => {
+    assertBot(secret);
+    const now = Date.now();
+    const rows = (await ctx.db.query("absences").withIndex("by_status", (q) => q.eq("status", "APPROUVEE")).collect())
+      .filter((ab) => ab.from <= now && ab.to >= now)
+      .sort((a, b) => a.to - b.to);
+    const out = [];
+    for (const ab of rows) {
+      const a = await ctx.db.get(ab.agentId);
+      if (!a || a.status !== "ACTIVE") continue;
+      out.push({ name: `${a.prenomRP} ${a.nomRP}`, matricule: a.matricule ?? null, until: ab.to, reason: ab.reason });
+    }
+    return out;
   },
 });
 

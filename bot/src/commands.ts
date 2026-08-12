@@ -6,7 +6,7 @@ import { env } from "./env.js";
 import { mdt } from "./convex.js";
 import {
   presenceEmbed, dailyEmbed, overviewEmbed, weeklyHoursEmbed,
-  vehicleEmbed, vehicleNotFoundEmbed, casierEmbed, absenceEmbed, errorEmbed,
+  vehicleEmbed, vehicleNotFoundEmbed, casierEmbed, absenceEmbed, absentsListEmbed, errorEmbed,
 } from "./embeds.js";
 import { openHub, sendTemplate, renderTemplatesCmd, startTemplateBuilder, openAnnounce, integrer, validation } from "./tickets.js";
 
@@ -29,11 +29,12 @@ export const commands = [
     .addStringOption((o) => o.setName("citoyen").setDescription("Prénom et nom du citoyen").setRequired(true)),
   new SlashCommandBuilder()
     .setName("absence")
-    .setDescription("Poser une demande d'absence")
-    .addStringOption((o) => o.setName("agent").setDescription("Prénom et nom RP de l'agent").setRequired(true))
+    .setDescription("Déclarer une absence (la tienne, ou celle d'un agent)")
     .addStringOption((o) => o.setName("du").setDescription("Date de début (JJ/MM/AAAA)").setRequired(true))
     .addStringOption((o) => o.setName("au").setDescription("Date de fin (JJ/MM/AAAA)").setRequired(true))
-    .addStringOption((o) => o.setName("motif").setDescription("Motif de l'absence").setRequired(true)),
+    .addStringOption((o) => o.setName("motif").setDescription("Motif de l'absence").setRequired(false))
+    .addStringOption((o) => o.setName("agent").setDescription("Pour un autre agent (prénom et nom RP)").setRequired(false)),
+  new SlashCommandBuilder().setName("absents").setDescription("Voir les agents actuellement absents"),
   // Système de candidatures : hub central. Visible de tous (pour que le rôle
   // habilité y accède même sans « Gérer le serveur ») mais l'accès réel est
   // filtré dans openHub (administrateur OU rôle CANDIDATURES_ADMIN_ROLE).
@@ -129,22 +130,30 @@ export async function handleCommand(interaction: ChatInputCommandInteraction) {
     }
     if (interaction.commandName === "absence") {
       await interaction.deferReply({ flags: 64 });
-      const q = interaction.options.getString("agent", true);
+      const q = interaction.options.getString("agent") ?? undefined; // absent -> soi-même
       const from = parseDate(interaction.options.getString("du", true));
       const to = parseDate(interaction.options.getString("au", true));
-      const reason = interaction.options.getString("motif", true);
+      const reason = interaction.options.getString("motif") ?? "Absence";
       if (from === null || to === null) {
         await interaction.editReply({ embeds: [errorEmbed("Dates invalides. Format attendu : JJ/MM/AAAA.")] });
         return;
       }
       const member = interaction.member;
       const who = (member && "displayName" in member ? member.displayName : null) ?? interaction.user.username;
-      const res = await mdt.requestAbsence(q, from, to, reason, who);
+      const res = await mdt.requestAbsence(interaction.user.id, q, from, to, reason, who);
       if (!res.ok) {
-        await interaction.editReply({ embeds: [errorEmbed(res.reason === "dates" ? "La date de fin précède la date de début." : `Aucun agent actif ne correspond à « ${q} ».`)] });
+        const msg = res.reason === "dates" ? "La date de fin précède la date de début."
+          : res.reason === "noncompte" ? "Ton compte Discord n'est relié à aucun agent du MDT. Précise l'option `agent`, ou fais-toi envoyer un compte."
+          : `Aucun agent actif ne correspond à « ${q} ».`;
+        await interaction.editReply({ embeds: [errorEmbed(msg)] });
         return;
       }
-      await interaction.editReply({ embeds: [absenceEmbed(res.name ?? q, from, to, reason)] });
+      await interaction.editReply({ embeds: [absenceEmbed(res.name ?? "", from, to, reason)] });
+      return;
+    }
+    if (interaction.commandName === "absents") {
+      await interaction.deferReply();
+      await interaction.editReply({ embeds: [absentsListEmbed(await mdt.absencesCurrent())] });
       return;
     }
   } catch (err) {

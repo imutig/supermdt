@@ -62,6 +62,41 @@ export const request = mutation({
   },
 });
 
+// Un gradé (permission absences.manage, par défaut à partir de SLO) déclare une
+// absence pour un autre agent : validée d'emblée (elle exclut aussitôt l'agent
+// du ping du roll call).
+export const createFor = mutation({
+  args: { agentId: v.id("agents"), reason: v.string(), from: v.number(), to: v.number() },
+  handler: async (ctx, args) => {
+    const actor = await requireAgent(ctx);
+    await requirePermission(ctx, actor, "absences.manage");
+    const target = await ctx.db.get(args.agentId);
+    if (!target) throw new Error("Agent introuvable.");
+    if (args.to < args.from) throw new Error("La date de fin précède la date de début.");
+    const id = await ctx.db.insert("absences", {
+      agentId: args.agentId,
+      reason: args.reason.trim() || "Absence",
+      from: args.from,
+      to: args.to,
+      status: "APPROUVEE",
+      decidedBy: actor._id,
+      at: Date.now(),
+    });
+    await writeAudit(ctx, actor, { action: "absence.create_for", resourceType: "absence", resourceId: id, resourceLabel: `${target.prenomRP} ${target.nomRP}` });
+    await notify(ctx, "absence.request", {
+      title: "Absence déclarée",
+      description: `**${target.prenomRP} ${target.nomRP}**`,
+      color: NOTIFY_COLOR.info,
+      fields: [
+        { name: "Période", value: `${new Date(args.from).toLocaleDateString("fr-FR")} au ${new Date(args.to).toLocaleDateString("fr-FR")}` },
+        { name: "Motif", value: args.reason.trim() || "Absence" },
+      ],
+      footer: `Déclarée par ${actor.prenomRP} ${actor.nomRP}`,
+    });
+    return id;
+  },
+});
+
 export const remove = mutation({
   args: { id: v.id("absences") },
   handler: async (ctx, { id }) => {

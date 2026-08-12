@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { X, Scissors, Plus, IdCard, KeyRound, Lock, RefreshCw, Link2Off } from "lucide-react";
+import { X, Scissors, Plus, IdCard, KeyRound, Lock, RefreshCw, Link2Off, CalendarOff } from "lucide-react";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { api, type Id } from "@/lib/api";
 import { useToast } from "@/providers/toast";
@@ -32,9 +32,28 @@ export function AgentModal({ agentId, onClose }: { agentId: Id<"agents">; onClos
   const cutService = useMutation(api.services.cut);
   const syncGradeRole = useMutation(api.discordLink.syncGradeRole);
   const unlinkDiscord = useMutation(api.discordLink.unlink);
+  const createAbsence = useMutation(api.absences.createFor);
 
   const [matInput, setMatInput] = useState("");
   const [sanctionModal, setSanctionModal] = useState(false);
+  const [absOpen, setAbsOpen] = useState(false);
+  const [absFrom, setAbsFrom] = useState("");
+  const [absTo, setAbsTo] = useState("");
+  const [absReason, setAbsReason] = useState("");
+
+  async function submitAbsence() {
+    const from = dateInputToTs(absFrom);
+    const to = dateInputToTs(absTo);
+    if (from == null || to == null) return;
+    const r = await toast.guard(
+      createAbsence({ agentId, reason: absReason.trim() || "Absence", from, to: to + 24 * 3600 * 1000 - 1 }),
+      "Déclaration impossible",
+    );
+    if (r !== undefined) {
+      toast.success("Absence déclarée.");
+      setAbsOpen(false); setAbsFrom(""); setAbsTo(""); setAbsReason("");
+    }
+  }
 
   const canGrade = can("effectif.grade");
   const canEditAgent = can("effectif.edit");
@@ -45,6 +64,7 @@ export function AgentModal({ agentId, onClose }: { agentId: Id<"agents">; onClos
   const canManageSvc = can("services.manage");
   const canDiscipline = can("discipline.create");
   const canLinkDiscord = can("invites.manage");
+  const canManageAbsence = can("absences.manage");
 
   const divIds = new Set((a?.divisions ?? []).map((d) => d._id));
   const qualIds = new Set((a?.qualifications ?? []).map((q) => q._id));
@@ -151,6 +171,36 @@ export function AgentModal({ agentId, onClose }: { agentId: Id<"agents">; onClos
               {a.currentAbsence && (
                 <div className="rounded-sm border px-[13px] py-[10px] text-[12.5px]" style={{ borderColor: "var(--warning)", background: "color-mix(in srgb, var(--warning) 8%, transparent)", color: "var(--warning)" }}>
                   Absence en cours jusqu'au {new Date(a.currentAbsence.to).toLocaleDateString("fr-FR")}
+                </div>
+              )}
+
+              {/* Déclarer une absence pour cet agent (absences.manage) */}
+              {canManageAbsence && (
+                <div>
+                  {absOpen ? (
+                    <div className="rounded-sm border border-border bg-surface-2 p-[13px]">
+                      <div className="mb-[10px] text-[10.5px] font-bold uppercase tracking-[0.09em] text-faint">Déclarer une absence</div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <div className="mb-[5px] text-[10px] font-semibold uppercase tracking-[0.06em] text-faint">Du</div>
+                          <input type="date" value={absFrom} onChange={(e) => setAbsFrom(e.target.value)} className="h-9 w-full rounded-sm border border-border bg-surface px-2 font-data text-[13px] outline-none focus:border-accent" />
+                        </div>
+                        <div>
+                          <div className="mb-[5px] text-[10px] font-semibold uppercase tracking-[0.06em] text-faint">Au</div>
+                          <input type="date" value={absTo} onChange={(e) => setAbsTo(e.target.value)} className="h-9 w-full rounded-sm border border-border bg-surface px-2 font-data text-[13px] outline-none focus:border-accent" />
+                        </div>
+                      </div>
+                      <input value={absReason} onChange={(e) => setAbsReason(e.target.value)} placeholder="Motif (optionnel)" className="mt-[8px] h-9 w-full rounded-sm border border-border bg-surface px-2 text-[13px] outline-none focus:border-accent" />
+                      <div className="mt-[10px] flex gap-2">
+                        <button onClick={() => setAbsOpen(false)} className="flex-1 rounded-sm border border-border bg-surface py-[8px] text-[12.5px] font-semibold hover:border-border-strong">Annuler</button>
+                        <button onClick={submitAbsence} disabled={!absFrom || !absTo} className="flex-1 rounded-sm bg-accent py-[8px] text-[12.5px] font-semibold text-accent-contrast hover:brightness-[1.06] disabled:opacity-50">Valider (approuvée)</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button onClick={() => setAbsOpen(true)} className="flex w-full items-center gap-[8px] rounded-sm border border-border bg-surface-2 px-[12px] py-[10px] text-[12.5px] font-semibold text-muted hover:border-border-strong">
+                      <CalendarOff className="h-[15px] w-[15px]" /> Déclarer une absence
+                    </button>
+                  )}
                 </div>
               )}
 

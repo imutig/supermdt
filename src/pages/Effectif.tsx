@@ -52,6 +52,7 @@ export function Effectif() {
             key={a._id}
             onClick={() => setOpenAgent(a._id)}
             className="grid cursor-pointer grid-cols-[2fr_.8fr_1.4fr_.7fr_.7fr_.9fr_.8fr] items-center gap-3 border-b border-border px-4 py-3 hover:bg-surface-2"
+            style={a.absent ? { background: "color-mix(in srgb, var(--warning) 7%, transparent)" } : undefined}
           >
             <div className="flex items-center gap-[10px]">
               <div className="flex h-[30px] w-[30px] items-center justify-center rounded-[7px] border border-border bg-surface-2 text-[11px] font-bold text-muted">
@@ -67,20 +68,27 @@ export function Effectif() {
             <span className="text-[13px] text-muted">{a.qualifications || "-"}</span>
             <span className="text-[12.5px] text-muted">{fmtAnciennete(a.dateEntree)}</span>
             <span>
-              <span
-                className="inline-flex items-center gap-[6px] rounded-[5px] px-[8px] py-[3px] text-[11px] font-semibold"
-                style={
-                  a.onDuty
-                    ? { background: "rgba(22,163,74,0.12)", color: "var(--success)" }
-                    : { background: "var(--surface-2)", color: "var(--muted)" }
-                }
-              >
+              {a.absent ? (
                 <span
-                  className="h-[6px] w-[6px] rounded-full"
-                  style={{ background: a.onDuty ? "var(--success)" : "var(--faint)" }}
-                />
-                {a.onDuty ? "En service" : "Hors service"}
-              </span>
+                  className="inline-flex items-center gap-[6px] rounded-[5px] px-[8px] py-[3px] text-[11px] font-semibold"
+                  style={{ background: "color-mix(in srgb, var(--warning) 16%, transparent)", color: "var(--warning)" }}
+                >
+                  <span className="h-[6px] w-[6px] rounded-full" style={{ background: "var(--warning)" }} />
+                  Absent
+                </span>
+              ) : (
+                <span
+                  className="inline-flex items-center gap-[6px] rounded-[5px] px-[8px] py-[3px] text-[11px] font-semibold"
+                  style={
+                    a.onDuty
+                      ? { background: "rgba(22,163,74,0.12)", color: "var(--success)" }
+                      : { background: "var(--surface-2)", color: "var(--muted)" }
+                  }
+                >
+                  <span className="h-[6px] w-[6px] rounded-full" style={{ background: a.onDuty ? "var(--success)" : "var(--faint)" }} />
+                  {a.onDuty ? "En service" : "Hors service"}
+                </span>
+              )}
             </span>
           </div>
         ))}

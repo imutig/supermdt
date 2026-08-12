@@ -163,12 +163,23 @@ export function casierEmbed(c: CasierInfo, query: string): EmbedBuilder {
 // Confirmation d'une demande d'absence.
 export function absenceEmbed(name: string, from: number, to: number, reason: string): EmbedBuilder {
   return baseEmbed(BRAND.green)
-    .setTitle("🗓️ Demande d'absence transmise")
-    .setDescription(`La demande de **${name}** a été enregistrée et attend validation de l'État-Major.`)
+    .setTitle("🗓️ Absence enregistrée")
+    .setDescription(`L'absence de **${name}** est enregistrée. L'agent ne sera pas relancé au roll call sur cette période.`)
     .addFields(
       { name: "Période", value: `du **${date(from)}** au **${date(to)}**`, inline: false },
       { name: "Motif", value: reason },
     );
+}
+
+export function absentsListEmbed(rows: { name: string; matricule: number | null; until: number; reason: string }[]): EmbedBuilder {
+  if (rows.length === 0) {
+    return baseEmbed(BRAND.green).setTitle("🗓️ Absents").setDescription("Aucun agent absent actuellement.");
+  }
+  const mat = (m: number | null) => (m != null ? `\`${String(m).padStart(5, "0")}\` ` : "");
+  const lines = rows.map((r) => `• ${mat(r.matricule)}**${r.name}** — jusqu'au ${date(r.until)}${r.reason ? ` · ${r.reason}` : ""}`);
+  return baseEmbed(BRAND.warning)
+    .setTitle(`🗓️ Absents - ${rows.length}`)
+    .setDescription(lines.join("\n").slice(0, 4000));
 }
 
 export function errorEmbed(message: string): EmbedBuilder {

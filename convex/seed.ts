@@ -152,6 +152,30 @@ export const seedCeremonies = internalMutation({
   },
 });
 
+// Accorde `absences.manage` (déclarer/valider une absence pour autrui) à tous les
+// grades à partir de Senior Lead Officer (position >= SLO), hors académie/externes.
+// À lancer après syncPermissions : `npx convex run seed:seedAbsenceManagers`.
+export const seedAbsenceManagers = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const perm = (await ctx.db.query("permissions").collect()).find((p) => p.slug === "absences.manage");
+    if (!perm) return "Slug absences.manage absent - lance d'abord seed:syncPermissions.";
+    const grades = await ctx.db.query("grades").collect();
+    const slo = grades.find((g) => g.name.trim().toLowerCase() === "senior lead officer");
+    if (!slo) return "Grade « Senior Lead Officer » introuvable.";
+    let granted = 0;
+    for (const g of grades) {
+      if (g.academyOnly || g.external || g.position < slo.position) continue;
+      const has = await ctx.db
+        .query("gradePermissions")
+        .withIndex("by_grade_permission", (q) => q.eq("gradeId", g._id).eq("permissionId", perm._id))
+        .first();
+      if (!has) { await ctx.db.insert("gradePermissions", { gradeId: g._id, permissionId: perm._id }); granted++; }
+    }
+    return `absences.manage accordé à ${granted} grade(s) (>= Senior Lead Officer).`;
+  },
+});
+
 // Seed idempotent des données de configuration & référentiels.
 // À lancer une fois : `npx convex run seed:seed`.
 export const seed = internalMutation({

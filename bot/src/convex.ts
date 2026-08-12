@@ -82,8 +82,10 @@ export const mdt = {
 
   vehicleByPlate: (plaque: string) => client.query(anyApi.bot.vehicleByPlate, { secret: env.botSecret, plaque }) as Promise<VehicleInfo | null>,
   casierByName: (query: string) => client.query(anyApi.bot.casierByName, { secret: env.botSecret, query }) as Promise<CasierInfo>,
-  requestAbsence: (query: string, from: number, to: number, reason: string, discordName: string) =>
-    client.mutation(anyApi.bot.requestAbsence, { secret: env.botSecret, query, from, to, reason, discordName }) as Promise<{ ok: boolean; reason?: string; name?: string }>,
+  requestAbsence: (discordId: string, query: string | undefined, from: number, to: number, reason: string, discordName: string) =>
+    client.mutation(anyApi.bot.requestAbsence, { secret: env.botSecret, discordId, query, from, to, reason, discordName }) as Promise<{ ok: boolean; reason?: string; name?: string }>,
+  absentDiscordIds: () => client.query(anyApi.bot.absentDiscordIds, { secret: env.botSecret }) as Promise<string[]>,
+  absencesCurrent: () => client.query(anyApi.bot.absencesCurrent, { secret: env.botSecret }) as Promise<{ name: string; matricule: number | null; until: number; reason: string }[]>,
   presenceMessageGet: () => client.query(anyApi.bot.presenceMessageGet, { secret: env.botSecret }) as Promise<string | null>,
   presenceMessageSet: (messageId: string) => client.mutation(anyApi.bot.presenceMessageSet, { secret: env.botSecret, messageId }) as Promise<void>,
 

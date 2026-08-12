@@ -285,6 +285,13 @@ export const roster = query({
       (await ctx.db.query("serviceSessions").withIndex("by_open", (q) => q.eq("endedAt", undefined)).collect())
         .map((x) => x.agentId as string),
     );
+    // Agents en absence approuvée en cours (colorés dans l'effectif).
+    const now = Date.now();
+    const absentIds = new Set(
+      (await ctx.db.query("absences").withIndex("by_status", (q) => q.eq("status", "APPROUVEE")).collect())
+        .filter((ab) => ab.from <= now && ab.to >= now)
+        .map((ab) => ab.agentId as string),
+    );
 
     const out = [];
     for (const a of agents) {
@@ -301,6 +308,7 @@ export const roster = query({
         divisionCount: divCount.get(a._id as string) ?? 0,
         qualifications: qualCount.get(a._id as string) ?? 0,
         onDuty: onDutyIds.has(a._id as string),
+        absent: absentIds.has(a._id as string),
         dateEntree: a.dateEntree ?? null,
       });
     }

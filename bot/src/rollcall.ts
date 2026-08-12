@@ -139,8 +139,10 @@ export async function remindNonVoters(client: Client, rc: { _id: string; channel
   const lspd = [...members.values()].filter((m) => !m.user.bot && m.roles.cache.has(LSPD_ROLE));
   if (lspd.length === 0) return;
   const voters = new Set(await mdt.rollcallVoters(rc._id).catch(() => [] as string[]));
-  const nonVoters = lspd.filter((m) => !voters.has(m.id)).map((m) => m.id);
-  if (nonVoters.length === 0) return; // tout le monde a voté : rien à relancer.
+  // Les agents en absence approuvée ne sont pas relancés.
+  const absent = new Set(await mdt.absentDiscordIds().catch(() => [] as string[]));
+  const nonVoters = lspd.filter((m) => !voters.has(m.id) && !absent.has(m.id)).map((m) => m.id);
+  if (nonVoters.length === 0) return; // tout le monde a voté (ou est absent) : rien à relancer.
   const chan = await channel(client, rc.channelId);
   if (!chan) return;
   const link = `https://discord.com/channels/${guild.id}/${rc.channelId}/${rc.messageId}`;
