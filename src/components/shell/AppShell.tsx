@@ -5,6 +5,7 @@ import { LoadingScreen } from "@/components/common/Loader";
 import { TopBar } from "./TopBar";
 import { FicheBanner } from "./FicheBanner";
 import { NavRail } from "./NavRail";
+import { PermPreviewBar } from "./PermPreviewBar";
 import { PrefsBridge } from "./PrefsBridge";
 import { PageBoundary } from "./PageBoundary";
 import { SearchOverlay } from "@/components/search/SearchOverlay";
@@ -48,6 +49,7 @@ export function AppShell() {
       <SearchOverlay />
       <CalcModal />
       <MandatModal />
+      <PermPreviewBar />
     </div>
   );
 }

@@ -125,6 +125,24 @@ export const myPermissions = query({
   },
 });
 
+// Permissions (slugs) d'un GRADE donné, pour le mode « Prévisualiser en tant que
+// grade » : on rend le MDT tel que le verrait un membre de ce grade (perms de
+// grade uniquement ; les divisions/académie sont propres à chaque agent).
+// Réservé aux gestionnaires de permissions.
+export const permissionsForGrade = query({
+  args: { gradeId: v.id("grades") },
+  handler: async (ctx, { gradeId }) => {
+    const agent = await requireAgent(ctx);
+    await requirePermission(ctx, agent, "rbac.manage");
+    const permById = new Map<string, string>();
+    for (const p of await ctx.db.query("permissions").collect()) permById.set(p._id, p.slug);
+    const gp = await ctx.db.query("gradePermissions").withIndex("by_grade", (q) => q.eq("gradeId", gradeId)).collect();
+    const slugs: string[] = [];
+    for (const x of gp) { const s = permById.get(x.permissionId); if (s) slugs.push(s); }
+    return slugs;
+  },
+});
+
 // Indique si un compte propriétaire (owner) existe déjà (pour l'écran de finalisation).
 export const ownerExists = query({
   args: {},

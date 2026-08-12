@@ -8,6 +8,7 @@ import { actionLabel, resourceLabel } from "@/lib/auditLabels";
 import { EmptyState } from "@/components/common/EmptyState";
 import { SkeletonRows } from "@/components/common/Skeleton";
 import { useToast } from "@/providers/toast";
+import { useDialogs } from "@/components/detective/dialogs";
 
 const TABS = [
   { key: "validation", label: "Validation" },
@@ -500,10 +501,68 @@ function CmdAccessRow({
 }
 
 /* ============ Permissions (RBAC) ============ */
+// Regroupement des permissions par section, dans l'ordre du menu, avec libellés
+// lisibles (au lieu des domaines techniques bruts).
+const PERM_SECTIONS: { domain: string; label: string }[] = [
+  { domain: "config", label: "Configuration & rôles" },
+  { domain: "effectif", label: "Effectif" },
+  { domain: "discipline", label: "Discipline" },
+  { domain: "absences", label: "Absences" },
+  { domain: "calendrier", label: "Calendrier" },
+  { domain: "ceremonies", label: "Cérémonies" },
+  { domain: "formations", label: "Formations" },
+  { domain: "fto", label: "FTO" },
+  { domain: "citoyens", label: "Citoyens" },
+  { domain: "casier", label: "Casiers" },
+  { domain: "contraventions", label: "Contraventions" },
+  { domain: "mandats", label: "Mandats" },
+  { domain: "plaintes", label: "Plaintes" },
+  { domain: "depositions", label: "Dépositions" },
+  { domain: "saisies", label: "Saisies" },
+  { domain: "armes", label: "Armes" },
+  { domain: "vehicules", label: "Véhicules" },
+  { domain: "flotte", label: "Flotte" },
+  { domain: "dispatch", label: "Dispatch" },
+  { domain: "service", label: "Service" },
+  { domain: "services", label: "Services" },
+  { domain: "bolo", label: "BOLO" },
+  { domain: "carte", label: "Carte" },
+  { domain: "codepenal", label: "Code pénal" },
+  { domain: "protocoles", label: "Protocoles" },
+  { domain: "rapports", label: "Rapports" },
+  { domain: "stats", label: "Statistiques" },
+  { domain: "finances", label: "Finances" },
+  { domain: "defcon", label: "DEFCON" },
+  { domain: "archive", label: "Archives" },
+  { domain: "audit", label: "Journal d'audit" },
+  { domain: "invites", label: "Invitations" },
+  { domain: "lspa", label: "Académie (LSPA)" },
+];
+
 function PermissionsTab() {
   const data = useQuery(api.config.permissionMatrix);
   const setPerm = useMutation(api.config.setGradePermission);
+  const copyPerms = useMutation(api.config.copyGradePermissions);
+  const dialogs = useDialogs();
+  const toast = useToast();
   const [q, setQ] = useState("");
+  const [copyFrom, setCopyFrom] = useState("");
+  const [copyTo, setCopyTo] = useState("");
+
+  async function doCopy() {
+    if (!copyFrom || !copyTo || copyFrom === copyTo || !data) return;
+    const fromName = data.grades.find((g) => g._id === copyFrom)?.name ?? "?";
+    const toName = data.grades.find((g) => g._id === copyTo)?.name ?? "?";
+    const ok = await dialogs.confirm({
+      title: "Copier les permissions",
+      message: `Remplacer toutes les permissions de « ${toName} » par celles de « ${fromName} » ? Cette action écrase les permissions actuelles du grade cible.`,
+      confirmLabel: "Copier",
+      danger: true,
+    });
+    if (!ok) return;
+    const r = await toast.guard(copyPerms({ fromGradeId: copyFrom as Id<"grades">, toGradeId: copyTo as Id<"grades"> }), "Copie impossible");
+    if (r !== undefined) toast.success(`Permissions copiées vers « ${toName} » (${r.count}).`);
+  }
 
   if (data === undefined) {
     return (
@@ -528,6 +587,14 @@ function PermissionsTab() {
     if (!byDomain.has(p.domain)) byDomain.set(p.domain, []);
     byDomain.get(p.domain)!.push(p);
   }
+  // Sections dans l'ordre du menu (libellés lisibles), puis tout domaine non
+  // répertorié, en dernier, sous son nom brut.
+  const orderedSections: { domain: string; label: string; perms: typeof data.permissions }[] = [
+    ...PERM_SECTIONS.filter((s) => byDomain.has(s.domain)).map((s) => ({ ...s, perms: byDomain.get(s.domain)! })),
+    ...[...byDomain.keys()]
+      .filter((d) => !PERM_SECTIONS.some((s) => s.domain === d))
+      .map((d) => ({ domain: d, label: d, perms: byDomain.get(d)! })),
+  ];
 
   return (
     <div className="rounded-card border border-border bg-surface">
@@ -552,6 +619,26 @@ function PermissionsTab() {
       </div>
       <div className="border-b border-border px-4 py-[10px] text-[12.5px] text-muted">
         Coche pour attribuer une permission à un grade. L'owner conserve tous les droits quoi qu'il arrive.
+      </div>
+      {/* Copier les permissions d'un grade vers un autre */}
+      <div className="flex flex-wrap items-center gap-2 border-b border-border bg-surface-2 px-4 py-[10px]">
+        <span className="text-[11.5px] font-semibold text-muted">Copier depuis</span>
+        <select value={copyFrom} onChange={(e) => setCopyFrom(e.target.value)} className="h-8 rounded-sm border border-border bg-surface px-2 text-[12px] outline-none focus:border-accent">
+          <option value="">— grade source —</option>
+          {data.grades.map((g) => <option key={g._id} value={g._id}>{g.name}</option>)}
+        </select>
+        <span className="text-[11.5px] font-semibold text-muted">vers</span>
+        <select value={copyTo} onChange={(e) => setCopyTo(e.target.value)} className="h-8 rounded-sm border border-border bg-surface px-2 text-[12px] outline-none focus:border-accent">
+          <option value="">— grade cible —</option>
+          {data.grades.map((g) => <option key={g._id} value={g._id}>{g.name}</option>)}
+        </select>
+        <button
+          onClick={doCopy}
+          disabled={!copyFrom || !copyTo || copyFrom === copyTo}
+          className="h-8 rounded-sm bg-accent px-3 text-[12px] font-semibold text-accent-contrast hover:brightness-[1.06] disabled:opacity-40"
+        >
+          Copier
+        </button>
       </div>
       {matching.length === 0 ? (
         <div className="px-4 py-10 text-center text-[13px] text-faint">
@@ -581,7 +668,7 @@ function PermissionsTab() {
             </tr>
           </thead>
           <tbody>
-            {[...byDomain.entries()].map(([domain, perms]) => (
+            {orderedSections.map(({ domain, label, perms }) => (
               <Fragment key={domain}>
                 <tr>
                   <td
@@ -589,7 +676,7 @@ function PermissionsTab() {
                     className="bg-surface-2 px-3 py-[6px] text-[10px] font-bold uppercase tracking-[0.08em] text-faint"
                     style={{ position: "sticky", left: 0 }}
                   >
-                    {domain}
+                    {label}
                   </td>
                 </tr>
                 {perms.map((p) => (

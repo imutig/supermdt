@@ -38,6 +38,7 @@ import { Profil } from "@/pages/Profil";
 import { LoginPage } from "@/auth/LoginPage";
 import { JoinPage } from "@/auth/JoinPage";
 import { DialogsProvider } from "@/components/detective/dialogs";
+import { PermPreviewProvider } from "@/providers/perm-preview";
 import { Onboarding } from "@/auth/Onboarding";
 import { PendingScreen } from "@/auth/PendingScreen";
 import { ChangePasswordScreen } from "@/auth/ChangePasswordScreen";
@@ -154,6 +155,7 @@ function Gated() {
   if ((!MDT_ENABLED || portal === "lspa") && !inLspa) return <Navigate to="/lspa" replace />;
 
   return (
+    <PermPreviewProvider>
     <DialogsProvider>
       {entryPending && (
         <EntryTransition
@@ -222,5 +224,6 @@ function Gated() {
       </Route>
     </Routes>
     </DialogsProvider>
+    </PermPreviewProvider>
   );
 }

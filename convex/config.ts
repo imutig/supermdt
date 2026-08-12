@@ -102,6 +102,30 @@ export const permissionMatrix = query({
   },
 });
 
+// Copie l'intégralité des permissions d'un grade source vers un grade cible
+// (remplacement : le cible reçoit exactement les permissions de la source).
+export const copyGradePermissions = mutation({
+  args: { fromGradeId: v.id("grades"), toGradeId: v.id("grades") },
+  handler: async (ctx, { fromGradeId, toGradeId }) => {
+    const agent = await requireAgent(ctx);
+    await requirePermission(ctx, agent, "rbac.manage");
+    if (fromGradeId === toGradeId) throw new Error("Grades source et cible identiques.");
+    const src = await ctx.db.query("gradePermissions").withIndex("by_grade", (q) => q.eq("gradeId", fromGradeId)).collect();
+    const dst = await ctx.db.query("gradePermissions").withIndex("by_grade", (q) => q.eq("gradeId", toGradeId)).collect();
+    const srcSet = new Set(src.map((s) => s.permissionId as string));
+    const dstSet = new Set(dst.map((d) => d.permissionId as string));
+    for (const d of dst) if (!srcSet.has(d.permissionId as string)) await ctx.db.delete(d._id);
+    for (const s of src) if (!dstSet.has(s.permissionId as string)) await ctx.db.insert("gradePermissions", { gradeId: toGradeId, permissionId: s.permissionId });
+    await writeAudit(ctx, agent, {
+      action: "permission.copy",
+      resourceType: "grade",
+      resourceId: toGradeId,
+      metadata: { fromGradeId, count: src.length },
+    });
+    return { count: src.length };
+  },
+});
+
 export const setGradePermission = mutation({
   args: { gradeId: v.id("grades"), permissionId: v.id("permissions"), grant: v.boolean() },
   handler: async (ctx, args) => {
