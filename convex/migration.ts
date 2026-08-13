@@ -309,7 +309,9 @@ export const runSync = action({
     if (!process.env.VIZU_EMAIL || !process.env.VIZU_PASSWORD)
       throw new Error("Identifiants Nexus non configurés (VIZU_EMAIL / VIZU_PASSWORD).");
     const token = await vizuLogin();
-    return await ctx.runAction(internal.migration.sync, { token, createMissingCitizens: true });
+    // Ne PAS recréer les fiches de citoyens supprimés du Nexus : ce qui est
+    // supprimé côté Nexus ne doit pas réapparaître (réconciliation stricte).
+    return await ctx.runAction(internal.migration.sync, { token, createMissingCitizens: false });
   },
 });
 

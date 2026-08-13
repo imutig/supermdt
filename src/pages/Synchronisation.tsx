@@ -94,6 +94,25 @@ export function Synchronisation() {
         </div>
 
         <div className="flex flex-col gap-[18px]">
+          {/* Dernières synchronisations (imports) */}
+          <div className="overflow-hidden rounded-card border border-border bg-surface">
+            <div className="border-b border-border px-4 py-[13px]"><h2 className="m-0 text-[13.5px] font-bold">Dernières synchronisations</h2></div>
+            {(() => {
+              const imports = d.recent.filter((r) => r.direction === "IMPORT").slice(0, 8);
+              if (imports.length === 0) return <div className="p-4 text-[13px] text-faint">Aucune synchronisation enregistrée.</div>;
+              return imports.map((r) => (
+                <div key={r._id} className="flex items-start gap-[10px] border-b border-border px-4 py-[10px]">
+                  <span className="mt-[4px] h-[8px] w-[8px] flex-shrink-0 rounded-full" style={{ background: r.ok ? "var(--success)" : "var(--danger)" }} />
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[12.5px] font-semibold">{r.ok ? "Réussie" : "Échec"}<span className="ml-2 font-data text-[11px] font-normal text-faint">{new Date(r.at).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</span></div>
+                    <div className="truncate text-[11.5px] text-muted">{r.error ? <span style={{ color: "var(--danger)" }}>{r.error}</span> : (r.detail ?? "—")}</div>
+                  </div>
+                  {r.durationMs != null && <span className="flex-shrink-0 font-data text-[11px] text-faint">{(r.durationMs / 1000).toFixed(1)}s</span>}
+                </div>
+              ));
+            })()}
+          </div>
+
           {/* Répartition par entité */}
           <div className="overflow-hidden rounded-card border border-border bg-surface">
             <div className="border-b border-border px-4 py-[13px]"><h2 className="m-0 text-[13.5px] font-bold">Par type</h2></div>

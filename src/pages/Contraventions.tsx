@@ -12,7 +12,8 @@ import { Pagination, usePaged } from "@/components/common/Pagination";
 
 const FILTERS = [
   { key: "all", label: "Tout" },
-  { key: "casier", label: "Casier" },
+  { key: "dossier", label: "Dossiers d'arrestation" },
+  { key: "rapport", label: "Rapports d'arrestation" },
   { key: "citation", label: "Contraventions" },
 ] as const;
 
@@ -21,11 +22,16 @@ export function Contraventions() {
   const { can } = useCan();
   const listQ = useQuery(api.activity.casierAndCitations, can("casier.view") ? {} : "skip");
   const list = listQ ?? [];
-  const [filter, setFilter] = useState<"all" | "casier" | "citation">("all");
+  const [filter, setFilter] = useState<"all" | "dossier" | "rapport" | "citation">("all");
   const [page, setPage] = useState(1);
   // Ouvre directement le détail de l'élément cliqué plutôt que le dossier entier.
   const [open, setOpen] = useState<{ kind: "casier" | "citation"; id: string } | null>(null);
-  const rows = list.filter((r) => filter === "all" || r.kind === filter);
+  const rows = list.filter((r) => {
+    if (filter === "all") return true;
+    if (filter === "citation") return r.kind === "citation";
+    if (filter === "dossier") return r.kind === "casier" && r.arrestType === "DOSSIER";
+    return r.kind === "casier" && r.arrestType === "RAPPORT"; // rapport
+  });
   const { pages, slice, safePage } = usePaged(rows, 20, page);
 
   return (
