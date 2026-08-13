@@ -1772,6 +1772,19 @@ export default defineSchema({
     .index("by_deleted", ["deletedAt"])
     .searchIndex("search", { searchField: "searchText" }),
 
+  // ============ SYNCHRO NEXUS (write-through) ============
+  // Coffre d'identifiants Nexus par agent, pour poster en son nom (createdBy
+  // correct). Le mot de passe est chiffré au repos (AES-GCM, clé NEXUS_ENC_KEY),
+  // mais réversible côté serveur : imposer un mot de passe DÉDIÉ et unique.
+  nexusCredentials: defineTable({
+    agentId: v.id("agents"),
+    email: v.string(),
+    secretEnc: v.string(), // mot de passe chiffré (iv:ciphertext base64)
+    status: v.union(v.literal("UNTESTED"), v.literal("OK"), v.literal("INVALID")),
+    lastCheckedAt: v.optional(v.number()),
+    lastError: v.optional(v.string()),
+  }).index("by_agent", ["agentId"]),
+
   // ============ DÉPOSITIONS (item 7) ============
   depositions: defineTable({
     citizenId: v.id("citizens"),

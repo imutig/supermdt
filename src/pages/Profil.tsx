@@ -1,5 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "convex/react";
+import { NexusSyncCard } from "@/components/profil/NexusSyncCard";
 import { api } from "@/lib/api";
 import { fmtMatricule } from "@/components/common/AgentTag";
 import { fmtAnciennete } from "@/lib/anciennete";
@@ -75,6 +76,9 @@ export function Profil() {
         <div className="bg-surface px-[15px] py-[14px]"><div className="mb-[7px] text-[10.5px] font-bold uppercase tracking-[0.09em] text-faint">Contraventions</div><div className="font-data text-[19px] font-bold">{p.activity.myCitations}</div><div className="mt-[2px] text-[11px] text-muted">{p.activity.myCitationsMonth} sur 30j</div></div>
         <div className="bg-surface px-[15px] py-[14px]"><div className="mb-[7px] text-[10.5px] font-bold uppercase tracking-[0.09em] text-faint">Services</div><div className="font-data text-[19px] font-bold">{p.service.sessionCount}</div><div className="mt-[2px] text-[11px] text-muted">{p.service.openSince ? "en service" : "sessions"}</div></div>
       </div>
+
+      {/* Synchronisation NexusMDT (write-through) */}
+      <div className="mb-[18px]"><NexusSyncCard /></div>
 
       <div className="grid grid-cols-1 items-start gap-[18px] lg:grid-cols-[1.4fr_1fr]">
         {/* Mes rapports */}
