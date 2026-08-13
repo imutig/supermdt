@@ -74,7 +74,7 @@ export function Contraventions() {
                     : { background: "color-mix(in srgb, var(--warning) 14%, transparent)", color: "var(--warning)" }
                 }
               >
-                {r.kind === "casier" ? "Casier" : "Contrav."}
+                {r.kind === "casier" ? (r.arrestType === "RAPPORT" ? "Rapport" : "Dossier") : "Contrav."}
               </span>
             </span>
             <span className="text-[13px] font-semibold">{r.citizenName}</span>

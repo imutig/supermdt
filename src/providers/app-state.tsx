@@ -50,8 +50,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     return Number.isFinite(raw) && raw >= NAV_MIN && raw <= NAV_MAX ? raw : 216;
   });
   const [mode, setMode] = useState<"light" | "dark">(() => {
-    if (typeof localStorage !== "undefined" && localStorage.getItem(THEME_KEY) === "dark") return "dark";
-    return "light";
+    // Dark par défaut : on ne repasse en clair que si l'utilisateur l'a choisi.
+    if (typeof localStorage !== "undefined" && localStorage.getItem(THEME_KEY) === "light") return "light";
+    return "dark";
   });
   const [searchOpen, setSearchOpen] = useState(false);
   const [calcOpen, setCalcOpen] = useState(false);

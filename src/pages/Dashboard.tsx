@@ -175,9 +175,9 @@ export function Dashboard() {
             {feed.map((f) => {
               const style =
                 f.kind === "casier"
-                  ? { color: "var(--danger)", label: "Casier", bg: "color-mix(in srgb, var(--danger) 12%, transparent)" }
+                  ? { color: "var(--danger)", label: f.arrestType === "RAPPORT" ? "Rapport d'arrestation" : "Dossier d'arrestation", bg: "color-mix(in srgb, var(--danger) 12%, transparent)" }
                   : f.kind === "citation"
-                    ? { color: "var(--warning)", label: "Contrav.", bg: "color-mix(in srgb, var(--warning) 14%, transparent)" }
+                    ? { color: "var(--warning)", label: "Contravention", bg: "color-mix(in srgb, var(--warning) 14%, transparent)" }
                     : { color: "var(--accent)", label: "Rapport", bg: "var(--accent-soft)" };
               return (
               <div

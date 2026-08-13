@@ -12,6 +12,7 @@ export const casierAndCitations = query({
     const out: {
       _id: string;
       kind: "casier" | "citation";
+      arrestType?: "RAPPORT" | "DOSSIER";
       citizenId: string;
       citizenName: string;
       motif: string;
@@ -37,6 +38,7 @@ export const casierAndCitations = query({
       out.push({
         _id: e._id,
         kind: "casier",
+        arrestType: e.arrestType ?? "DOSSIER",
         citizenId: e.citizenId,
         citizenName: citizen ? `${citizen.prenom} ${citizen.nom}` : "-",
         motif: charges.map((c) => c.snapshot.name).join(", ") || "-",
@@ -89,6 +91,7 @@ export const home = query({
     const out: {
       _id: string;
       kind: "casier" | "citation" | "report";
+      arrestType?: "RAPPORT" | "DOSSIER";
       title: string;
       subtitle: string;
       citizenId: string | null;
@@ -109,6 +112,7 @@ export const home = query({
         out.push({
           _id: e._id,
           kind: "casier",
+          arrestType: e.arrestType ?? "DOSSIER",
           title: citizen ? `${citizen.prenom} ${citizen.nom}` : "-",
           subtitle: charges.map((c) => c.snapshot.name).join(", ") || "Entrée de casier",
           citizenId: e.citizenId,
