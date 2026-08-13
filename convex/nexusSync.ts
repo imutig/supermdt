@@ -2,7 +2,7 @@ import { action, mutation, query, internalMutation, internalQuery } from "./_gen
 import { internal, api } from "./_generated/api";
 import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
-import { getCurrentAgent, requireAgent } from "./rbac";
+import { getCurrentAgent, requireAgent, requirePermission, agentLabel } from "./rbac";
 import { nexusLogin, encryptSecret, decryptSecret } from "./lib/nexusAuth";
 import { mapCitizen } from "./migration";
 
@@ -18,6 +18,79 @@ function norm(s: string) {
 // identifiants Nexus (email + mot de passe DÉDIÉ). On teste le login, on chiffre
 // le mot de passe au repos, et on s'en servira pour poster en son nom.
 // ============================================================================
+
+// Journalise une opération de synchro (imports + écritures) pour le monitoring.
+export const _log = internalMutation({
+  args: {
+    direction: v.union(v.literal("IMPORT"), v.literal("WRITE"), v.literal("AUTH")),
+    entity: v.string(), op: v.string(), ok: v.boolean(),
+    httpStatus: v.optional(v.number()), durationMs: v.optional(v.number()),
+    agentId: v.optional(v.id("agents")), detail: v.optional(v.string()), error: v.optional(v.string()),
+  },
+  handler: async (ctx, a) => {
+    await ctx.db.insert("nexusSyncLog", { at: Date.now(), ...a });
+  },
+});
+
+const DAY = 86_400_000;
+
+// Données de la page de monitoring de synchro (réservé rbac.manage).
+export const dashboard = query({
+  args: {},
+  handler: async (ctx) => {
+    const agent = await requireAgent(ctx);
+    await requirePermission(ctx, agent, "rbac.manage");
+    const now = Date.now();
+
+    // Journal récent (200 dernières opérations) + labels agents.
+    const rows = await ctx.db.query("nexusSyncLog").withIndex("by_at").order("desc").take(200);
+    const recent = [];
+    for (const r of rows) {
+      const who = r.agentId ? await agentLabel(ctx, r.agentId) : null;
+      recent.push({
+        _id: r._id, at: r.at, direction: r.direction, entity: r.entity, op: r.op,
+        ok: r.ok, httpStatus: r.httpStatus ?? null, durationMs: r.durationMs ?? null,
+        agent: who?.name ?? null, detail: r.detail ?? null, error: r.error ?? null,
+      });
+    }
+
+    // Agrégats 30 jours (le journal complet, borné par by_at).
+    const since = now - 30 * DAY;
+    const win = await ctx.db.query("nexusSyncLog").withIndex("by_at", (q) => q.gte("at", since)).collect();
+    const total = win.length;
+    const okCount = win.filter((r) => r.ok).length;
+    const errCount = total - okCount;
+    const byDirection: Record<string, number> = {};
+    const byEntity: Record<string, number> = {};
+    for (const r of win) {
+      byDirection[r.direction] = (byDirection[r.direction] ?? 0) + 1;
+      byEntity[r.entity] = (byEntity[r.entity] ?? 0) + 1;
+    }
+    // Série journalière (14 j) pour le graphique.
+    const days: { day: string; ok: number; err: number }[] = [];
+    for (let i = 13; i >= 0; i--) {
+      const start = new Date(now - i * DAY); start.setHours(0, 0, 0, 0);
+      const s = start.getTime(), e = s + DAY;
+      const inDay = win.filter((r) => r.at >= s && r.at < e);
+      days.push({ day: start.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" }), ok: inDay.filter((r) => r.ok).length, err: inDay.filter((r) => !r.ok).length });
+    }
+
+    // Agents liés à Nexus.
+    const creds = await ctx.db.query("nexusCredentials").collect();
+    const linked = [];
+    for (const c of creds) {
+      const who = await agentLabel(ctx, c.agentId);
+      linked.push({ name: who.name, matricule: who.matricule, email: c.email, status: c.status, lastCheckedAt: c.lastCheckedAt ?? null, lastError: c.lastError ?? null });
+    }
+
+    return {
+      totals: { total, okCount, errCount, successRate: total ? Math.round((okCount / total) * 100) : null, byDirection, byEntity },
+      days,
+      recent,
+      linked,
+    };
+  },
+});
 
 // Id de l'agent courant (pour les actions, qui n'ont pas requireAgent).
 export const myAgentId = query({
@@ -171,19 +244,29 @@ export const createCitizen = action({
       taille: a.taille ?? "", poids: a.poids ?? "", appartenance: a.groupe ?? "", emploi: a.metier ?? "",
       photoUrl: a.mugshotUrl ?? "",
     };
-    const res = await fetch(`${BASE}/api/citoyens`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
+    const t0 = Date.now();
+    let res: Response;
+    try {
+      res = await fetch(`${BASE}/api/citoyens`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+    } catch (e) {
+      await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: "citoyen", op: "POST", ok: false, durationMs: Date.now() - t0, agentId, error: e instanceof Error ? e.message : String(e) });
+      throw new Error("NexusMDT injoignable, citoyen non créé.");
+    }
     if (!res.ok) {
       const txt = await res.text().catch(() => "");
+      await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: "citoyen", op: "POST", ok: false, httpStatus: res.status, durationMs: Date.now() - t0, agentId, error: txt.slice(0, 160) });
       throw new Error(`Création côté NexusMDT échouée (HTTP ${res.status}). ${txt.slice(0, 120)}`);
     }
     const j: any = await res.json();
     const created = j.citoyen ?? j.data ?? j;
-    return await ctx.runMutation(internal.nexusSync._insertCitizenFromNexus, {
+    const citizenId = await ctx.runMutation(internal.nexusSync._insertCitizenFromNexus, {
       raw: JSON.stringify(created), createdBy: agentId, mugshotUrl: a.mugshotUrl,
     });
+    await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: "citoyen", op: "POST", ok: true, httpStatus: res.status, durationMs: Date.now() - t0, agentId, detail: `${a.prenom} ${a.nom}` });
+    return citizenId;
   },
 });

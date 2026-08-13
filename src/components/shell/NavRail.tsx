@@ -24,6 +24,7 @@ import {
   Archive as ArchiveIcon,
   Shield,
   Award,
+  RefreshCw,
   type LucideIcon,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -94,6 +95,7 @@ const GROUPS: NavGroup[] = [
     items: [
       { key: "statistiques", label: "Statistiques", icon: BarChart3, admin: true, to: "/statistiques", perm: "stats.view" },
       { key: "config", label: "Configuration", icon: SlidersHorizontal, admin: true, to: "/config", perm: "rbac.manage" },
+      { key: "synchronisation", label: "Synchronisation", icon: RefreshCw, admin: true, to: "/synchronisation", perm: "rbac.manage" },
       { key: "archive", label: "Archive", icon: ArchiveIcon, admin: true, to: "/archive", perm: "archive.view" },
       { key: "admin", label: "Administration", icon: Settings, admin: true, to: "/admin", perm: "effectif.validate" },
     ],

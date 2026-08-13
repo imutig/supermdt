@@ -1785,6 +1785,21 @@ export default defineSchema({
     lastError: v.optional(v.string()),
   }).index("by_agent", ["agentId"]),
 
+  // Journal des opérations de synchro Nexus (imports + écritures write-through),
+  // pour la page de monitoring (graphiques, taux de succès, appels API).
+  nexusSyncLog: defineTable({
+    at: v.number(),
+    direction: v.union(v.literal("IMPORT"), v.literal("WRITE"), v.literal("AUTH")),
+    entity: v.string(), // "citoyen" | "casier" | "amende" | "import-complet" | "login"…
+    op: v.string(), // "POST" | "SYNC" | "LOGIN"…
+    ok: v.boolean(),
+    httpStatus: v.optional(v.number()),
+    durationMs: v.optional(v.number()),
+    agentId: v.optional(v.id("agents")),
+    detail: v.optional(v.string()),
+    error: v.optional(v.string()),
+  }).index("by_at", ["at"]),
+
   // ============ DÉPOSITIONS (item 7) ============
   depositions: defineTable({
     citizenId: v.id("citizens"),

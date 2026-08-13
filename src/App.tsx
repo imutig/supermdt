@@ -34,6 +34,7 @@ import { Archive } from "@/pages/Archive";
 import { DivisionSpace } from "@/pages/DivisionSpace";
 const Configuration = lazyReload(() => import("@/pages/Configuration").then((m) => ({ default: m.Configuration })));
 const Statistiques = lazyReload(() => import("@/pages/Statistiques").then((m) => ({ default: m.Statistiques })));
+const Synchronisation = lazyReload(() => import("@/pages/Synchronisation").then((m) => ({ default: m.Synchronisation })));
 import { Profil } from "@/pages/Profil";
 import { LoginPage } from "@/auth/LoginPage";
 import { JoinPage } from "@/auth/JoinPage";
@@ -219,6 +220,7 @@ function Gated() {
         <Route path="/division/:id" element={<DivisionSpace />} />
         <Route path="/statistiques" element={<RequirePerm perm="stats.view"><Statistiques /></RequirePerm>} />
         <Route path="/config" element={<RequirePerm perm="rbac.manage"><Configuration /></RequirePerm>} />
+        <Route path="/synchronisation" element={<RequirePerm perm="rbac.manage"><Synchronisation /></RequirePerm>} />
         <Route path="/admin" element={<RequirePerm perm="effectif.validate"><Admin /></RequirePerm>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>

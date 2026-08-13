@@ -215,6 +215,18 @@ export const sync = internalAction({
     // Contraventions (amendes Nexus) : même modèle que les casiers.
     const contraventionsRep: unknown = await ctx.runAction(internal.casiersImport.contraventionsSync, { token: tk, dryRun, createMissing: createMissingCitizens });
 
+    // Journalise l'import pour la page de monitoring (sauf aperçu).
+    if (!dryRun) {
+      const cit = citoyensRep as CitRep;
+      const cas = casiersRep as { ajoutes?: number; supprimes?: number };
+      const con = contraventionsRep as { ajoutes?: number; supprimes?: number };
+      await ctx.runMutation(internal.nexusSync._log, {
+        direction: "IMPORT", entity: "import-complet", op: "SYNC", ok: true,
+        durationMs: Date.now() - t0,
+        detail: `citoyens +${cit.ajoutes}/enr ${cit.enrichis} · casiers +${cas.ajoutes ?? 0}/-${cas.supprimes ?? 0} · contraventions +${con.ajoutes ?? 0}/-${con.supprimes ?? 0}`,
+      });
+    }
+
     return {
       ok: true,
       mode: dryRun ? "APERÇU (rien écrit)" : "SYNCHRONISÉ",
