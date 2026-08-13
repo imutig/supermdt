@@ -1283,6 +1283,8 @@ export default defineSchema({
     // dossier d'origine (robustesse : re-mappable sans re-fetch si le format change).
     importRef: v.optional(v.string()),
     importRaw: v.optional(v.string()),
+    // Id Mongo Nexus (pour éditer/supprimer côté Nexus par _id).
+    nexusId: v.optional(v.string()),
     // Parité NexusMDT : jugement (verdict/peine) + barème d'amende du dossier.
     jugement: v.optional(
       v.object({
@@ -1627,6 +1629,8 @@ export default defineSchema({
     // Import depuis le MDT Nexus (/api/amendes) : idempotence + JSON brut.
     importRef: v.optional(v.string()),
     importRaw: v.optional(v.string()),
+    // Id Mongo Nexus (pour éditer/supprimer côté Nexus par _id).
+    nexusId: v.optional(v.string()),
     // Parité NexusMDT : montant majoré (impayé) + références juridiques.
     montantMajore: v.optional(v.number()),
     articleLoi: v.optional(v.string()),

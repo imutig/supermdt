@@ -22,6 +22,12 @@ function fmtHMS(seconds: number): string {
   const s = Math.max(0, Math.round(seconds));
   return `${pad2(Math.floor(s / 3600))}:${pad2(Math.floor((s % 3600) / 60))}:${pad2(s % 60)}`;
 }
+// Nexus attend taille/poids en NOMBRE (une chaîne « 1m80 » provoque une 500).
+// On extrait la partie numérique ; vide -> "" (accepté).
+function toNexusNum(s?: string): number | "" {
+  const digits = (s || "").replace(/[^\d]/g, "");
+  return digits ? Number(digits) : "";
+}
 
 // Expiration d'un JWT (claim exp, en ms) ou null si indéchiffrable.
 function jwtExp(token: string): number | null {
@@ -365,7 +371,7 @@ export const createCitizen = action({
       sexe: a.sexe === "H" ? "Homme" : a.sexe === "F" ? "Femme" : (a.sexe ?? ""),
       telephone: a.telephone ?? "", email: a.email ?? "", adresse: a.adresse ?? "",
       ethnie: a.ethnie ?? "", couleurCheveux: a.cheveux ?? "", couleurYeux: a.yeux ?? "",
-      taille: a.taille ?? "", poids: a.poids ?? "", appartenance: a.groupe ?? "", emploi: a.metier ?? "",
+      taille: toNexusNum(a.taille), poids: toNexusNum(a.poids), appartenance: a.groupe ?? "", emploi: a.metier ?? "",
       photoUrl: a.mugshotUrl ?? "",
     };
     const t0 = Date.now();
@@ -413,8 +419,8 @@ export const _citationForPush = internalQuery({
   },
 });
 export const _stampCitationImport = internalMutation({
-  args: { citationId: v.id("citations"), importRef: v.string() },
-  handler: async (ctx, { citationId, importRef }) => { await ctx.db.patch(citationId, { importRef }); },
+  args: { citationId: v.id("citations"), importRef: v.string(), nexusId: v.optional(v.string()) },
+  handler: async (ctx, { citationId, importRef, nexusId }) => { await ctx.db.patch(citationId, { importRef, nexusId }); },
 });
 export const _rollbackCitation = internalMutation({
   args: { citationId: v.id("citations") },
@@ -469,7 +475,7 @@ export const createContravention = action({
       // On ne tamponne qu'avec le vrai `numero` (même clé que l'import) ; sinon
       // l'orphelin sera adopté au prochain sync (anti-doublon).
       const numero = created?.numero;
-      if (numero != null) await ctx.runMutation(internal.nexusSync._stampCitationImport, { citationId, importRef: `nexus-amende:${numero}` });
+      if (numero != null) await ctx.runMutation(internal.nexusSync._stampCitationImport, { citationId, importRef: `nexus-amende:${numero}`, nexusId: created?._id });
       await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: "amende", op: "POST", ok: true, httpStatus: res.status, durationMs: Date.now() - t0, agentId, detail: `${info.prenom} ${info.nom} · $${info.montant}` });
       return citationId;
     } catch (e) {
@@ -504,8 +510,8 @@ export const _casierForPush = internalQuery({
   },
 });
 export const _stampCasierImport = internalMutation({
-  args: { entryId: v.id("casierEntries"), importRef: v.string() },
-  handler: async (ctx, { entryId, importRef }) => { await ctx.db.patch(entryId, { importRef }); },
+  args: { entryId: v.id("casierEntries"), importRef: v.string(), nexusId: v.optional(v.string()) },
+  handler: async (ctx, { entryId, importRef, nexusId }) => { await ctx.db.patch(entryId, { importRef, nexusId }); },
 });
 export const _rollbackCasier = internalMutation({
   args: { entryId: v.id("casierEntries") },
@@ -571,8 +577,8 @@ export const createCasier = action({
       }
       const j: any = await res.json();
       const created = j.dossier ?? j.rapport ?? j.data ?? j;
-      const numero = created?.numero ?? created?._id;
-      if (numero != null) await ctx.runMutation(internal.nexusSync._stampCasierImport, { entryId, importRef: `${isDossier ? "nexus" : "nexus-rapport"}:${numero}` });
+      const numero = typeof created === "object" ? created?.numero : undefined;
+      if (numero != null) await ctx.runMutation(internal.nexusSync._stampCasierImport, { entryId, importRef: `${isDossier ? "nexus" : "nexus-rapport"}:${numero}`, nexusId: created?._id });
       await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity, op: "POST", ok: true, httpStatus: res.status, durationMs: Date.now() - t0, agentId, detail: `${info.prenom} ${info.nom}` });
       return entryId;
     } catch (e) {
@@ -581,5 +587,106 @@ export const createCasier = action({
       await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: "casier", op: "POST", ok: false, durationMs: Date.now() - t0, agentId, error: e instanceof Error ? e.message : String(e) });
       throw new Error("NexusMDT injoignable, casier annulé.");
     }
+  },
+});
+
+// ---------------------- Suppression / édition write-through ----------------------
+export const _citizenNexus = internalQuery({
+  args: { citizenId: v.id("citizens") },
+  handler: async (ctx, { citizenId }) => {
+    const c = await ctx.db.get(citizenId);
+    return c ? { nexusId: c.nexusId ?? null, nom: c.nom, prenom: c.prenom } : null;
+  },
+});
+export const _recordNexusInfo = internalQuery({
+  args: { kind: v.union(v.literal("casier"), v.literal("amende")), localId: v.string() },
+  handler: async (ctx, { kind, localId }) => {
+    if (kind === "casier") {
+      const e = await ctx.db.get(localId as Id<"casierEntries">);
+      return e ? { nexusId: e.nexusId ?? null, arrestType: e.arrestType ?? "DOSSIER" } : null;
+    }
+    const c = await ctx.db.get(localId as Id<"citations">);
+    return c ? { nexusId: c.nexusId ?? null, arrestType: null as string | null } : null;
+  },
+});
+
+// Supprime un casier/contravention : d'abord sur Nexus (si synchronisé), puis en
+// local. Si la suppression Nexus échoue, RIEN n'est supprimé localement.
+export const deleteRecord = action({
+  args: { kind: v.union(v.literal("casier"), v.literal("amende")), localId: v.string() },
+  handler: async (ctx, { kind, localId }): Promise<{ synced: boolean }> => {
+    const agentId = await ctx.runQuery(api.nexusSync.myAgentId, {});
+    if (!agentId) throw new Error("Non authentifié.");
+    const cred = await ctx.runQuery(internal.nexusSync._credFor, { agentId });
+    const info = await ctx.runQuery(internal.nexusSync._recordNexusInfo, { kind, localId });
+
+    const localRemove = async () => {
+      if (kind === "casier") await ctx.runMutation(api.casier.remove, { entryId: localId as Id<"casierEntries"> });
+      else await ctx.runMutation(api.citations.remove, { citationId: localId as Id<"citations"> });
+    };
+
+    // Non synchronisé (aucun compte lié ou fiche non liée à Nexus) : suppression locale simple.
+    if (!cred || !info?.nexusId) { await localRemove(); return { synced: false }; }
+
+    const t0 = Date.now();
+    const token = await getToken(ctx, agentId, cred);
+    const path = kind === "amende" ? "/api/amendes" : info.arrestType === "RAPPORT" ? "/api/rapports" : "/api/dossiers";
+    let res: Response;
+    try {
+      res = await fetch(`${BASE}${path}/${info.nexusId}`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
+    } catch (e) {
+      await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: kind, op: "DELETE", ok: false, durationMs: Date.now() - t0, agentId, error: e instanceof Error ? e.message : String(e) });
+      throw new Error("NexusMDT injoignable, suppression annulée.");
+    }
+    if (!res.ok) {
+      const txt = await res.text().catch(() => "");
+      await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: kind, op: "DELETE", ok: false, httpStatus: res.status, durationMs: Date.now() - t0, agentId, error: txt.slice(0, 160) });
+      throw new Error(res.status === 403 ? "Ton compte NexusMDT n'a pas le droit de supprimer. Suppression annulée." : `Suppression côté NexusMDT échouée (HTTP ${res.status}).`);
+    }
+    await localRemove();
+    await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: kind, op: "DELETE", ok: true, httpStatus: res.status, durationMs: Date.now() - t0, agentId });
+    return { synced: true };
+  },
+});
+
+// Édite un citoyen : PUT vers Nexus (si synchronisé) puis application locale.
+export const updateCitizen = action({
+  args: {
+    citizenId: v.id("citizens"),
+    prenom: v.string(), nom: v.string(),
+    dateNaissance: v.optional(v.string()), lieuNaissance: v.optional(v.string()), sexe: v.optional(v.string()),
+    nationalite: v.optional(v.string()), telephone: v.optional(v.string()), email: v.optional(v.string()),
+    taille: v.optional(v.string()), poids: v.optional(v.string()), ethnie: v.optional(v.string()),
+    cheveux: v.optional(v.string()), yeux: v.optional(v.string()), adresse: v.optional(v.string()),
+    groupe: v.optional(v.string()), metier: v.optional(v.string()),
+  },
+  handler: async (ctx, a): Promise<void> => {
+    const agentId = await ctx.runQuery(api.nexusSync.myAgentId, {});
+    if (!agentId) throw new Error("Non authentifié.");
+    const cred = await ctx.runQuery(internal.nexusSync._credFor, { agentId });
+    const citizen = await ctx.runQuery(internal.nexusSync._citizenNexus, { citizenId: a.citizenId });
+    const { citizenId, ...fields } = a;
+
+    // Non synchronisé : édition locale simple.
+    if (!cred || !citizen?.nexusId) { await ctx.runMutation(api.citizens.update, { id: citizenId, ...fields }); return; }
+
+    const t0 = Date.now();
+    const token = await getToken(ctx, agentId, cred);
+    const payload = {
+      entity: "lspd", prenom: a.prenom.trim(), nom: a.nom.trim(),
+      dateNaissance: a.dateNaissance ?? "", lieuNaissance: a.lieuNaissance ?? "",
+      sexe: a.sexe === "H" ? "Homme" : a.sexe === "F" ? "Femme" : (a.sexe ?? ""),
+      telephone: a.telephone ?? "", email: a.email ?? "", adresse: a.adresse ?? "",
+      ethnie: a.ethnie ?? "", couleurCheveux: a.cheveux ?? "", couleurYeux: a.yeux ?? "",
+      taille: toNexusNum(a.taille), poids: toNexusNum(a.poids), appartenance: a.groupe ?? "", emploi: a.metier ?? "",
+    };
+    const res = await fetch(`${BASE}/api/citoyens/${citizen.nexusId}`, { method: "PUT", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+    if (!res.ok) {
+      const txt = await res.text().catch(() => "");
+      await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: "citoyen", op: "PUT", ok: false, httpStatus: res.status, durationMs: Date.now() - t0, agentId, error: txt.slice(0, 160) });
+      throw new Error(`Édition côté NexusMDT échouée (HTTP ${res.status}). Modification non enregistrée.`);
+    }
+    await ctx.runMutation(api.citizens.update, { id: citizenId, ...fields });
+    await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: "citoyen", op: "PUT", ok: true, httpStatus: res.status, durationMs: Date.now() - t0, agentId, detail: `${a.prenom} ${a.nom}` });
   },
 });

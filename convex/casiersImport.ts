@@ -118,6 +118,7 @@ export function mapDossier(d: any) {
     : undefined;
   return {
     importRef: `nexus:${numero ?? pick(d, "_id", "id")}`,
+    nexusId: (String(pick(d, "_id", "id") ?? "")) || undefined,
     numero,
     arrestType: "DOSSIER" as const,
     peine: undefined as string | undefined,
@@ -162,6 +163,7 @@ export function mapAmende(a: any) {
   const objet = String(pick(a, "objet", "motif", "libelle") ?? "").trim();
   return {
     importRef: `nexus-amende:${numero ?? pick(a, "_id", "id")}`,
+    nexusId: (String(pick(a, "_id", "id") ?? "")) || undefined,
     numero: String(numero ?? ""),
     prenom: String(pick(a, "citoyen.prenom", "citizen.prenom", "prenom") ?? "").trim(),
     nom: String(pick(a, "citoyen.nom", "citizen.nom", "nom") ?? "").trim(),
@@ -203,6 +205,7 @@ export function mapRapport(r: any) {
   const jailFromPeine = parseJail(String(pick(r, "peine", "sentence") ?? ""));
   return {
     importRef: `nexus-rapport:${numero ?? pick(r, "_id", "id")}`,
+    nexusId: (String(pick(r, "_id", "id") ?? "")) || undefined,
     numero,
     arrestType: "RAPPORT" as const,
     peine: undefined as string | undefined,
@@ -423,7 +426,8 @@ export const _upsertCasiers = internalMutation({
           // (jamais l'inverse : un createdBy déjà relié n'est pas rétrogradé).
           const creator = officers[0]?.agentId;
           if (creator && prev.createdBy === refs.owner._id) patch.createdBy = creator;
-          // Parité : rétro-remplit jugement / barème d'amende.
+          // Parité : rétro-remplit jugement / barème d'amende / id Nexus.
+          if ((prev.nexusId ?? undefined) !== (d.nexusId ?? undefined)) patch.nexusId = d.nexusId;
           if (JSON.stringify(prev.jugement ?? null) !== JSON.stringify(d.jugement ?? null)) patch.jugement = d.jugement;
           if ((prev.baremeAmende ?? undefined) !== (d.baremeAmende ?? undefined)) patch.baremeAmende = d.baremeAmende;
           if (prev.importRaw !== rawStr) patch.importRaw = rawStr;
@@ -455,7 +459,7 @@ export const _upsertCasiers = internalMutation({
       const orphans = citizenId ? orphansByCitizen.get(citizenId as string) : undefined;
       if (orphans && orphans.length) {
         const orphan = orphans.shift()!;
-        if (!dryRun) await ctx.db.patch(orphan._id, { importRef: d.importRef, importRaw: rawStr, arrestType: d.arrestType });
+        if (!dryRun) await ctx.db.patch(orphan._id, { importRef: d.importRef, nexusId: d.nexusId, importRaw: rawStr, arrestType: d.arrestType });
         dejaImporte++;
         continue;
       }
@@ -478,7 +482,7 @@ export const _upsertCasiers = internalMutation({
         avocat: d.avocat, dossierStatus: d.statut, forceUsed: d.forceUsed,
         cuffedAt: d.cuffedAt, mirandaAt: d.mirandaAt,
         jugement: d.jugement, baremeAmende: d.baremeAmende,
-        createdBy, importRef: d.importRef, importRaw: rawStr,
+        createdBy, importRef: d.importRef, nexusId: d.nexusId, importRaw: rawStr,
       });
       for (const c of charges) {
         await ctx.db.insert("casierCharges", { entryId, penalChargeId: c.penalChargeId, snapshot: c.snapshot, formulaParam: c.formulaParam, isRecidive: false, computedFine: c.computedFine, computedJailSeconds: c.computedJailSeconds, onDecision: false });
@@ -537,7 +541,8 @@ export const _upsertContraventions = internalMutation({
           if ((prev.officerName ?? undefined) !== (a.createdByNom || undefined)) patch.officerName = a.createdByNom || undefined;
           if (prev.finePaid !== a.finePaid) patch.finePaid = a.finePaid;
           if (prev.status !== status) patch.status = status;
-          // Parité : montant majoré + références juridiques.
+          // Parité : montant majoré + références juridiques + id Nexus.
+          if ((prev.nexusId ?? undefined) !== (a.nexusId ?? undefined)) patch.nexusId = a.nexusId;
           if ((prev.montantMajore ?? undefined) !== (a.montantMajore ?? undefined)) patch.montantMajore = a.montantMajore;
           if ((prev.articleLoi ?? undefined) !== (a.articleLoi ?? undefined)) patch.articleLoi = a.articleLoi;
           if ((prev.referenceJuridique ?? undefined) !== (a.referenceJuridique ?? undefined)) patch.referenceJuridique = a.referenceJuridique;
@@ -564,7 +569,7 @@ export const _upsertContraventions = internalMutation({
       const orphans = citizenId ? orphansByCitizen.get(citizenId as string) : undefined;
       if (orphans && orphans.length) {
         const orphan = orphans.shift()!;
-        if (!dryRun) await ctx.db.patch(orphan._id, { importRef: a.importRef, importRaw: rawStr, montantMajore: a.montantMajore });
+        if (!dryRun) await ctx.db.patch(orphan._id, { importRef: a.importRef, nexusId: a.nexusId, importRaw: rawStr, montantMajore: a.montantMajore });
         dejaImporte++;
         continue;
       }
@@ -587,7 +592,7 @@ export const _upsertContraventions = internalMutation({
         montantMajore: a.montantMajore, articleLoi: a.articleLoi, referenceJuridique: a.referenceJuridique,
         notes: [notesParts, a.description].filter(Boolean).join("\n") || `Importé du MDT Nexus · ${a.numero}`,
         createdBy: officerId || refs.owner._id,
-        importRef: a.importRef, importRaw: rawStr,
+        importRef: a.importRef, nexusId: a.nexusId, importRaw: rawStr,
       });
       await ctx.db.insert("citationCharges", {
         citationId, penalChargeId: pc?._id as Id<"penalCharges"> | undefined,
@@ -632,7 +637,7 @@ export const remapCasiers = internalMutation({
         derouleFaits: d.derouleFaits, lieu: d.lieu, reportBody: d.reportBody,
         imageUrls: d.imageUrls.length ? d.imageUrls : undefined, avocat: d.avocat,
         dossierStatus: d.statut, forceUsed: d.forceUsed, cuffedAt: d.cuffedAt, mirandaAt: d.mirandaAt,
-        jugement: d.jugement, baremeAmende: d.baremeAmende, arrestType: d.arrestType,
+        jugement: d.jugement, baremeAmende: d.baremeAmende, arrestType: d.arrestType, nexusId: d.nexusId,
         ...(creator && e.createdBy === refs.owner?._id ? { createdBy: creator } : {}),
       });
       for (const old of await ctx.db.query("casierCharges").withIndex("by_entry", (q) => q.eq("entryId", e._id)).collect()) await ctx.db.delete(old._id);
