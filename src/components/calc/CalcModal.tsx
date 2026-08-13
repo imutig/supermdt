@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { X } from "lucide-react";
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { api, type Id } from "@/lib/api";
 import { useApp } from "@/providers/app-state";
 import { useToast } from "@/providers/toast";
@@ -9,7 +9,7 @@ import { Clover } from "@/components/common/Clover";
 import { RichTextEditor } from "@/components/common/RichTextEditor";
 import { ImageGallery } from "@/components/common/ImageGallery";
 import { MultiSelect } from "@/components/common/MultiSelect";
-import { FEATURES, NEXUS_MSG } from "@/lib/features";
+import { FEATURES } from "@/lib/features";
 
 interface Charge {
   _id: Id<"penalCharges">;
@@ -74,6 +74,11 @@ export function CalcModal() {
   );
   const addEntry = useMutation(api.casier.addEntry);
   const addCitation = useMutation(api.citations.create);
+  const createCasierSynced = useAction(api.nexusSync.createCasier);
+  const createContravSynced = useAction(api.nexusSync.createContravention);
+  const nexusStatus = useQuery(api.nexusSync.myStatus);
+  const syncActive = !!nexusStatus?.configured && nexusStatus.status === "OK";
+  const canWrite = FEATURES.judicialWrite || syncActive;
   const docSender = useDocSender();
 
   const pickerGroups = useMemo(() => {
@@ -91,12 +96,12 @@ export function CalcModal() {
   // Cohabitation NexusMDT : création de casiers / dossiers d'arrestation /
   // contraventions désactivée. Message quelle que soit l'entrée (accueil,
   // dossier, palette).
-  if (!FEATURES.judicialWrite) {
+  if (!canWrite) {
     return (
       <div onClick={closeCalc} className="fixed inset-0 z-[60] flex items-center justify-center p-4" style={{ background: "var(--scrim)", backdropFilter: "blur(6px)" }}>
         <div onClick={(e) => e.stopPropagation()} className="w-[460px] max-w-[94vw] rounded-card border border-border-strong bg-elev p-6 text-center mdt-pop">
-          <div className="mb-2 text-[15px] font-bold">Indisponible sur le SuperMDT</div>
-          <p className="mb-4 text-[13px] leading-[1.5] text-muted">{NEXUS_MSG}</p>
+          <div className="mb-2 text-[15px] font-bold">Synchronisation requise</div>
+          <p className="mb-4 text-[13px] leading-[1.5] text-muted">Pour émettre casiers et contraventions depuis SuperMDT, active la synchronisation NexusMDT dans <b>Mon profil</b> (Utiliser SuperMDT comme MDT principal). L'acte sera créé sur le NexusMDT en ton nom.</p>
           <button onClick={closeCalc} className="rounded-sm border border-border bg-surface-2 px-4 py-2 text-[13px] font-semibold hover:border-border-strong">Fermer</button>
         </div>
       </div>
@@ -154,29 +159,31 @@ export function CalcModal() {
       param: r.param,
       isRecidive: r.isRecidive,
     }));
+    const casierArgs = {
+      citizenId,
+      charges,
+      derouleFaits: narr || undefined,
+      lieu: place || undefined,
+      cuffedAt: cuffedAt || undefined,
+      mirandaAt: mirandaAt || undefined,
+      rightsLawyer: rLawyer,
+      rightsFood: rFood,
+      rightsMedical: rMedical,
+      finePaid,
+      reportBody: dReport || undefined,
+      imageUrls: dImages,
+      avocat: dAvocat.trim() || undefined,
+      linkedReportId: isDossier && dLinkedReport ? (dLinkedReport as Id<"reports">) : undefined,
+      vehicleIds: isDossier ? (dVehicles as Id<"vehicles">[]) : undefined,
+      weaponIds: isDossier ? (dWeapons as Id<"weapons">[]) : undefined,
+      dossierStatus: isDossier ? dStatus || undefined : undefined,
+      forceUsed: isDossier ? dForce : undefined,
+    };
+    // Synchro active : on écrit d'abord sur Nexus (write-through strict).
     const res = isCitation
-      ? await toast.guard(addCitation({ citizenId, charges }), "Émission impossible")
+      ? await toast.guard(syncActive ? createContravSynced({ citizenId, charges }) : addCitation({ citizenId, charges }), "Émission impossible")
       : await toast.guard(
-          addEntry({
-            citizenId,
-            charges,
-            derouleFaits: narr || undefined,
-            lieu: place || undefined,
-            cuffedAt: cuffedAt || undefined,
-            mirandaAt: mirandaAt || undefined,
-            rightsLawyer: rLawyer,
-            rightsFood: rFood,
-            rightsMedical: rMedical,
-            finePaid,
-            reportBody: dReport || undefined,
-            imageUrls: dImages,
-            avocat: dAvocat.trim() || undefined,
-            linkedReportId: isDossier && dLinkedReport ? (dLinkedReport as Id<"reports">) : undefined,
-            vehicleIds: isDossier ? (dVehicles as Id<"vehicles">[]) : undefined,
-            weaponIds: isDossier ? (dWeapons as Id<"weapons">[]) : undefined,
-            dossierStatus: isDossier ? dStatus || undefined : undefined,
-            forceUsed: isDossier ? dForce : undefined,
-          }),
+          syncActive ? createCasierSynced(casierArgs) : addEntry(casierArgs),
           "Validation impossible",
         );
     setBusy(false);

@@ -116,6 +116,7 @@ export function mapCitizen(c: any) {
     permisConduire: !!c.permisConduire,
     // Parité NexusMDT
     importRef: numero != null ? `nexus-citoyen:${numero}` : undefined,
+    nexusId: (c._id || c.id) ? String(c._id || c.id) : undefined,
     groupeSanguin: c.groupeSanguin || undefined,
     allergies: c.allergies || undefined,
     antecedents: c.antecedents || undefined,
@@ -321,7 +322,7 @@ export const _upsertCitizens = internalMutation({
     const permis = (await ctx.db.query("licenseTypes").collect()).find((l) => norm(l.name).includes("permis de conduire"));
     // Champs de parité Nexus : on les rétro-remplit sur les fiches existantes,
     // sans écraser une valeur déjà renseignée côté SuperMDT.
-    const parityFields = ["importRef", "lieuNaissance", "groupeSanguin", "allergies", "antecedents", "traitements", "contactUrgence"] as const;
+    const parityFields = ["importRef", "nexusId", "lieuNaissance", "groupeSanguin", "allergies", "antecedents", "traitements", "contactUrgence"] as const;
 
     let ajoutes = 0, permisAjoutes = 0, enrichis = 0;
     const seen = new Set<string>();
@@ -346,7 +347,7 @@ export const _upsertCitizens = internalMutation({
         taille: c.taille, poids: c.poids, ethnie: c.ethnie, cheveux: c.cheveux, yeux: c.yeux,
         adresse: c.adresse, groupe: c.groupe, metier: c.metier, telephone: c.telephone,
         email: c.email, deceased: c.deceased, mugshotUrl: c.mugshotUrl,
-        importRef: c.importRef, groupeSanguin: c.groupeSanguin, allergies: c.allergies,
+        importRef: c.importRef, nexusId: c.nexusId, groupeSanguin: c.groupeSanguin, allergies: c.allergies,
         antecedents: c.antecedents, traitements: c.traitements, ppaChasse: c.ppaChasse || undefined,
         contactUrgence: c.contactUrgence,
         photoStorageIds: [], status: "ACTIVE" as const,

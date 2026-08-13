@@ -1090,8 +1090,10 @@ export default defineSchema({
     searchText: v.string(),
     deletedAt: v.optional(v.number()),
     deletedBy: v.optional(v.id("agents")),
-    // Parité NexusMDT : référence d'import (numéro) + champs médicaux/divers.
+    // Parité NexusMDT : référence d'import (numéro) + id Mongo Nexus (pour poster
+    // des dossiers/amendes qui référencent le citoyen) + champs médicaux/divers.
     importRef: v.optional(v.string()),
+    nexusId: v.optional(v.string()),
     groupeSanguin: v.optional(v.string()),
     allergies: v.optional(v.string()),
     antecedents: v.optional(v.string()),
