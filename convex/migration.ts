@@ -283,6 +283,7 @@ export const autoSync = internalAction({
       return rep;
     } catch (err) {
       console.error("[autoSync] échec :", err);
+      await ctx.runMutation(internal.nexusSync._log, { direction: "IMPORT", entity: "import-complet", op: "SYNC", ok: false, error: String(err).slice(0, 200) }).catch(() => {});
       return { ok: false, error: String(err) };
     }
   },
