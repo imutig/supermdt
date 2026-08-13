@@ -202,6 +202,24 @@ export function CasierEntryModal({ entryId, canDelete: canDeleteAny, onClose }: 
               {/* Rapport (les deux) */}
               <div><div className={H}>Rapport d'arrestation</div>{canEdit ? <RichTextEditor value={a.reportBody} onChange={(v) => setA({ ...a, reportBody: v })} /> : a.reportBody ? <RichTextEditor value={a.reportBody} editable={false} /> : <div className="text-[12.5px] text-faint">Aucun rapport.</div>}</div>
 
+              {/* Jugement (importé du Nexus) */}
+              {entry.jugement && (
+                <div>
+                  <div className={H}>Jugement</div>
+                  <div className="grid grid-cols-2 gap-px overflow-hidden rounded-sm border border-border bg-border">
+                    <Field label="Statut">{entry.jugement.statut || "-"}</Field>
+                    <Field label="Statut final">{entry.jugement.statutFinal || "-"}</Field>
+                    <Field label="Peine">{entry.jugement.peine || "-"}</Field>
+                    <Field label="Juge">{entry.jugement.jugeNom || "-"}</Field>
+                    {entry.jugement.avocat && <Field label="Avocat">{entry.jugement.avocat}</Field>}
+                    {entry.baremeAmende && <Field label="Barème d'amende">{entry.baremeAmende}</Field>}
+                  </div>
+                  {entry.jugement.motivation && (
+                    <div className="mt-[6px] rounded-sm border border-border bg-surface-2 px-[10px] py-[8px] text-[12.5px] whitespace-pre-wrap">{entry.jugement.motivation}</div>
+                  )}
+                </div>
+              )}
+
               {/* Galerie (les deux) */}
               <div><div className={H}>Images</div><ImageGallery urls={a.imageUrls} onChange={canEdit ? (u) => setA({ ...a, imageUrls: u }) : undefined} emptyLabel="Aucune image." /></div>
 

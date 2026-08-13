@@ -86,6 +86,24 @@ export function ContraventionModal({
                   <div className="mb-[3px] text-[10px] font-bold uppercase tracking-[0.08em] text-faint">Statut</div>
                   <div className="text-[13px]">{entry.status === "ANNULEE" ? "Annulée" : "Émise"}</div>
                 </div>
+                {entry.montantMajore != null && entry.montantMajore > 0 && (
+                  <div className="bg-surface-2 px-3 py-[10px]">
+                    <div className="mb-[3px] text-[10px] font-bold uppercase tracking-[0.08em] text-faint">Montant majoré</div>
+                    <div className="font-data text-[14px] font-semibold" style={{ color: "var(--danger)" }}>${entry.montantMajore.toLocaleString("fr-FR")}</div>
+                  </div>
+                )}
+                {entry.articleLoi && (
+                  <div className="bg-surface-2 px-3 py-[10px]">
+                    <div className="mb-[3px] text-[10px] font-bold uppercase tracking-[0.08em] text-faint">Article de loi</div>
+                    <div className="text-[13px]">{entry.articleLoi}</div>
+                  </div>
+                )}
+                {entry.referenceJuridique && (
+                  <div className="bg-surface-2 px-3 py-[10px]">
+                    <div className="mb-[3px] text-[10px] font-bold uppercase tracking-[0.08em] text-faint">Référence juridique</div>
+                    <div className="text-[13px]">{entry.referenceJuridique}</div>
+                  </div>
+                )}
               </div>
 
               <div>

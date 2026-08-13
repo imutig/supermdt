@@ -112,7 +112,10 @@ export function CodePenal() {
                   )}
                 </span>
                 <span className="font-data text-[12px] text-muted">{c.fine.raw}</span>
-                <span className="font-data text-[12px] text-muted">{fmtDur(c.jailSeconds)}</span>
+                <span className="font-data text-[12px] text-muted">
+                  {fmtDur(c.jailSeconds)}
+                  {c.pointsPermis ? <span className="ml-1 text-[10.5px]" style={{ color: "var(--warning)" }}>· −{c.pointsPermis} pts</span> : null}
+                </span>
                 <span className="text-[12px]">{c.dojRequest ? "Oui" : "-"}</span>
                 <span className="flex flex-wrap gap-1">
                   {c.sanctions.map((s) => (

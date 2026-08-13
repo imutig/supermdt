@@ -155,6 +155,8 @@ export const getEntry = query({
       forceUsed: e.forceUsed ?? false,
       finePaid: e.finePaid ?? false,
       closed: e.closed ?? false,
+      jugement: e.jugement ?? null,
+      baremeAmende: e.baremeAmende ?? null,
       charges: charges.map((c) => ({
         name: c.snapshot.name,
         category: c.snapshot.category,

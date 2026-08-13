@@ -251,6 +251,7 @@ export function VehicleModal({ vehicleId, ownerId, ownerName, initialPlaque, can
                   <ViewField label="Type">{vehicle.type || "-"}</ViewField>
                   <ViewField label="Modèle">{vehicle.modele || "-"}</ViewField>
                   <ViewField label="Couleur">{vehicle.couleur || "-"}</ViewField>
+                  {vehicle.nexusStatut && <ViewField label="Statut">{vehicle.nexusStatut}</ViewField>}
                   <div className="col-span-2 bg-surface-2 px-3 py-[10px]">
                     <div className="mb-[3px] text-[10px] font-bold uppercase tracking-[0.08em] text-faint">Notes</div>
                     <div className="whitespace-pre-wrap text-[13px]">{vehicle.notes || "-"}</div>

@@ -148,8 +148,10 @@ export function Dossier() {
   const identityFields = [
     { label: "Nom complet", value: `${c.prenom} ${c.nom}` },
     { label: "Date de naissance", value: c.dateNaissance ?? "-", mono: true },
+    { label: "Lieu de naissance", value: c.lieuNaissance ?? "-" },
     { label: "Sexe", value: sexeLabel(c.sexe) },
     { label: "Nationalité", value: c.nationalite ?? "-" },
+    { label: "Groupe sanguin", value: c.groupeSanguin ?? "-" },
     { label: "Téléphone", value: c.telephone ?? "-", mono: true },
     { label: "Email", value: c.email ?? "-" },
     { label: "Ethnie", value: c.ethnie ?? "-" },
@@ -328,6 +330,15 @@ export function Dossier() {
                     </div>
                   ))}
                 </div>
+                {/* Bloc médical / contact d'urgence — affiché seulement si renseigné. */}
+                {(c.allergies || c.antecedents || c.traitements || c.contactUrgence?.nom || c.contactUrgence?.telephone) && (
+                  <div className="grid grid-cols-2 gap-px border-t border-border bg-border">
+                    {c.allergies && <div className="bg-surface px-4 py-3"><div className="mb-1 text-[10px] font-bold uppercase tracking-[0.08em] text-faint">Allergies</div><div className="text-[13px] whitespace-pre-wrap">{c.allergies}</div></div>}
+                    {c.antecedents && <div className="bg-surface px-4 py-3"><div className="mb-1 text-[10px] font-bold uppercase tracking-[0.08em] text-faint">Antécédents médicaux</div><div className="text-[13px] whitespace-pre-wrap">{c.antecedents}</div></div>}
+                    {c.traitements && <div className="bg-surface px-4 py-3"><div className="mb-1 text-[10px] font-bold uppercase tracking-[0.08em] text-faint">Traitements</div><div className="text-[13px] whitespace-pre-wrap">{c.traitements}</div></div>}
+                    {(c.contactUrgence?.nom || c.contactUrgence?.telephone) && <div className="bg-surface px-4 py-3"><div className="mb-1 text-[10px] font-bold uppercase tracking-[0.08em] text-faint">Contact d'urgence</div><div className="text-[13px]">{[`${c.contactUrgence?.prenom ?? ""} ${c.contactUrgence?.nom ?? ""}`.trim(), c.contactUrgence?.telephone].filter(Boolean).join(" · ") || "-"}</div></div>}
+                  </div>
+                )}
                 <div className="p-4">
                   <div className="mb-[11px] text-[10.5px] font-bold uppercase tracking-[0.09em] text-faint">
                     Licences &amp; permis

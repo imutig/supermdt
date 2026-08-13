@@ -138,6 +138,7 @@ export const get = query({
       couleur: veh.couleur ?? "",
       type: veh.type ?? "",
       notes: veh.notes ?? "",
+      nexusStatut: veh.nexusStatut ?? null,
       ownerId: veh.ownerId ?? null,
       ownerName: owner ? `${owner.prenom} ${owner.nom}` : null,
       photoUrl: veh.photoUrls?.[0] ?? null,

@@ -86,6 +86,9 @@ export const getEntry = query({
       officer: await citationOfficer(ctx, c),
       defcon: c.defconSnapshot,
       totalFine: c.totalFine,
+      montantMajore: c.montantMajore ?? null,
+      articleLoi: c.articleLoi ?? null,
+      referenceJuridique: c.referenceJuridique ?? null,
       notes: c.notes,
       charges: charges.map((ch) => ({
         name: ch.snapshot.name,

@@ -51,6 +51,7 @@ export const listCharges = query({
         severityName: c.severityId ? (sevById.get(c.severityId)?.name ?? null) : null,
         fine: c.fine,
         jailSeconds: c.jailSeconds ?? null,
+        pointsPermis: c.pointsPermis ?? null,
         dojRequest: c.dojRequest,
         recidiveDays: c.recidiveDays ?? null,
         minParam: c.minParam ?? null,
