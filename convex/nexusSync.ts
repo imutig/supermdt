@@ -372,7 +372,9 @@ export const createCitizen = action({
       telephone: a.telephone ?? "", email: a.email ?? "", adresse: a.adresse ?? "",
       ethnie: a.ethnie ?? "", couleurCheveux: a.cheveux ?? "", couleurYeux: a.yeux ?? "",
       taille: toNexusNum(a.taille), poids: toNexusNum(a.poids), appartenance: a.groupe ?? "", emploi: a.metier ?? "",
-      photoUrl: a.mugshotUrl ?? "",
+      // On n'envoie que des URLs http (les data: URLs cassent Nexus) ; sinon le
+      // mugshot reste local.
+      photoUrl: a.mugshotUrl && /^https?:/.test(a.mugshotUrl) ? a.mugshotUrl : "",
     };
     const t0 = Date.now();
     let res: Response;
@@ -659,6 +661,7 @@ export const updateCitizen = action({
     taille: v.optional(v.string()), poids: v.optional(v.string()), ethnie: v.optional(v.string()),
     cheveux: v.optional(v.string()), yeux: v.optional(v.string()), adresse: v.optional(v.string()),
     groupe: v.optional(v.string()), metier: v.optional(v.string()),
+    descriptionPhysique: v.optional(v.string()), mugshotUrl: v.optional(v.string()),
   },
   handler: async (ctx, a): Promise<void> => {
     const agentId = await ctx.runQuery(api.nexusSync.myAgentId, {});

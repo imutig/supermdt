@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { X, Trash2, FileText } from "lucide-react";
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { api, type Id } from "@/lib/api";
 import { AgentTag } from "@/components/common/AgentTag";
 import { useToast } from "@/providers/toast";
@@ -20,6 +20,9 @@ export function ContraventionModal({
   // L'agent verbalisateur peut annuler sa contravention sans la permission.
   const canDelete = canDeleteAny || !!entry?.mine;
   const remove = useMutation(api.citations.remove);
+  const deleteSynced = useAction(api.nexusSync.deleteRecord);
+  const nexusStatus = useQuery(api.nexusSync.myStatus);
+  const syncActive = !!nexusStatus?.configured && nexusStatus.status === "OK";
   const toast = useToast();
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState(false);
@@ -27,11 +30,16 @@ export function ContraventionModal({
 
   async function doDelete() {
     setBusy(true);
-    const r = await toast.guard(remove({ citationId }), "Suppression impossible");
-    setBusy(false);
-    if (r !== undefined) {
-      toast.success("Contravention supprimée (archivée).");
+    try {
+      // Synchro active : suppression d'abord sur Nexus, sinon en local seulement.
+      if (syncActive) await deleteSynced({ kind: "amende", localId: citationId });
+      else await remove({ citationId });
+      toast.success("Contravention supprimée.");
       onClose();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Suppression impossible.");
+    } finally {
+      setBusy(false);
     }
   }
 

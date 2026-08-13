@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { X, Trash2 } from "lucide-react";
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { api, type Id } from "@/lib/api";
 import { AgentTag } from "@/components/common/AgentTag";
 import { RichTextEditor } from "@/components/common/RichTextEditor";
@@ -30,6 +30,9 @@ export function CasierEntryModal({ entryId, canDelete: canDeleteAny, onClose }: 
   // L'agent qui a établi l'entrée peut l'annuler sans casier.annul.
   const canDelete = canDeleteAny || !!entry?.mine;
   const remove = useMutation(api.casier.remove);
+  const deleteSynced = useAction(api.nexusSync.deleteRecord);
+  const nexusStatus = useQuery(api.nexusSync.myStatus);
+  const syncActive = !!nexusStatus?.configured && nexusStatus.status === "OK";
   const updateArrest = useMutation(api.casier.updateArrest);
   const closeDossier = useMutation(api.casier.closeDossier);
   const reopenDossier = useMutation(api.casier.reopenDossier);
@@ -83,7 +86,13 @@ export function CasierEntryModal({ entryId, canDelete: canDeleteAny, onClose }: 
 
   async function doDelete() {
     setBusy(true);
-    try { await remove({ entryId }); onClose(); } finally { setBusy(false); }
+    try {
+      if (syncActive) await deleteSynced({ kind: "casier", localId: entryId });
+      else await remove({ entryId });
+      onClose();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Suppression impossible.");
+    } finally { setBusy(false); }
   }
 
   const F = "h-10 w-full rounded-sm border border-border bg-surface-2 px-3 text-[13px] outline-none focus:border-accent";

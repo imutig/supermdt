@@ -68,15 +68,20 @@ export function Dossier() {
   // après les lui avoir retirés.
   // Cohabitation NexusMDT : l'écriture citoyenne (identité, permis, flags) et
   // judiciaire (casiers, contraventions) est désactivée ici. Consultation OK.
-  const canEditCitizen = can("citoyens.edit") && FEATURES.citizenWrite;
+  // Synchro Nexus active : débloque l'écriture citoyenne/judiciaire (write-through).
+  const nexusStatus = useQuery(api.nexusSync.myStatus);
+  const syncActive = !!nexusStatus?.configured && nexusStatus.status === "OK";
+  const cw = FEATURES.citizenWrite || syncActive;
+  const jw = FEATURES.judicialWrite || syncActive;
+  const canEditCitizen = can("citoyens.edit") && cw;
   const canCreateVehicle = can("vehicules.create");
-  const canAnnulCasier = can("casier.annul") && FEATURES.judicialWrite;
-  const canAnnulContravention = can("contraventions.annul") && FEATURES.judicialWrite;
+  const canAnnulCasier = can("casier.annul") && jw;
+  const canAnnulContravention = can("contraventions.annul") && jw;
   const canAnnulMandat = can("mandats.annul");
   const canEditVehicle = can("vehicules.edit");
-  const canManageLicenses = can("citoyens.licenses") && FEATURES.citizenWrite;
-  const canCasier = can("casier.create") && FEATURES.judicialWrite;
-  const canContravention = can("contraventions.create") && FEATURES.judicialWrite;
+  const canManageLicenses = can("citoyens.licenses") && cw;
+  const canCasier = can("casier.create") && jw;
+  const canContravention = can("contraventions.create") && jw;
   const canMandat = can("mandats.create");
   const canExecuteMandat = can("mandats.execute");
   const canPlainte = can("plaintes.create") || can("plaintes.edit") || can("plaintes.delete");
@@ -175,7 +180,7 @@ export function Dossier() {
         <span>{c.prenom} {c.nom}</span>
       </div>
 
-      {!FEATURES.citizenWrite && (
+      {!cw && (
         <div className="mb-[16px] flex items-start gap-[10px] rounded-card border px-[15px] py-[12px] text-[13px]" style={{ borderColor: "color-mix(in srgb, var(--accent) 40%, transparent)", background: "var(--accent-soft)", color: "var(--text)" }}>
           <span className="text-accent">ⓘ</span>
           <span>{NEXUS_MSG} La consultation reste disponible ici (données synchronisées).</span>
@@ -353,11 +358,11 @@ export function Dossier() {
                   <div className="mb-[11px] mt-[18px] text-[10.5px] font-bold uppercase tracking-[0.09em] text-faint">
                     Signalements
                   </div>
-                  {citizenId && <FlagsManager citizenId={citizenId} flags={data.flags} canManage={can("citoyens.flag") && FEATURES.citizenWrite} />}
+                  {citizenId && <FlagsManager citizenId={citizenId} flags={data.flags} canManage={can("citoyens.flag") && cw} />}
                 </div>
               </div>
             ) : tab === "famille" ? (
-              citizenId ? <FamilyTab citizenId={citizenId} canEdit={can("citoyens.edit") && FEATURES.citizenWrite} onOpen={(id) => navigate(`/citoyen/${id}`)} /> : null
+              citizenId ? <FamilyTab citizenId={citizenId} canEdit={can("citoyens.edit") && cw} onOpen={(id) => navigate(`/citoyen/${id}`)} /> : null
             ) : tab === "vehicules" ? (
               <div>
                 <div className="flex items-center justify-between border-b border-border px-4 py-[10px]">

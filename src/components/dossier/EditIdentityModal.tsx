@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { X, Trash2, Skull } from "lucide-react";
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { api, type Doc } from "@/lib/api";
 import { ImageUpload } from "@/components/common/ImageUpload";
 import { DateField } from "@/components/common/DateField";
@@ -19,6 +19,9 @@ export function EditIdentityModal({
   onArchived: () => void;
 }) {
   const update = useMutation(api.citizens.update);
+  const updateSynced = useAction(api.nexusSync.updateCitizen);
+  const nexusStatus = useQuery(api.nexusSync.myStatus);
+  const syncActive = !!nexusStatus?.configured && nexusStatus.status === "OK";
   const archive = useMutation(api.citizens.archive);
   const setDeceased = useMutation(api.citizens.setDeceased);
   const opts = useQuery(api.configEditors.options);
@@ -45,16 +48,22 @@ export function EditIdentityModal({
     setBusy(true);
     try {
       const t = (s: string) => s.trim() || undefined;
-      await update({
-        id: citizen._id, prenom: f.prenom.trim(), nom: f.nom.trim(),
+      const fields = {
+        prenom: f.prenom.trim(), nom: f.nom.trim(),
         dateNaissance: t(f.dateNaissance), sexe: t(f.sexe), nationalite: t(f.nationalite),
         telephone: t(f.telephone), email: t(f.email),
         taille: t(f.taille), poids: t(f.poids), ethnie: t(f.ethnie), cheveux: t(f.cheveux), yeux: t(f.yeux),
         descriptionPhysique: t(f.descriptionPhysique),
         adresse: t(f.adresse), groupe: t(f.groupe), metier: t(f.metier),
         mugshotUrl: mugshotUrl ?? undefined,
-      });
+      };
+      // Synchro active : édition d'abord sur Nexus, sinon en local.
+      if (syncActive) await updateSynced({ citizenId: citizen._id, ...fields });
+      else await update({ id: citizen._id, ...fields });
+      toast.success("Fiche mise à jour.");
       onClose();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Modification impossible.");
     } finally {
       setBusy(false);
     }
