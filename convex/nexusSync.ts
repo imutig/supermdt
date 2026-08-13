@@ -398,7 +398,7 @@ export const createCitizen = action({
     const citizenId = await ctx.runMutation(internal.nexusSync._insertCitizenFromNexus, {
       raw: JSON.stringify(created), createdBy: agentId, mugshotUrl: a.mugshotUrl,
     });
-    await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: "citoyen", op: "POST", ok: true, httpStatus: res.status, durationMs: Date.now() - t0, agentId, detail: `${a.prenom} ${a.nom}` });
+    await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: "citoyen", op: "POST", ok: true, httpStatus: res.status, durationMs: Date.now() - t0, agentId, detail: `${a.prenom} ${a.nom} · Nexus n°${created?.numero ?? "?"} · local ${citizenId}` });
     return citizenId;
   },
 });
