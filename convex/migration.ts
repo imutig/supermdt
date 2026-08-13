@@ -314,9 +314,15 @@ export const runSync = action({
   handler: async (ctx): Promise<unknown> => {
     const ok = await ctx.runQuery(api.migration.canSync, {});
     if (!ok) throw new Error("Vous n'êtes pas autorisé à lancer la synchronisation.");
-    if (!process.env.VIZU_EMAIL || !process.env.VIZU_PASSWORD)
-      throw new Error("Identifiants Nexus non configurés (VIZU_EMAIL / VIZU_PASSWORD).");
-    const token = await vizuLogin();
+    // Priorité au compte Nexus lié de l'admin (write-through, testé OK) ; sinon
+    // le compte de service VIZU_EMAIL/PASSWORD.
+    const agentId = await ctx.runQuery(api.nexusSync.myAgentId, {});
+    let token: string | null = agentId ? await ctx.runAction(internal.nexusSync.tokenFor, { agentId }) : null;
+    if (!token) {
+      if (!process.env.VIZU_EMAIL || !process.env.VIZU_PASSWORD)
+        throw new Error("Aucun identifiant Nexus : lie ton compte dans Mon profil (Utiliser SuperMDT comme MDT principal), ou configure VIZU_EMAIL / VIZU_PASSWORD.");
+      token = await vizuLogin();
+    }
     // Ne PAS recréer les fiches de citoyens supprimés du Nexus : ce qui est
     // supprimé côté Nexus ne doit pas réapparaître (réconciliation stricte).
     return await ctx.runAction(internal.migration.sync, { token, createMissingCitizens: false });

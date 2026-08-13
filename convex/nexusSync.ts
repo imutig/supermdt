@@ -240,6 +240,16 @@ export const _credFor = internalQuery({
     return row ? { email: row.email, secretEnc: row.secretEnc, tokenCache: row.tokenCache ?? null, tokenExpiry: row.tokenExpiry ?? null } : null;
   },
 });
+// Token Nexus d'un agent lié (pour que le bouton « Synchroniser » réutilise le
+// compte de l'admin plutôt qu'un compte de service séparé). null si non lié.
+export const tokenFor = internalAction({
+  args: { agentId: v.id("agents") },
+  handler: async (ctx, { agentId }): Promise<string | null> => {
+    const cred = await ctx.runQuery(internal.nexusSync._credFor, { agentId });
+    if (!cred) return null;
+    return await getToken(ctx, agentId, cred);
+  },
+});
 export const _cacheToken = internalMutation({
   args: { agentId: v.id("agents"), token: v.string(), expiry: v.number() },
   handler: async (ctx, { agentId, token, expiry }) => {
@@ -456,7 +466,9 @@ export const createContravention = action({
       }
       const j: any = await res.json();
       const created = j.amende ?? j.data ?? j;
-      const numero = created?.numero ?? created?._id;
+      // On ne tamponne qu'avec le vrai `numero` (même clé que l'import) ; sinon
+      // l'orphelin sera adopté au prochain sync (anti-doublon).
+      const numero = created?.numero;
       if (numero != null) await ctx.runMutation(internal.nexusSync._stampCitationImport, { citationId, importRef: `nexus-amende:${numero}` });
       await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: "amende", op: "POST", ok: true, httpStatus: res.status, durationMs: Date.now() - t0, agentId, detail: `${info.prenom} ${info.nom} · $${info.montant}` });
       return citationId;

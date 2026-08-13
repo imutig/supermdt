@@ -382,7 +382,17 @@ export const _upsertCasiers = internalMutation({
     if (!refs.owner) throw new Error("Aucun compte owner pour rattacher les casiers importés.");
     const allEntries = await ctx.db.query("casierEntries").collect();
     const existingByRef = new Map<string, (typeof allEntries)[number]>();
-    for (const e of allEntries) if (e.importRef) existingByRef.set(e.importRef, e);
+    // Orphelins write-through : casiers locaux sans importRef (POST Nexus réussi
+    // mais tamponnage échoué) -> on les ADOPTE au lieu d'importer un doublon.
+    const orphansByCitizen = new Map<string, (typeof allEntries)[number][]>();
+    for (const e of allEntries) {
+      if (e.importRef) existingByRef.set(e.importRef, e);
+      else if (!e.deletedAt) {
+        const k = e.citizenId as string;
+        if (!orphansByCitizen.has(k)) orphansByCitizen.set(k, []);
+        orphansByCitizen.get(k)!.push(e);
+      }
+    }
     // Références présentes dans le flux Nexus actuel (matchées ou non) : sert à
     // supprimer les casiers importés qui ont disparu du Nexus.
     const incomingRefs = new Set<string>();
@@ -441,6 +451,14 @@ export const _upsertCasiers = internalMutation({
           refs.byName.set(norm(`${d.nom} ${d.prenom}`), citizenId);
         }
       }
+      // Adoption d'un orphelin write-through du même citoyen (anti-doublon).
+      const orphans = citizenId ? orphansByCitizen.get(citizenId as string) : undefined;
+      if (orphans && orphans.length) {
+        const orphan = orphans.shift()!;
+        if (!dryRun) await ctx.db.patch(orphan._id, { importRef: d.importRef, importRaw: rawStr, arrestType: d.arrestType });
+        dejaImporte++;
+        continue;
+      }
       ajoutes++;
       const charges = buildCharges(d, refs);
       for (const c of charges) (c.linked ? chargesLiees++ : chargesLibres++);
@@ -490,7 +508,15 @@ export const _upsertContraventions = internalMutation({
     if (!refs.owner) throw new Error("Aucun compte owner pour rattacher les contraventions importées.");
     const all = await ctx.db.query("citations").collect();
     const existingByRef = new Map<string, (typeof all)[number]>();
-    for (const c of all) if (c.importRef) existingByRef.set(c.importRef, c);
+    const orphansByCitizen = new Map<string, (typeof all)[number][]>();
+    for (const c of all) {
+      if (c.importRef) existingByRef.set(c.importRef, c);
+      else if (!c.deletedAt) {
+        const k = c.citizenId as string;
+        if (!orphansByCitizen.has(k)) orphansByCitizen.set(k, []);
+        orphansByCitizen.get(k)!.push(c);
+      }
+    }
     const incomingRefs = new Set<string>();
     for (const rawStr of raws) { try { incomingRefs.add(mapAmende(JSON.parse(rawStr)).importRef); } catch { /* compté plus bas */ } }
 
@@ -533,6 +559,14 @@ export const _upsertContraventions = internalMutation({
           refs.byName.set(norm(`${a.prenom} ${a.nom}`), citizenId);
           refs.byName.set(norm(`${a.nom} ${a.prenom}`), citizenId);
         }
+      }
+      // Adoption d'un orphelin write-through du même citoyen (anti-doublon).
+      const orphans = citizenId ? orphansByCitizen.get(citizenId as string) : undefined;
+      if (orphans && orphans.length) {
+        const orphan = orphans.shift()!;
+        if (!dryRun) await ctx.db.patch(orphan._id, { importRef: a.importRef, importRaw: rawStr, montantMajore: a.montantMajore });
+        dejaImporte++;
+        continue;
       }
       ajoutes++;
       const officerId = resolveOfficer(refs, a.createdByMatricule, a.createdByNom);
