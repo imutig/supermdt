@@ -78,6 +78,8 @@ export const mdt = {
   syncDiscordMembers: (members: { discordId: string; username: string; displayName: string; roleIds?: string[] }[]) => client.mutation(anyApi.bot.syncDiscordMembers, { secret: env.botSecret, members }) as Promise<{ count: number }>,
   accountDMQueue: () => client.query(anyApi.bot.accountDMQueue, { secret: env.botSecret }) as Promise<{ code: string; discordId: string; baseUrl: string }[]>,
   markAccountDMSent: (code: string) => client.mutation(anyApi.bot.markAccountDMSent, { secret: env.botSecret, code }) as Promise<void>,
+  nexusAlertQueue: () => client.query(anyApi.bot.nexusAlertQueue, { secret: env.botSecret }) as Promise<{ id: string; message: string; discordId: string }[]>,
+  markNexusAlertSent: (id: string) => client.mutation(anyApi.bot.markNexusAlertSent, { secret: env.botSecret, id }) as Promise<void>,
   roleJobsPending: () => client.query(anyApi.bot.roleJobsPending, { secret: env.botSecret }) as Promise<{ _id: string; discordId: string; addRoleId: string | null; removeRoleIds: string[]; reason: string | null }[]>,
   markRoleJob: (jobId: string, status: "DONE" | "ERROR", error?: string) => client.mutation(anyApi.bot.markRoleJob, { secret: env.botSecret, jobId, status, error }) as Promise<void>,
 

@@ -1785,7 +1785,19 @@ export default defineSchema({
     status: v.union(v.literal("UNTESTED"), v.literal("OK"), v.literal("INVALID")),
     lastCheckedAt: v.optional(v.number()),
     lastError: v.optional(v.string()),
+    // Cache du token (évite un login à chaque écriture) + expiration (epoch ms).
+    tokenCache: v.optional(v.string()),
+    tokenExpiry: v.optional(v.number()),
   }).index("by_agent", ["agentId"]),
+
+  // File d'alertes de synchro à envoyer en MP Discord (échecs répétés, comptes
+  // invalides…). Le bot dépile via bot.nexusAlertQueue / markNexusAlertSent.
+  nexusAlerts: defineTable({
+    at: v.number(),
+    message: v.string(),
+    targetDiscordId: v.string(),
+    sent: v.boolean(),
+  }).index("by_sent", ["sent"]),
 
   // Journal des opérations de synchro Nexus (imports + écritures write-through),
   // pour la page de monitoring (graphiques, taux de succès, appels API).

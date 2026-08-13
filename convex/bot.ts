@@ -275,6 +275,24 @@ export const markAccountDMSent = mutation({
   },
 });
 
+// Alertes de synchro Nexus à envoyer en MP (échecs répétés, comptes invalides).
+export const nexusAlertQueue = query({
+  args: { secret: v.string() },
+  handler: async (ctx, { secret }) => {
+    assertBot(secret);
+    const rows = await ctx.db.query("nexusAlerts").withIndex("by_sent", (q) => q.eq("sent", false)).take(10);
+    return rows.map((r) => ({ id: r._id as string, message: r.message, discordId: r.targetDiscordId }));
+  },
+});
+export const markNexusAlertSent = mutation({
+  args: { secret: v.string(), id: v.string() },
+  handler: async (ctx, { secret, id }) => {
+    assertBot(secret);
+    const row = await ctx.db.get(id as import("./_generated/dataModel").Id<"nexusAlerts">);
+    if (row) await ctx.db.patch(row._id, { sent: true });
+  },
+});
+
 // Tâches de rôle Discord à exécuter (montées en grade).
 export const roleJobsPending = query({
   args: { secret: v.string() },

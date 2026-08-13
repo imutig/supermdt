@@ -1,4 +1,5 @@
-import { action, mutation, query, internalMutation, internalQuery } from "./_generated/server";
+import { action, mutation, query, internalAction, internalMutation, internalQuery } from "./_generated/server";
+import type { ActionCtx } from "./_generated/server";
 import { internal, api } from "./_generated/api";
 import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
@@ -20,6 +21,27 @@ function nowArrest(): string {
 function fmtHMS(seconds: number): string {
   const s = Math.max(0, Math.round(seconds));
   return `${pad2(Math.floor(s / 3600))}:${pad2(Math.floor((s % 3600) / 60))}:${pad2(s % 60)}`;
+}
+
+// Expiration d'un JWT (claim exp, en ms) ou null si indéchiffrable.
+function jwtExp(token: string): number | null {
+  try {
+    const payload = token.split(".")[1];
+    const json = JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/")));
+    return typeof json.exp === "number" ? json.exp * 1000 : null;
+  } catch { return null; }
+}
+
+type Cred = { email: string; secretEnc: string; tokenCache: string | null; tokenExpiry: number | null };
+// Token Nexus de l'agent : réutilise le cache tant qu'il est valide, sinon login
+// (et met en cache). Évite un login à chaque écriture.
+async function getToken(ctx: ActionCtx, agentId: Id<"agents">, cred: Cred): Promise<string> {
+  if (cred.tokenCache && cred.tokenExpiry && cred.tokenExpiry > Date.now() + 60_000) return cred.tokenCache;
+  const password = await decryptSecret(cred.secretEnc);
+  const token = await nexusLogin(cred.email, password);
+  const exp = jwtExp(token) ?? Date.now() + 50 * 60_000;
+  await ctx.runMutation(internal.nexusSync._cacheToken, { agentId, token, expiry: exp });
+  return token;
 }
 
 const BASE = "https://mdt.vizu-world.com";
@@ -45,6 +67,76 @@ export const _log = internalMutation({
   },
   handler: async (ctx, a) => {
     await ctx.db.insert("nexusSyncLog", { at: Date.now(), ...a });
+    if (a.ok) return;
+    // Alerte au 3e échec consécutif de la même direction (anti-spam : une seule
+    // alerte non envoyée à la fois).
+    const recent = await ctx.db.query("nexusSyncLog").withIndex("by_at").order("desc").take(6);
+    let consec = 0;
+    for (const r of recent) { if (r.direction !== a.direction) continue; if (!r.ok) consec++; else break; }
+    if (consec === 3) {
+      const pending = await ctx.db.query("nexusAlerts").withIndex("by_sent", (q) => q.eq("sent", false)).first();
+      if (!pending) {
+        await ctx.db.insert("nexusAlerts", {
+          at: Date.now(),
+          message: `⚠️ **Synchro NexusMDT** — ${consec} échecs consécutifs (${a.direction}).\nDernière erreur : ${a.error ?? a.httpStatus ?? "inconnue"}`,
+          targetDiscordId: process.env.NEXUS_ALERT_DISCORD_ID || "263679048712978432",
+          sent: false,
+        });
+      }
+    }
+  },
+});
+
+// Tous les identifiants liés (pour le cron de re-validation).
+export const _allCreds = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    const rows = await ctx.db.query("nexusCredentials").collect();
+    const out = [];
+    for (const r of rows) {
+      const agent = await ctx.db.get(r.agentId);
+      out.push({ agentId: r.agentId, email: r.email, secretEnc: r.secretEnc, status: r.status, agentName: agent ? `${agent.prenomRP} ${agent.nomRP}` : r.email });
+    }
+    return out;
+  },
+});
+export const _setCredStatus = internalMutation({
+  args: { agentId: v.id("agents"), status: v.union(v.literal("OK"), v.literal("INVALID")), error: v.optional(v.string()) },
+  handler: async (ctx, { agentId, status, error }) => {
+    const row = await ctx.db.query("nexusCredentials").withIndex("by_agent", (q) => q.eq("agentId", agentId)).unique();
+    if (row) await ctx.db.patch(row._id, { status, lastCheckedAt: Date.now(), lastError: error, ...(status === "INVALID" ? { tokenCache: undefined, tokenExpiry: undefined } : {}) });
+  },
+});
+
+// Cron : re-teste tous les comptes Nexus liés ; alerte quand l'un devient invalide
+// (mot de passe changé côté Nexus…).
+export const revalidateCredentials = internalAction({
+  args: {},
+  handler: async (ctx): Promise<{ checked: number }> => {
+    const creds: { agentId: Id<"agents">; email: string; secretEnc: string; status: string; agentName: string }[] = await ctx.runQuery(internal.nexusSync._allCreds, {});
+    for (const c of creds) {
+      let status: "OK" | "INVALID" = "OK";
+      let err: string | undefined;
+      try { const pw = await decryptSecret(c.secretEnc); await nexusLogin(c.email, pw); }
+      catch (e) { status = "INVALID"; err = e instanceof Error ? e.message : String(e); }
+      if (status !== c.status) {
+        await ctx.runMutation(internal.nexusSync._setCredStatus, { agentId: c.agentId, status, error: err });
+        if (status === "INVALID") await ctx.runMutation(internal.nexusSync._alert, { message: `⚠️ **Compte NexusMDT invalide** — ${c.agentName}. Le mot de passe a probablement changé côté Nexus ; la synchro de cet agent est suspendue.` });
+      }
+    }
+    return { checked: creds.length };
+  },
+});
+
+// Enqueue une alerte MP Discord (utilisé aussi par le cron de re-validation).
+export const _alert = internalMutation({
+  args: { message: v.string() },
+  handler: async (ctx, { message }) => {
+    await ctx.db.insert("nexusAlerts", {
+      at: Date.now(), message,
+      targetDiscordId: process.env.NEXUS_ALERT_DISCORD_ID || "263679048712978432",
+      sent: false,
+    });
   },
 });
 
@@ -140,12 +232,19 @@ export const _store = internalMutation({
   },
 });
 
-// Lecture interne du secret chiffré (pour login à la demande).
+// Lecture interne du secret chiffré + token en cache (pour login à la demande).
 export const _credFor = internalQuery({
   args: { agentId: v.id("agents") },
   handler: async (ctx, { agentId }) => {
     const row = await ctx.db.query("nexusCredentials").withIndex("by_agent", (q) => q.eq("agentId", agentId)).unique();
-    return row ? { email: row.email, secretEnc: row.secretEnc } : null;
+    return row ? { email: row.email, secretEnc: row.secretEnc, tokenCache: row.tokenCache ?? null, tokenExpiry: row.tokenExpiry ?? null } : null;
+  },
+});
+export const _cacheToken = internalMutation({
+  args: { agentId: v.id("agents"), token: v.string(), expiry: v.number() },
+  handler: async (ctx, { agentId, token, expiry }) => {
+    const row = await ctx.db.query("nexusCredentials").withIndex("by_agent", (q) => q.eq("agentId", agentId)).unique();
+    if (row) await ctx.db.patch(row._id, { tokenCache: token, tokenExpiry: expiry });
   },
 });
 
@@ -248,8 +347,7 @@ export const createCitizen = action({
     const cred = await ctx.runQuery(internal.nexusSync._credFor, { agentId });
     if (!cred) throw new Error("Synchronisation Nexus non configurée (voir Mon profil).");
 
-    const password = await decryptSecret(cred.secretEnc);
-    const token = await nexusLogin(cred.email, password);
+    const token = await getToken(ctx, agentId, cred);
     const payload: Record<string, unknown> = {
       entity: "lspd",
       prenom: a.prenom.trim(), nom: a.nom.trim(),
@@ -340,8 +438,7 @@ export const createContravention = action({
     // 2) Push vers Nexus (rollback local si échec).
     const t0 = Date.now();
     try {
-      const password = await decryptSecret(cred.secretEnc);
-      const token = await nexusLogin(cred.email, password);
+      const token = await getToken(ctx, agentId, cred);
       const { date, heure } = nowParis();
       const payload = {
         entity: "lspd", citoyen: { id: info.nexusId, nom: info.nom, prenom: info.prenom },
@@ -434,8 +531,7 @@ export const createCasier = action({
 
     const t0 = Date.now();
     try {
-      const password = await decryptSecret(cred.secretEnc);
-      const token = await nexusLogin(cred.email, password);
+      const token = await getToken(ctx, agentId, cred);
       const citoyen = { id: info.nexusId, nom: info.nom, prenom: info.prenom };
       const officer = { matricule: info.agentMatricule != null ? String(info.agentMatricule) : "", nom: info.agentNom };
       const isDossier = info.arrestType === "DOSSIER";

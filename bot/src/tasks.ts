@@ -205,6 +205,18 @@ export function startTasks(client: Client) {
       }
     } catch (err) { console.error("[discord] envoi des comptes :", err); }
 
+    // --- Alertes de synchro Nexus en MP ---
+    try {
+      const alerts = await mdt.nexusAlertQueue();
+      for (const al of alerts) {
+        const user = await client.users.fetch(al.discordId).catch(() => null);
+        if (user) {
+          await user.send({ embeds: [baseEmbed(BRAND.danger).setTitle("🔌 Alerte synchronisation NexusMDT").setDescription(al.message)] }).catch(() => {});
+        }
+        await mdt.markNexusAlertSent(al.id);
+      }
+    } catch (err) { console.error("[discord] alertes synchro :", err); }
+
     // --- Montées en grade : tâches de rôle Discord ---
     try {
       const jobs = await mdt.roleJobsPending();

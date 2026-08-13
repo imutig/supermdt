@@ -270,8 +270,8 @@ async function vizuLogin(): Promise<string> {
 }
 
 export const autoSync = internalAction({
-  args: {},
-  handler: async (ctx): Promise<unknown> => {
+  args: { retry: v.optional(v.number()) },
+  handler: async (ctx, { retry }): Promise<unknown> => {
     if (!process.env.VIZU_EMAIL || !process.env.VIZU_PASSWORD) {
       console.log("[autoSync] identifiants vizu non configurés : synchro ignorée.");
       return { skipped: true };
@@ -282,7 +282,14 @@ export const autoSync = internalAction({
       console.log("[autoSync] synchro terminée :", JSON.stringify(rep));
       return rep;
     } catch (err) {
-      console.error("[autoSync] échec :", err);
+      const attempt = retry ?? 0;
+      console.error(`[autoSync] échec (tentative ${attempt + 1}) :`, err);
+      // Retry avec backoff (Nexus peut être brièvement down) : 2 réessais à 3 min,
+      // puis 6 min. On ne journalise l'échec (et donc l'alerte) qu'à l'épuisement.
+      if (attempt < 2) {
+        await ctx.scheduler.runAfter((attempt + 1) * 3 * 60_000, internal.migration.autoSync, { retry: attempt + 1 });
+        return { ok: false, retrying: true, attempt: attempt + 1 };
+      }
       await ctx.runMutation(internal.nexusSync._log, { direction: "IMPORT", entity: "import-complet", op: "SYNC", ok: false, error: String(err).slice(0, 200) }).catch(() => {});
       return { ok: false, error: String(err) };
     }
