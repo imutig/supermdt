@@ -119,6 +119,8 @@ export function mapDossier(d: any) {
   return {
     importRef: `nexus:${numero ?? pick(d, "_id", "id")}`,
     numero,
+    arrestType: "DOSSIER" as const,
+    peine: undefined as string | undefined,
     prenom: String(pick(d, "citoyen.prenom", "citizen.prenom", "prenom") ?? "").trim(),
     nom: String(pick(d, "citoyen.nom", "citizen.nom", "nom") ?? "").trim(),
     at: parseArrestDate(String(pick(d, "dateArrestation", "date_arrestation", "arrestDate") ?? ""), String(pick(d, "createdAt", "created_at") ?? "")),
@@ -182,6 +184,60 @@ export function mapAmende(a: any) {
   };
 }
 
+// Rapport d'arrestation Nexus (/api/rapports) : plus léger qu'un dossier
+// (pas de statut/jugement). Même forme de sortie que mapDossier + arrestType.
+export function mapRapport(r: any) {
+  // Les charges d'un rapport sont de simples chaînes (noms d'infraction), et le
+  // rapport porte un montant/peine GLOBAUX (pas par charge).
+  const chargesRaw = pick(r, "charges", "infractions") ?? [];
+  const charges = (Array.isArray(chargesRaw) ? chargesRaw : [])
+    .map((c: any) => (typeof c === "string" ? { name: c.trim(), fineAmount: 0, jailSeconds: 0, quantite: 1, aggravation: false } : mapCharge(c)))
+    .filter((c: any) => c.name);
+  const numero = pick(r, "numero", "number", "num");
+  const agents = pick(r, "agentsImpliques", "agents", "officiers") ?? [];
+  const photos = pick(r, "photos", "images") ?? [];
+  const rapport = String(pick(r, "rapport", "report") ?? "");
+  const avocats = pick(r, "avocat", "avocats", "partagesAvocat") ?? [];
+  const chargeFine = charges.reduce((s: number, c: any) => s + c.fineAmount, 0);
+  const amende = num(pick(r, "amende", "montant")) ?? 0;
+  const jailFromPeine = parseJail(String(pick(r, "peine", "sentence") ?? ""));
+  return {
+    importRef: `nexus-rapport:${numero ?? pick(r, "_id", "id")}`,
+    numero,
+    arrestType: "RAPPORT" as const,
+    peine: undefined as string | undefined,
+    prenom: String(pick(r, "citoyen.prenom", "citizen.prenom", "prenom") ?? "").trim(),
+    nom: String(pick(r, "citoyen.nom", "citizen.nom", "nom") ?? "").trim(),
+    at: parseArrestDate(String(pick(r, "date", "dateArrestation") ?? ""), String(pick(r, "createdAt", "created_at") ?? "")),
+    createdByMatricule: num(pick(r, "createdBy.matricule", "createdBy.badge")),
+    createdByNom: String(pick(r, "createdBy.nom", "createdBy.name") ?? "").trim(),
+    officers: (Array.isArray(agents) ? agents : []).map((a: any) => ({ matricule: num(pick(a, "matricule", "badge")), nom: String(pick(a, "nom", "name") ?? "").trim() })).filter((o: any) => o.matricule != null || o.nom),
+    statut: undefined as string | undefined,
+    lieu: (String(pick(r, "postePolice", "lieu", "poste") ?? "").trim()) || undefined,
+    forceUsed: false,
+    mirandaAt: undefined as string | undefined,
+    cuffedAt: (String(pick(r, "date") ?? "").trim()) || undefined,
+    avocat: (typeof avocats === "string" ? avocats : (Array.isArray(avocats) ? avocats.map((a: any) => pick(a, "nom", "name") || a).filter(Boolean).join(", ") : "")) || undefined,
+    reportBody: rapport.trim() || undefined,
+    derouleFaits: undefined as string | undefined,
+    jugement: undefined,
+    baremeAmende: (String(pick(r, "baremeAmende", "bareme") ?? "").trim()) || undefined,
+    imageUrls: (Array.isArray(photos) ? photos : []).filter((u: any) => typeof u === "string"),
+    charges,
+    totalFine: chargeFine || amende,
+    totalJail: charges.reduce((s: number, c: any) => s + c.jailSeconds, 0) || jailFromPeine,
+  };
+}
+
+// Mappe un raw importé selon son type (dossier ou rapport). Tolère l'ancien
+// format (raw dossier brut, sans enveloppe) pour remapCasiers.
+function mapCasierRaw(rawStr: string): any {
+  const parsed = JSON.parse(rawStr);
+  if (parsed && parsed._kind === "RAPPORT") return mapRapport(parsed.data);
+  if (parsed && parsed._kind === "DOSSIER") return mapDossier(parsed.data);
+  return mapDossier(parsed); // legacy : ancien importRaw = dossier brut
+}
+
 // ------------------------------- fetch ------------------------------------
 async function apiGet(path: string, token: string): Promise<any> {
   const res = await fetch(`${BASE}${path}`, { headers: { Authorization: `Bearer ${token}` } });
@@ -194,6 +250,13 @@ async function fetchAllDossiers(token: string): Promise<any[]> {
   let all = (first.dossiers || []).slice();
   const pages = first.pages || 1;
   for (let p = 2; p <= pages; p++) all = all.concat((await apiGet(`/api/dossiers?entity=lspd&page=${p}&limit=100`, token)).dossiers || []);
+  return all;
+}
+async function fetchAllRapports(token: string): Promise<any[]> {
+  const first = await apiGet("/api/rapports?entity=lspd&page=1&limit=100", token);
+  let all = (first.rapports || []).slice();
+  const pages = first.pages || 1;
+  for (let p = 2; p <= pages; p++) all = all.concat((await apiGet(`/api/rapports?entity=lspd&page=${p}&limit=100`, token)).rapports || []);
   return all;
 }
 async function fetchAllAmendes(token: string): Promise<any[]> {
@@ -210,9 +273,16 @@ export const casiersSync = internalAction({
   handler: async (ctx, { token, dryRun, limit, createMissing }): Promise<unknown> => {
     const tk = token || process.env.VIZU_TOKEN;
     if (!tk) throw new Error("Aucun token. npx convex env set VIZU_TOKEN \"...\" (ou {\"token\":\"...\"}).");
-    const raw = await fetchAllDossiers(tk);
-    const sliced = limit ? raw.slice(0, limit) : raw;
-    return await ctx.runMutation(internal.casiersImport._upsertCasiers, { raws: sliced.map((d) => JSON.stringify(d)), dryRun, createMissing });
+    // Dossiers ET rapports d'arrestation, dans un flux unique (chacun taggé) :
+    // la réconciliation opère alors sur l'ensemble et ne supprime pas l'autre type.
+    const dossiers = await fetchAllDossiers(tk);
+    const rapports = await fetchAllRapports(tk);
+    let wrapped = [
+      ...dossiers.map((d) => JSON.stringify({ _kind: "DOSSIER", data: d })),
+      ...rapports.map((r) => JSON.stringify({ _kind: "RAPPORT", data: r })),
+    ];
+    if (limit) wrapped = wrapped.slice(0, limit);
+    return await ctx.runMutation(internal.casiersImport._upsertCasiers, { raws: wrapped, dryRun, createMissing });
   },
 });
 
@@ -316,7 +386,7 @@ export const _upsertCasiers = internalMutation({
     // Références présentes dans le flux Nexus actuel (matchées ou non) : sert à
     // supprimer les casiers importés qui ont disparu du Nexus.
     const incomingRefs = new Set<string>();
-    for (const rawStr of raws) { try { incomingRefs.add(mapDossier(JSON.parse(rawStr)).importRef); } catch { /* compté plus bas */ } }
+    for (const rawStr of raws) { try { incomingRefs.add(mapCasierRaw(rawStr).importRef); } catch { /* compté plus bas */ } }
 
     let ajoutes = 0, dejaImporte = 0, sansCitoyen = 0, citoyensCrees = 0, chargesLiees = 0, chargesLibres = 0, officiersLies = 0, parseErr = 0;
     // Re-rattachement des casiers déjà importés (à chaque sync) :
@@ -324,7 +394,7 @@ export const _upsertCasiers = internalMutation({
     const exemplesSansCitoyen: string[] = [];
     for (const rawStr of raws) {
       let d: any;
-      try { d = mapDossier(JSON.parse(rawStr)); } catch { parseErr++; continue; }
+      try { d = mapCasierRaw(rawStr); } catch { parseErr++; continue; }
       const prev = existingByRef.get(d.importRef);
       if (prev) {
         // Casier déjà importé : on ne le recrée pas, mais on RE-RATTACHE ses
@@ -383,8 +453,9 @@ export const _upsertCasiers = internalMutation({
         citizenId: citizenId as Id<"citizens">, at: d.at, officerIds, officers,
         defconSnapshot: { name: "Import", fineMultiplier: 1, sensitiveFineMultiplier: 1 },
         totalFine: d.totalFine, totalJailSeconds: d.totalJail, dojRequired: false, sanctions: [],
-        derouleFaits: d.derouleFaits, lieu: d.lieu, notes: `Importé du MDT Nexus · dossier n°${d.numero}`,
-        status: "EMISE" as const, arrestType: "DOSSIER" as const,
+        derouleFaits: d.derouleFaits, lieu: d.lieu,
+        notes: `Importé du MDT Nexus · ${d.arrestType === "RAPPORT" ? "rapport" : "dossier"} n°${d.numero}${d.peine ? ` · Peine : ${d.peine}` : ""}`,
+        status: "EMISE" as const, arrestType: d.arrestType,
         reportBody: d.reportBody, imageUrls: d.imageUrls.length ? d.imageUrls : undefined,
         avocat: d.avocat, dossierStatus: d.statut, forceUsed: d.forceUsed,
         cuffedAt: d.cuffedAt, mirandaAt: d.mirandaAt,
@@ -515,7 +586,7 @@ export const remapCasiers = internalMutation({
     let updated = 0, skipped = 0;
     for (const e of entries) {
       let d: any;
-      try { d = mapDossier(JSON.parse(e.importRaw!)); } catch { skipped++; continue; }
+      try { d = mapCasierRaw(e.importRaw!); } catch { skipped++; continue; }
       updated++;
       if (dryRun) continue;
       const charges = buildCharges(d, refs);
@@ -527,7 +598,7 @@ export const remapCasiers = internalMutation({
         derouleFaits: d.derouleFaits, lieu: d.lieu, reportBody: d.reportBody,
         imageUrls: d.imageUrls.length ? d.imageUrls : undefined, avocat: d.avocat,
         dossierStatus: d.statut, forceUsed: d.forceUsed, cuffedAt: d.cuffedAt, mirandaAt: d.mirandaAt,
-        jugement: d.jugement, baremeAmende: d.baremeAmende,
+        jugement: d.jugement, baremeAmende: d.baremeAmende, arrestType: d.arrestType,
         ...(creator && e.createdBy === refs.owner?._id ? { createdBy: creator } : {}),
       });
       for (const old of await ctx.db.query("casierCharges").withIndex("by_entry", (q) => q.eq("entryId", e._id)).collect()) await ctx.db.delete(old._id);
