@@ -119,8 +119,10 @@ export function mapDossier(d: any) {
     mirandaAt: (String(pick(d, "dateLectureDroits", "miranda") ?? "").trim()) || undefined,
     cuffedAt: (String(pick(d, "dateArrestation") ?? "").trim()) || undefined,
     avocat: ((Array.isArray(avocats) ? avocats : []).map((a: any) => pick(a, "nom", "name") || a).filter(Boolean).join(", ")) || undefined,
+    // Le Nexus n'a qu'un seul champ « rapport » : on le place dans le rapport
+    // d'arrestation (reportBody) et on NE duplique PAS en « déroulé des faits ».
     reportBody: rapport.trim() || undefined,
-    derouleFaits: stripHtml(rapport) || undefined,
+    derouleFaits: undefined,
     imageUrls: (Array.isArray(photos) ? photos : []).filter((u: any) => typeof u === "string"),
     charges,
     totalFine: charges.reduce((s: number, c: any) => s + c.fineAmount, 0),
