@@ -1,13 +1,20 @@
 import { useState } from "react";
 import { useAction, useMutation, useQuery } from "convex/react";
-import { RefreshCw, Link2Off, ShieldCheck, TriangleAlert } from "lucide-react";
+import { RefreshCw, Link2Off, ShieldCheck, TriangleAlert, Copy, Dices } from "lucide-react";
 import { api } from "@/lib/api";
 import { useToast } from "@/providers/toast";
 import { useDialogs } from "@/components/detective/dialogs";
 
-// Onboarding « Utiliser SuperMDT comme MDT principal » : l'agent enregistre ses
-// identifiants Nexus (dédiés) pour poster en son nom. Le mot de passe est chiffré
-// au repos mais réversible côté serveur -> on impose un mot de passe dédié.
+// Mot de passe dédié généré (sans caractères ambigus).
+function genPassword(): string {
+  const alphabet = "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const arr = crypto.getRandomValues(new Uint8Array(22));
+  return Array.from(arr, (b) => alphabet[b % alphabet.length]).join("");
+}
+
+// Onboarding « Utiliser SuperMDT comme MDT principal » : SuperMDT GÉNÈRE un mot de
+// passe dédié ; l'agent change son mot de passe Nexus pour celui-ci, puis on teste
+// et on le stocke (chiffré, réversible côté serveur pour poster en son nom).
 export function NexusSyncCard() {
   const status = useQuery(api.nexusSync.myStatus);
   const saveCredential = useAction(api.nexusSync.saveCredential);
@@ -77,30 +84,38 @@ export function NexusSyncCard() {
           <p className="m-0 text-[13px] text-muted">Lie ton compte NexusMDT pour créer citoyens, casiers et amendes depuis SuperMDT : ils seront écrits sur le NexusMDT <b>en ton nom</b>, puis relus ici.</p>
           {open ? (
             <div className="mt-3 rounded-sm border border-border bg-surface-2 p-[13px]">
-              <div className="rounded-sm border px-[10px] py-[8px] text-[12px]" style={{ borderColor: "var(--warning)", background: "color-mix(in srgb, var(--warning) 8%, transparent)", color: "var(--warning)" }}>
-                ⚠️ Ton mot de passe sera stocké de façon <b>réversible</b> (chiffré, mais déchiffrable côté serveur pour la synchro). Utilise un <b>mot de passe dédié et unique</b> pour ce compte Nexus.
+              <div className="mb-[10px] text-[12.5px] font-semibold">Marche à suivre</div>
+              <ol className="m-0 mb-3 list-decimal space-y-[6px] pl-[18px] text-[12.5px] text-muted">
+                <li><b>Copie</b> le mot de passe généré ci-dessous.</li>
+                <li>Va sur <b>NexusMDT → ton compte</b> et <b>change ton mot de passe</b> pour celui-ci.</li>
+                <li>Renseigne ton <b>email Nexus</b> et valide.</li>
+              </ol>
+
+              <div className="mb-[5px] text-[10px] font-semibold uppercase tracking-[0.06em] text-faint">Mot de passe dédié généré</div>
+              <div className="flex gap-2">
+                <input readOnly value={password} className="h-9 flex-1 rounded-sm border border-border bg-surface px-2 font-data text-[13px] outline-none" onFocus={(e) => e.target.select()} />
+                <button onClick={() => { void navigator.clipboard?.writeText(password); toast.success("Mot de passe copié."); }} className="flex items-center gap-1 rounded-sm border border-border bg-surface px-2 text-[12px] font-semibold text-muted hover:border-border-strong" title="Copier"><Copy className="h-[14px] w-[14px]" /></button>
+                <button onClick={() => setPassword(genPassword())} className="flex items-center gap-1 rounded-sm border border-border bg-surface px-2 text-[12px] font-semibold text-muted hover:border-border-strong" title="Régénérer"><Dices className="h-[14px] w-[14px]" /></button>
               </div>
-              <div className="mt-3 grid gap-3">
-                <div>
-                  <div className="mb-[5px] text-[10px] font-semibold uppercase tracking-[0.06em] text-faint">Email Nexus</div>
-                  <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" autoComplete="off" className="h-9 w-full rounded-sm border border-border bg-surface px-2 text-[13px] outline-none focus:border-accent" />
-                </div>
-                <div>
-                  <div className="mb-[5px] text-[10px] font-semibold uppercase tracking-[0.06em] text-faint">Mot de passe dédié</div>
-                  <input value={password} onChange={(e) => setPassword(e.target.value)} type="password" autoComplete="new-password" className="h-9 w-full rounded-sm border border-border bg-surface px-2 text-[13px] outline-none focus:border-accent" />
-                </div>
-                <label className="flex items-start gap-2 text-[12px] text-muted">
-                  <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} className="mt-[2px]" />
-                  <span>Je comprends que ce mot de passe est stocké de façon réversible et j'utilise un mot de passe dédié à ce compte.</span>
-                </label>
-                <div className="flex gap-2">
-                  <button onClick={() => setOpen(false)} className="flex-1 rounded-sm border border-border bg-surface py-[8px] text-[12.5px] font-semibold hover:border-border-strong">Annuler</button>
-                  <button onClick={submit} disabled={busy || !email.trim() || !password || !consent} className="flex-1 rounded-sm bg-accent py-[8px] text-[12.5px] font-semibold text-accent-contrast hover:brightness-[1.06] disabled:opacity-50">{busy ? "Test en cours…" : "Tester & activer"}</button>
-                </div>
+              <div className="mt-[6px] rounded-sm border px-[10px] py-[7px] text-[11.5px]" style={{ borderColor: "var(--warning)", background: "color-mix(in srgb, var(--warning) 8%, transparent)", color: "var(--warning)" }}>
+                Ce mot de passe est <b>dédié</b> à la synchro et stocké de façon réversible côté serveur. Ne réutilise jamais ton mot de passe personnel.
+              </div>
+
+              <div className="mt-3">
+                <div className="mb-[5px] text-[10px] font-semibold uppercase tracking-[0.06em] text-faint">Email du compte Nexus</div>
+                <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" autoComplete="off" placeholder="prenom.nom@…" className="h-9 w-full rounded-sm border border-border bg-surface px-2 text-[13px] outline-none focus:border-accent" />
+              </div>
+              <label className="mt-3 flex items-start gap-2 text-[12px] text-muted">
+                <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} className="mt-[2px]" />
+                <span>J'ai bien changé mon mot de passe NexusMDT pour celui affiché ci-dessus.</span>
+              </label>
+              <div className="mt-3 flex gap-2">
+                <button onClick={() => setOpen(false)} className="flex-1 rounded-sm border border-border bg-surface py-[8px] text-[12.5px] font-semibold hover:border-border-strong">Annuler</button>
+                <button onClick={submit} disabled={busy || !email.trim() || !consent} className="flex-1 rounded-sm bg-accent py-[8px] text-[12.5px] font-semibold text-accent-contrast hover:brightness-[1.06] disabled:opacity-50">{busy ? "Test en cours…" : "Tester & activer"}</button>
               </div>
             </div>
           ) : (
-            <button onClick={() => setOpen(true)} className="mt-3 rounded-sm bg-accent px-4 py-[9px] text-[13px] font-semibold text-accent-contrast hover:brightness-[1.06]">Utiliser SuperMDT comme MDT principal</button>
+            <button onClick={() => { setPassword(genPassword()); setConsent(false); setOpen(true); }} className="mt-3 rounded-sm bg-accent px-4 py-[9px] text-[13px] font-semibold text-accent-contrast hover:brightness-[1.06]">Utiliser SuperMDT comme MDT principal</button>
           )}
         </div>
       ) : (
