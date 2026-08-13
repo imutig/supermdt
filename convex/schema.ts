@@ -1042,6 +1042,10 @@ export default defineSchema({
     dojRequest: v.boolean(),
     sanctionIds: v.array(v.id("sanctionTypes")),
     description: v.optional(v.string()),
+    // Parité NexusMDT : retrait de points de permis, type et instruction de la charge.
+    pointsPermis: v.optional(v.number()),
+    chargeType: v.optional(v.string()),
+    instruction: v.optional(v.string()),
     // Bornes de quantité (§3) : bloque la validation si le paramètre est hors [min,max].
     minParam: v.optional(v.number()),
     maxParam: v.optional(v.number()),
@@ -1086,11 +1090,22 @@ export default defineSchema({
     searchText: v.string(),
     deletedAt: v.optional(v.number()),
     deletedBy: v.optional(v.id("agents")),
+    // Parité NexusMDT : référence d'import (numéro) + champs médicaux/divers.
+    importRef: v.optional(v.string()),
+    groupeSanguin: v.optional(v.string()),
+    allergies: v.optional(v.string()),
+    antecedents: v.optional(v.string()),
+    traitements: v.optional(v.string()),
+    ppaChasse: v.optional(v.boolean()),
+    contactUrgence: v.optional(
+      v.object({ nom: v.optional(v.string()), prenom: v.optional(v.string()), telephone: v.optional(v.string()) }),
+    ),
   })
     .index("by_empreinte", ["empreinte"])
     .index("by_nom", ["nom"])
     .index("by_telephone", ["telephone"])
     .index("by_deleted", ["deletedAt"])
+    .index("by_import", ["importRef"])
     .searchIndex("search", { searchField: "searchText" }),
 
   // Liens de parenté entre citoyens enregistrés (arbre généalogique).
@@ -1157,6 +1172,7 @@ export default defineSchema({
     type: v.optional(v.string()),
     ownerId: v.optional(v.id("citizens")),
     notes: v.optional(v.string()),
+    nexusStatut: v.optional(v.string()), // statut Nexus (Normal / Volé / Recherché…)
     photoStorageIds: v.array(v.id("_storage")),
     photoUrls: v.optional(v.array(v.string())),
     searchText: v.string(),
@@ -1265,6 +1281,18 @@ export default defineSchema({
     // dossier d'origine (robustesse : re-mappable sans re-fetch si le format change).
     importRef: v.optional(v.string()),
     importRaw: v.optional(v.string()),
+    // Parité NexusMDT : jugement (verdict/peine) + barème d'amende du dossier.
+    jugement: v.optional(
+      v.object({
+        statut: v.optional(v.string()),
+        statutFinal: v.optional(v.string()),
+        peine: v.optional(v.string()),
+        motivation: v.optional(v.string()),
+        jugeNom: v.optional(v.string()),
+        avocat: v.optional(v.string()),
+      }),
+    ),
+    baremeAmende: v.optional(v.string()),
   })
     .index("by_citizen", ["citizenId"])
     .index("by_deleted", ["deletedAt"])
@@ -1597,6 +1625,10 @@ export default defineSchema({
     // Import depuis le MDT Nexus (/api/amendes) : idempotence + JSON brut.
     importRef: v.optional(v.string()),
     importRaw: v.optional(v.string()),
+    // Parité NexusMDT : montant majoré (impayé) + références juridiques.
+    montantMajore: v.optional(v.number()),
+    articleLoi: v.optional(v.string()),
+    referenceJuridique: v.optional(v.string()),
   })
     .index("by_citizen", ["citizenId"])
     .index("by_vehicle", ["vehicleId"])
@@ -1721,6 +1753,7 @@ export default defineSchema({
     serial: v.string(),
     motif: v.optional(v.string()),
     origine: v.optional(v.string()), // catégorie issue de weaponOrigins
+    dateEnregistrement: v.optional(v.string()), // date d'enregistrement Nexus
     ownerId: v.optional(v.id("citizens")),
     status: v.union(
       v.literal("ACTIVE"),

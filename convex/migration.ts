@@ -24,9 +24,9 @@ import { can } from "./rbac";
 
 const BASE = "https://mdt.vizu-world.com";
 
-type CitRep = { source: number; presents: number; ajoutes: number; permisAjoutes: number };
-type WpnRep = { source: number; presents: number; ajoutes: number; proprietairesNonTrouves: number; originesAjoutees: number };
-type ChRep = { source: number; presents: number; ajoutes: number; mode: string };
+type CitRep = { source: number; presents: number; ajoutes: number; permisAjoutes: number; enrichis: number };
+type WpnRep = { source: number; presents: number; ajoutes: number; proprietairesNonTrouves: number; originesAjoutees: number; enrichis?: number };
+type ChRep = { source: number; presents: number; ajoutes: number; enrichis: number; mode: string };
 
 // ---------------------------- helpers de mapping ----------------------------
 function norm(s: string) {
@@ -85,13 +85,21 @@ function mapCharge(c: any) {
     fine,
     jailSeconds: jail.seconds,
     description: desc.join(" · ") || undefined,
+    // Parité NexusMDT
+    pointsPermis: Number(c.pointsPermis) > 0 ? Number(c.pointsPermis) : undefined,
+    chargeType: (c.type || "").trim() || undefined,
+    instruction: instr || undefined,
   };
 }
 function mapCitizen(c: any) {
+  const numero = c.numero ?? c._id;
+  const cu = c.contactUrgence;
+  const hasCu = cu && (cu.nom || cu.prenom || cu.telephone);
   return {
     prenom: c.prenom,
     nom: c.nom,
     dateNaissance: c.dateNaissance || undefined,
+    lieuNaissance: c.lieuNaissance || undefined,
     sexe: mapSexe(c.sexe),
     taille: c.taille ? String(c.taille) : undefined,
     poids: c.poids ? String(c.poids) : undefined,
@@ -106,6 +114,16 @@ function mapCitizen(c: any) {
     deceased: !!c.decede,
     mugshotUrl: c.photoUrl || undefined,
     permisConduire: !!c.permisConduire,
+    // Parité NexusMDT
+    importRef: numero != null ? `nexus-citoyen:${numero}` : undefined,
+    groupeSanguin: c.groupeSanguin || undefined,
+    allergies: c.allergies || undefined,
+    antecedents: c.antecedents || undefined,
+    traitements: c.traitements || undefined,
+    ppaChasse: !!c.ppaChasse,
+    contactUrgence: hasCu
+      ? { nom: cu.nom || undefined, prenom: cu.prenom || undefined, telephone: cu.telephone || undefined }
+      : undefined,
   };
 }
 function mapWeapon(w: any) {
@@ -119,6 +137,7 @@ function mapWeapon(w: any) {
     modele: (w.modele || "").trim() || "Inconnu",
     motif: parts.join(" · ") || undefined,
     origine: (w.origine || "").trim() || undefined,
+    dateEnregistrement: (w.dateEnregistrement || "").trim() || undefined,
     status: mapWeaponStatus(w.statut),
     ownerName: w.citoyenLie?.nom || "",
   };
@@ -133,6 +152,7 @@ function mapVehicle(v: any) {
     couleur: (v.couleur || "").trim() || undefined,
     type: (v.categorie || "").trim() || undefined,
     notes: (v.notes || "").trim() || undefined,
+    nexusStatut: (v.statut || "").trim() || undefined,
     ownerName: (v.proprietaire?.nom || "").trim(),
   };
 }
@@ -285,30 +305,45 @@ export const _upsertCitizens = internalMutation({
   args: { rows: v.array(v.any()), dryRun: v.optional(v.boolean()) },
   handler: async (ctx, { rows, dryRun }): Promise<CitRep> => {
     const existing = await ctx.db.query("citizens").collect();
-    const keys = new Set(existing.map((c) => norm(`${c.prenom}|${c.nom}|${c.dateNaissance ?? ""}`)));
+    const byKey = new Map(existing.map((c) => [norm(`${c.prenom}|${c.nom}|${c.dateNaissance ?? ""}`), c]));
     const permis = (await ctx.db.query("licenseTypes").collect()).find((l) => norm(l.name).includes("permis de conduire"));
+    // Champs de parité Nexus : on les rétro-remplit sur les fiches existantes,
+    // sans écraser une valeur déjà renseignée côté SuperMDT.
+    const parityFields = ["importRef", "lieuNaissance", "groupeSanguin", "allergies", "antecedents", "traitements", "contactUrgence"] as const;
 
-    let ajoutes = 0, permisAjoutes = 0;
+    let ajoutes = 0, permisAjoutes = 0, enrichis = 0;
     const seen = new Set<string>();
     for (const c of rows) {
       const key = norm(`${c.prenom}|${c.nom}|${c.dateNaissance ?? ""}`);
-      if (keys.has(key) || seen.has(key)) continue;
+      const ex = byKey.get(key);
+      if (ex || seen.has(key)) {
+        if (ex && !dryRun) {
+          const patch: Record<string, unknown> = {};
+          for (const f of parityFields) if ((ex as any)[f] == null && (c as any)[f] != null) patch[f] = (c as any)[f];
+          if (ex.ppaChasse == null && c.ppaChasse) patch.ppaChasse = true;
+          if (Object.keys(patch).length) { await ctx.db.patch(ex._id, patch); enrichis++; }
+        }
+        continue;
+      }
       seen.add(key);
       ajoutes++;
       if (c.permisConduire && permis) permisAjoutes++;
       if (dryRun) continue;
       const id = await ctx.db.insert("citizens", {
-        prenom: c.prenom, nom: c.nom, dateNaissance: c.dateNaissance, sexe: c.sexe,
+        prenom: c.prenom, nom: c.nom, dateNaissance: c.dateNaissance, lieuNaissance: c.lieuNaissance, sexe: c.sexe,
         taille: c.taille, poids: c.poids, ethnie: c.ethnie, cheveux: c.cheveux, yeux: c.yeux,
         adresse: c.adresse, groupe: c.groupe, metier: c.metier, telephone: c.telephone,
         email: c.email, deceased: c.deceased, mugshotUrl: c.mugshotUrl,
+        importRef: c.importRef, groupeSanguin: c.groupeSanguin, allergies: c.allergies,
+        antecedents: c.antecedents, traitements: c.traitements, ppaChasse: c.ppaChasse || undefined,
+        contactUrgence: c.contactUrgence,
         photoStorageIds: [], status: "ACTIVE" as const,
         searchText: norm(`${c.prenom} ${c.nom} ${c.telephone ?? ""}`),
       });
       if (c.permisConduire && permis)
         await ctx.db.insert("citizenLicenses", { citizenId: id, licenseTypeId: permis._id, status: "VALIDE" as const, updatedAt: Date.now() });
     }
-    return { source: rows.length, presents: existing.length, ajoutes, permisAjoutes };
+    return { source: rows.length, presents: existing.length, ajoutes, permisAjoutes, enrichis };
   },
 });
 
@@ -316,7 +351,7 @@ export const _upsertWeapons = internalMutation({
   args: { rows: v.array(v.any()), dryRun: v.optional(v.boolean()) },
   handler: async (ctx, { rows, dryRun }): Promise<WpnRep> => {
     const existing = await ctx.db.query("weapons").collect();
-    const serials = new Set(existing.map((w) => norm(w.serial)));
+    const bySerial = new Map(existing.map((w) => [norm(w.serial), w]));
 
     // table prénom+nom -> citizen (pour rattacher le propriétaire par nom)
     const citizens = await ctx.db.query("citizens").collect();
@@ -335,9 +370,17 @@ export const _upsertWeapons = internalMutation({
 
     let ajoutes = 0, sansProprietaire = 0;
     const seen = new Set<string>();
+    let enrichis = 0;
     for (const w of rows) {
       const s = norm(w.serial);
-      if (!s || serials.has(s) || seen.has(s)) continue;
+      if (!s) continue;
+      const exW = bySerial.get(s);
+      if (exW || seen.has(s)) {
+        if (exW && !dryRun && exW.dateEnregistrement == null && w.dateEnregistrement) {
+          await ctx.db.patch(exW._id, { dateEnregistrement: w.dateEnregistrement }); enrichis++;
+        }
+        continue;
+      }
       seen.add(s);
       ajoutes++;
       const ownerId = w.ownerName ? byName.get(norm(w.ownerName)) : undefined;
@@ -350,11 +393,12 @@ export const _upsertWeapons = internalMutation({
       if (dryRun) continue;
       await ctx.db.insert("weapons", {
         modele: w.modele, serial: w.serial, motif: w.motif, origine: w.origine, ownerId,
+        dateEnregistrement: w.dateEnregistrement,
         status: w.status, at: Date.now(),
         searchText: norm(`${w.serial} ${w.modele} ${w.ownerName ?? ""}`),
       });
     }
-    return { source: rows.length, presents: existing.length, ajoutes, proprietairesNonTrouves: sansProprietaire, originesAjoutees };
+    return { source: rows.length, presents: existing.length, ajoutes, proprietairesNonTrouves: sansProprietaire, originesAjoutees, enrichis };
   },
 });
 
@@ -362,18 +406,25 @@ export const _upsertVehicles = internalMutation({
   args: { rows: v.array(v.any()), dryRun: v.optional(v.boolean()) },
   handler: async (ctx, { rows, dryRun }) => {
     const existing = await ctx.db.query("vehicles").collect();
-    const plates = new Set(existing.map((x) => norm(x.plaque)));
+    const byPlate = new Map(existing.map((x) => [norm(x.plaque), x]));
     const citizens = await ctx.db.query("citizens").collect();
     const byName = new Map<string, Id<"citizens">>();
     for (const c of citizens) {
       byName.set(norm(`${c.prenom} ${c.nom}`), c._id);
       byName.set(norm(`${c.nom} ${c.prenom}`), c._id);
     }
-    let ajoutes = 0, sansProprietaire = 0;
+    let ajoutes = 0, sansProprietaire = 0, enrichis = 0;
     const seen = new Set<string>();
     for (const v0 of rows) {
       const p = norm(v0.plaque);
-      if (!p || plates.has(p) || seen.has(p)) continue;
+      if (!p) continue;
+      const exV = byPlate.get(p);
+      if (exV || seen.has(p)) {
+        if (exV && !dryRun && exV.nexusStatut == null && v0.nexusStatut) {
+          await ctx.db.patch(exV._id, { nexusStatut: v0.nexusStatut }); enrichis++;
+        }
+        continue;
+      }
       seen.add(p);
       ajoutes++;
       const ownerId = v0.ownerName ? byName.get(norm(v0.ownerName)) : undefined;
@@ -381,11 +432,12 @@ export const _upsertVehicles = internalMutation({
       if (dryRun) continue;
       await ctx.db.insert("vehicles", {
         plaque: v0.plaque, modele: v0.modele, couleur: v0.couleur, type: v0.type, notes: v0.notes, ownerId,
+        nexusStatut: v0.nexusStatut,
         photoStorageIds: [],
         searchText: norm(`${v0.plaque} ${v0.modele ?? ""} ${v0.couleur ?? ""} ${v0.type ?? ""}`),
       });
     }
-    return { source: rows.length, presents: existing.length, ajoutes, proprietairesNonTrouves: sansProprietaire };
+    return { source: rows.length, presents: existing.length, ajoutes, proprietairesNonTrouves: sansProprietaire, enrichis };
   },
 });
 
@@ -425,11 +477,22 @@ export const _upsertCharges = internalMutation({
     }
 
     const existing = await ctx.db.query("penalCharges").collect();
-    const existingKeys = new Set(existing.map((p) => norm(p.name)));
-    let ajoutes = 0;
+    const byName = new Map(existing.map((p) => [norm(p.name), p]));
+    let ajoutes = 0, enrichis = 0;
     let pos = existing.length;
     for (const c of charges) {
-      if (existingKeys.has(norm(c.name))) continue;
+      const exC = byName.get(norm(c.name));
+      if (exC) {
+        // Rétro-remplit les champs de parité sur une charge existante.
+        if (!dryRun) {
+          const patch: Record<string, unknown> = {};
+          if (exC.pointsPermis == null && c.pointsPermis != null) patch.pointsPermis = c.pointsPermis;
+          if (exC.chargeType == null && c.chargeType) patch.chargeType = c.chargeType;
+          if (exC.instruction == null && c.instruction) patch.instruction = c.instruction;
+          if (Object.keys(patch).length) { await ctx.db.patch(exC._id, patch); enrichis++; }
+        }
+        continue;
+      }
       ajoutes++;
       if (dryRun) continue;
       const categoryId = catByName.get(c.severity);
@@ -438,9 +501,10 @@ export const _upsertCharges = internalMutation({
         categoryId, severityId: sevByName.get(c.severity), name: c.name, fine: c.fine,
         recidiveDays: undefined, jailSeconds: c.jailSeconds, jailOnDecision: false,
         dojRequest: false, sanctionIds: [], description: c.description, active: true, position: pos++,
+        pointsPermis: c.pointsPermis, chargeType: c.chargeType, instruction: c.instruction,
       });
     }
-    return { source: charges.length, presents: existing.length, ajoutes, mode: reset ? "reset complet" : "ajout" };
+    return { source: charges.length, presents: existing.length, ajoutes, enrichis, mode: reset ? "reset complet" : "ajout" };
   },
 });
 

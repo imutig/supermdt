@@ -104,6 +104,18 @@ export function mapDossier(d: any) {
   const photos = pick(d, "photos", "images") ?? [];
   const avocats = pick(d, "avocats", "lawyers") ?? [];
   const rapport = String(pick(d, "rapport", "report", "compteRendu") ?? "");
+  // Jugement (verdict/peine) : présent sur ~la moitié des dossiers Nexus.
+  const jg = pick(d, "jugement", "judgment");
+  const jugement = jg && typeof jg === "object" && (jg.statut || jg.statutFinal || jg.peine || jg.motivation || jg.juge)
+    ? {
+        statut: (String(pick(jg, "statut", "status") ?? "").trim()) || undefined,
+        statutFinal: (String(pick(jg, "statutFinal", "final") ?? "").trim()) || undefined,
+        peine: (String(pick(jg, "peine", "sentence") ?? "").trim()) || undefined,
+        motivation: (stripHtml(String(pick(jg, "motivation", "motif") ?? ""))) || undefined,
+        jugeNom: (String(pick(jg, "juge.nom", "judge.nom", "juge.name") ?? "").trim()) || undefined,
+        avocat: (String(pick(jg, "avocat.nom", "avocat", "lawyer") ?? "").trim()) || undefined,
+      }
+    : undefined;
   return {
     importRef: `nexus:${numero ?? pick(d, "_id", "id")}`,
     numero,
@@ -123,6 +135,8 @@ export function mapDossier(d: any) {
     // d'arrestation (reportBody) et on NE duplique PAS en « déroulé des faits ».
     reportBody: rapport.trim() || undefined,
     derouleFaits: undefined,
+    jugement,
+    baremeAmende: (String(pick(d, "baremeAmende", "bareme") ?? "").trim()) || undefined,
     imageUrls: (Array.isArray(photos) ? photos : []).filter((u: any) => typeof u === "string"),
     charges,
     totalFine: charges.reduce((s: number, c: any) => s + c.fineAmount, 0),
@@ -153,6 +167,9 @@ export function mapAmende(a: any) {
     createdByMatricule: num(pick(a, "createdBy.matricule", "matriculeAgent", "createdBy.badge")),
     createdByNom: String(pick(a, "createdBy.nom", "verbalisateurNom", "createdBy.name") ?? "").trim(),
     montant,
+    montantMajore: num(pick(a, "montantMajore", "montant_majore")),
+    articleLoi: (String(pick(a, "articleLoi", "article") ?? "").trim()) || undefined,
+    referenceJuridique: (String(pick(a, "referenceJuridique", "reference") ?? "").trim()) || undefined,
     statut: statut || undefined,
     finePaid: /pay/i.test(statut),
     annulee: /annul/i.test(statut),
@@ -326,6 +343,9 @@ export const _upsertCasiers = internalMutation({
           // (jamais l'inverse : un createdBy déjà relié n'est pas rétrogradé).
           const creator = officers[0]?.agentId;
           if (creator && prev.createdBy === refs.owner._id) patch.createdBy = creator;
+          // Parité : rétro-remplit jugement / barème d'amende.
+          if (JSON.stringify(prev.jugement ?? null) !== JSON.stringify(d.jugement ?? null)) patch.jugement = d.jugement;
+          if ((prev.baremeAmende ?? undefined) !== (d.baremeAmende ?? undefined)) patch.baremeAmende = d.baremeAmende;
           if (prev.importRaw !== rawStr) patch.importRaw = rawStr;
           if (Object.keys(patch).length) {
             await ctx.db.patch(prev._id, patch);
@@ -368,6 +388,7 @@ export const _upsertCasiers = internalMutation({
         reportBody: d.reportBody, imageUrls: d.imageUrls.length ? d.imageUrls : undefined,
         avocat: d.avocat, dossierStatus: d.statut, forceUsed: d.forceUsed,
         cuffedAt: d.cuffedAt, mirandaAt: d.mirandaAt,
+        jugement: d.jugement, baremeAmende: d.baremeAmende,
         createdBy, importRef: d.importRef, importRaw: rawStr,
       });
       for (const c of charges) {
@@ -419,6 +440,10 @@ export const _upsertContraventions = internalMutation({
           if ((prev.officerName ?? undefined) !== (a.createdByNom || undefined)) patch.officerName = a.createdByNom || undefined;
           if (prev.finePaid !== a.finePaid) patch.finePaid = a.finePaid;
           if (prev.status !== status) patch.status = status;
+          // Parité : montant majoré + références juridiques.
+          if ((prev.montantMajore ?? undefined) !== (a.montantMajore ?? undefined)) patch.montantMajore = a.montantMajore;
+          if ((prev.articleLoi ?? undefined) !== (a.articleLoi ?? undefined)) patch.articleLoi = a.articleLoi;
+          if ((prev.referenceJuridique ?? undefined) !== (a.referenceJuridique ?? undefined)) patch.referenceJuridique = a.referenceJuridique;
           if (prev.importRaw !== rawStr) patch.importRaw = rawStr;
           if (Object.keys(patch).length) await ctx.db.patch(prev._id, patch);
         }
@@ -454,6 +479,7 @@ export const _upsertContraventions = internalMutation({
         defconSnapshot: { name: "Import", fineMultiplier: 1, sensitiveFineMultiplier: 1 },
         totalFine: a.montant, status,
         finePaid: a.finePaid,
+        montantMajore: a.montantMajore, articleLoi: a.articleLoi, referenceJuridique: a.referenceJuridique,
         notes: [notesParts, a.description].filter(Boolean).join("\n") || `Importé du MDT Nexus · ${a.numero}`,
         createdBy: officerId || refs.owner._id,
         importRef: a.importRef, importRaw: rawStr,
@@ -501,6 +527,7 @@ export const remapCasiers = internalMutation({
         derouleFaits: d.derouleFaits, lieu: d.lieu, reportBody: d.reportBody,
         imageUrls: d.imageUrls.length ? d.imageUrls : undefined, avocat: d.avocat,
         dossierStatus: d.statut, forceUsed: d.forceUsed, cuffedAt: d.cuffedAt, mirandaAt: d.mirandaAt,
+        jugement: d.jugement, baremeAmende: d.baremeAmende,
         ...(creator && e.createdBy === refs.owner?._id ? { createdBy: creator } : {}),
       });
       for (const old of await ctx.db.query("casierCharges").withIndex("by_entry", (q) => q.eq("entryId", e._id)).collect()) await ctx.db.delete(old._id);
