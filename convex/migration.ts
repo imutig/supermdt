@@ -91,7 +91,7 @@ function mapCharge(c: any) {
     instruction: instr || undefined,
   };
 }
-function mapCitizen(c: any) {
+export function mapCitizen(c: any) {
   const numero = c.numero ?? c._id;
   const cu = c.contactUrgence;
   const hasCu = cu && (cu.nom || cu.prenom || cu.telephone);

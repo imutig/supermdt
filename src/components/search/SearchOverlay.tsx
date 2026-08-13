@@ -12,8 +12,7 @@ import { WeaponModal } from "@/pages/Armes";
 import { VehicleModal } from "@/components/dossier/VehicleModal";
 import { useCan } from "@/hooks/useCan";
 import { useService } from "@/hooks/useService";
-import { useToast } from "@/providers/toast";
-import { FEATURES, NEXUS_MSG } from "@/lib/features";
+import { FEATURES } from "@/lib/features";
 
 function splitName(q: string) {
   const parts = q.trim().split(/\s+/);
@@ -29,7 +28,6 @@ export function SearchOverlay() {
   const { searchOpen, closeSearch } = useApp();
   const { can } = useCan();
   const { onDuty, toggle: toggleDuty } = useService();
-  const toast = useToast();
   const canCreateCitizen = can("citoyens.create");
   const navigate = useNavigate();
   const [q, setQ] = useState("");
@@ -51,7 +49,7 @@ export function SearchOverlay() {
   const commands = useMemo<Item[]>(() => {
     const nav = (to: string) => () => { close(); navigate(to); };
     const raw: (Item & { perm?: string; keywords?: string })[] = [
-      { key: "cmd-new-cit", icon: UserPlus, title: "Encoder un citoyen", sub: FEATURES.citizenWrite ? "Nouveau dossier citoyen" : "Sur le NexusMDT", keywords: "encoder creer nouveau citoyen dossier", perm: "citoyens.create", run: () => (FEATURES.citizenWrite ? setCreateCitizen({ prenom: "", nom: "" }) : (close(), toast.info(NEXUS_MSG))) },
+      { key: "cmd-new-cit", icon: UserPlus, title: "Encoder un citoyen", sub: "Nouveau dossier citoyen", keywords: "encoder creer nouveau citoyen dossier", perm: "citoyens.create", run: () => setCreateCitizen({ prenom: "", nom: "" }) },
       { key: "cmd-new-veh", icon: Car, title: "Encoder un véhicule", sub: "Nouvelle immatriculation", keywords: "encoder creer nouveau vehicule plaque", perm: "vehicules.create", run: () => setCreateVehicle({ plaque: "" }) },
       { key: "cmd-new-wpn", icon: Crosshair, title: "Encoder une arme", sub: "Nouvelle arme au registre", keywords: "encoder creer nouvelle arme serie", perm: "armes.create", run: () => setCreateWeapon(true) },
       { key: "cmd-home", icon: Home, title: "Accueil", sub: "Recherche / Dossiers", keywords: "accueil dashboard recherche", run: nav("/") },

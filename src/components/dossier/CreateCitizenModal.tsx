@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { X } from "lucide-react";
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "@/lib/api";
 import { ImageUpload } from "@/components/common/ImageUpload";
 import { DateField } from "@/components/common/DateField";
-import { FEATURES, NEXUS_MSG } from "@/lib/features";
+import { FEATURES } from "@/lib/features";
+import { useToast } from "@/providers/toast";
 
 const FIELD =
   "h-[46px] w-full rounded-[10px] border border-border bg-surface-2 px-[14px] text-[13px] text-text outline-none focus:border-accent";
@@ -29,7 +30,13 @@ export function CreateCitizenModal({
   onCreated: (id: string) => void;
 }) {
   const create = useMutation(api.citizens.create);
+  const createSynced = useAction(api.nexusSync.createCitizen);
+  const nexusStatus = useQuery(api.nexusSync.myStatus);
   const opts = useQuery(api.configEditors.options);
+  const toast = useToast();
+  // Synchro active = l'agent a lié son compte Nexus et le login fonctionne.
+  const syncActive = !!nexusStatus?.configured && nexusStatus.status === "OK";
+  const canWrite = FEATURES.citizenWrite || syncActive;
   const [busy, setBusy] = useState(false);
   const [mugshotUrl, setMugshotUrl] = useState<string | null>(null);
   const [f, setF] = useState<Form>({
@@ -45,15 +52,21 @@ export function CreateCitizenModal({
     setBusy(true);
     try {
       const trim = (s: string) => s.trim() || undefined;
-      const id = await create({
+      const fields = {
         prenom: f.prenom.trim(), nom: f.nom.trim(),
         dateNaissance: trim(f.dateNaissance), sexe: trim(f.sexe), nationalite: trim(f.nationalite),
         telephone: trim(f.telephone), email: trim(f.email),
         taille: trim(f.taille), poids: trim(f.poids), ethnie: trim(f.ethnie), cheveux: trim(f.cheveux), yeux: trim(f.yeux),
         adresse: trim(f.adresse), groupe: trim(f.groupe), metier: trim(f.metier),
         mugshotUrl: mugshotUrl ?? undefined,
-      });
+      };
+      // Synchro active : on écrit d'abord sur Nexus (en ton nom). Si ça échoue,
+      // rien n'est créé côté SuperMDT (write-through strict).
+      const id = syncActive ? await createSynced(fields) : await create(fields);
+      toast.success(syncActive ? "Citoyen créé et synchronisé sur le NexusMDT." : "Citoyen créé.");
       onCreated(id);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Création impossible.");
     } finally {
       setBusy(false);
     }
@@ -66,13 +79,13 @@ export function CreateCitizenModal({
     </select>
   );
 
-  // Cohabitation NexusMDT : création de citoyen désactivée ici.
-  if (!FEATURES.citizenWrite) {
+  // Création possible seulement si la synchro Nexus est active (ou flag natif).
+  if (!canWrite) {
     return (
       <div onClick={onClose} className="fixed inset-0 z-[70] flex items-center justify-center p-4" style={{ background: "var(--scrim)", backdropFilter: "blur(6px)" }}>
         <div onClick={(e) => e.stopPropagation()} className="w-[460px] max-w-[94vw] rounded-card border border-border-strong bg-elev p-6 text-center mdt-pop">
-          <div className="mb-2 text-[15px] font-bold">Indisponible sur le SuperMDT</div>
-          <p className="mb-4 text-[13px] leading-[1.5] text-muted">{NEXUS_MSG}</p>
+          <div className="mb-2 text-[15px] font-bold">Synchronisation requise</div>
+          <p className="mb-4 text-[13px] leading-[1.5] text-muted">Pour créer une fiche citoyen depuis SuperMDT, active la synchronisation NexusMDT dans <b>Mon profil</b> (Utiliser SuperMDT comme MDT principal). La fiche sera créée sur le NexusMDT en ton nom.</p>
           <button onClick={onClose} className="rounded-sm border border-border bg-surface-2 px-4 py-2 text-[13px] font-semibold hover:border-border-strong">Fermer</button>
         </div>
       </div>
