@@ -3,8 +3,11 @@ import { AuthShell } from "./AuthShell";
 
 // État E : accès restreint (en attente de validation, compte suspendu, ou cadet
 // écarté d'une promotion en attente de réintégration).
-export function PendingScreen({ suspended = false, academy = false }: { suspended?: boolean; academy?: boolean }) {
+export function PendingScreen({ suspended = false, academy = false, until = null, reason = null }: { suspended?: boolean; academy?: boolean; until?: number | null; reason?: string | null }) {
   const { signOut } = useAuthActions();
+  // Mise à pied = suspension temporaire avec échéance (ou jusqu'à nouvel ordre).
+  const miseAPied = suspended && (until != null || !!reason);
+  const untilStr = until != null ? new Date(until).toLocaleString("fr-FR", { timeZone: "Europe/Paris", dateStyle: "long", timeStyle: "short" }) : null;
   const stroke = suspended ? "#c02828" : "#c47612";
   const bg = suspended ? "rgba(220,38,38,.1)" : "rgba(234,143,31,.1)";
   const border = suspended ? "rgba(220,38,38,.3)" : "rgba(234,143,31,.32)";
@@ -23,11 +26,13 @@ export function PendingScreen({ suspended = false, academy = false }: { suspende
         </div>
 
         <h2 className="m-0 text-[19px] font-bold text-text">
-          {academy ? "En attente d'une promotion" : suspended ? "Accès refusé" : "Compte en attente de validation"}
+          {academy ? "En attente d'une promotion" : miseAPied ? "Mise à pied" : suspended ? "Accès refusé" : "Compte en attente de validation"}
         </h2>
-        <div className="mt-[9px] max-w-[340px] text-[13px] leading-[1.55] text-muted">
+        <div className="mt-[9px] max-w-[360px] text-[13px] leading-[1.55] text-muted">
           {academy
             ? "Votre compte n'est rattaché à aucune promotion active. Vous retrouverez l'accès à l'académie dès qu'un instructeur vous intègre à une promotion."
+            : miseAPied
+            ? `Vous êtes en mise à pied${untilStr ? ` jusqu'au ${untilStr}` : " jusqu'à nouvel ordre"}. Vous ne pouvez pas accéder au MDT durant cette période.${reason ? ` Motif : ${reason}.` : ""}`
             : suspended
             ? "Ce compte a été désactivé ou suspendu. Contactez un responsable de la Station 13 si vous pensez qu'il s'agit d'une erreur."
             : "Votre compte a bien été créé et transmis à la Station 13. Un supérieur doit valider votre accès. Vous pourrez vous connecter dès qu'il sera approuvé."}

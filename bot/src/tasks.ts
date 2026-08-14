@@ -1,6 +1,6 @@
 import { type Client, type TextChannel } from "discord.js";
 import { mdt } from "./convex.js";
-import { presenceEmbed, dailyEmbed, absencePublishEmbed } from "./embeds.js";
+import { presenceEmbed, dailyEmbed, absencePublishEmbed, sanctionEmbed, convocationEmbed } from "./embeds.js";
 import { openRollcall, closeRollcall, remindNonVoters, LSPD_ROLE } from "./rollcall.js";
 import { reconcilePromoCategories, reconcilePromoDeletions, deprogramInterview, parisWallToEpoch } from "./tickets.js";
 import { baseEmbed, BRAND } from "./theme.js";
@@ -246,6 +246,44 @@ export function startTasks(client: Client) {
           }
         }
       } catch (err) { console.error("[absence] publication :", err); }
+    }
+
+    // --- Publication des sanctions (embed + ping rôle LSPD) ---
+    if (cfg.sanctionsChannel) {
+      try {
+        const pending = await mdt.sanctionsToAnnounce();
+        if (pending.length) {
+          const chan = await channel(client, cfg.sanctionsChannel);
+          for (const s of pending) {
+            if (chan) {
+              const ping = cfg.sanctionsPingRole
+                ? { content: `<@&${cfg.sanctionsPingRole}>`, allowedMentions: { roles: [cfg.sanctionsPingRole] } }
+                : {};
+              await chan.send({ ...ping, embeds: [sanctionEmbed(s)] }).catch(() => {});
+            }
+            await mdt.markSanctionAnnounced(s.id);
+          }
+        }
+      } catch (err) { console.error("[sanction] publication :", err); }
+    }
+
+    // --- Publication des convocations (embed + ping de l'agent concerné) ---
+    if (cfg.sanctionsChannel) {
+      try {
+        const pending = await mdt.convocationsToAnnounce();
+        if (pending.length) {
+          const chan = await channel(client, cfg.sanctionsChannel);
+          for (const c of pending) {
+            if (chan) {
+              const ping = c.pingDiscordId
+                ? { content: `<@${c.pingDiscordId}>`, allowedMentions: { users: [c.pingDiscordId] } }
+                : {};
+              await chan.send({ ...ping, embeds: [convocationEmbed(c)] }).catch(() => {});
+            }
+            await mdt.markConvocationAnnounced(c.id);
+          }
+        }
+      } catch (err) { console.error("[convocation] publication :", err); }
     }
 
     // --- Récapitulatif quotidien ---

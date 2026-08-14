@@ -21,18 +21,36 @@ export function SanctionModal({
   const create = useMutation(api.disciplines.create);
   const toast = useToast();
   const [agentId, setAgentId] = useState<string>(initialAgentId ?? "");
-  const [sanction, setSanction] = useState("");
+  const [typeId, setTypeId] = useState(""); // id du type catalogue, ou "__custom__"
+  const [customSanction, setCustomSanction] = useState("");
+  const [level, setLevel] = useState("AVERTISSEMENT");
   const [motif, setMotif] = useState("");
   const [evidence, setEvidence] = useState<string[]>([]);
+  const [untilOrder, setUntilOrder] = useState(false); // mise à pied jusqu'à nouvel ordre
+  const [untilWall, setUntilWall] = useState(""); // datetime-local de fin
   const [busy, setBusy] = useState(false);
+
+  const isCustom = typeId === "__custom__";
+  const selectedType = (sanctionTypes ?? []).find((t) => t._id === typeId);
+  const sanction = isCustom ? customSanction.trim() : (selectedType?.name ?? "");
+  // Mise à pied si le type coché suspend, ou si le niveau est « Mise à pied ».
+  const suspends = level === "MISE_A_PIED" || !!selectedType?.suspends;
 
   async function submit() {
     if (!agentId || !sanction || !motif.trim()) return;
     setBusy(true);
-    const r = await toast.guard(create({ agentId: agentId as Id<"agents">, sanction, motif: motif.trim(), imageUrls: evidence.length ? evidence : undefined }), "Ajout impossible");
+    const r = await toast.guard(create({
+      agentId: agentId as Id<"agents">,
+      sanction,
+      level,
+      motif: motif.trim(),
+      imageUrls: evidence.length ? evidence : undefined,
+      suspends: suspends || undefined,
+      suspendedUntilWall: suspends && !untilOrder && untilWall ? untilWall : undefined,
+    }), "Ajout impossible");
     setBusy(false);
     if (r !== undefined) {
-      toast.success("Sanction ajoutée.");
+      toast.success(suspends ? "Sanction ajoutée · agent mis à pied." : "Sanction ajoutée.");
       onClose();
     }
   }
@@ -55,14 +73,46 @@ export function SanctionModal({
               ))}
             </select>
           </L>
-          <L label="Sanction">
-            <select value={sanction} onChange={(e) => setSanction(e.target.value)} className={FIELD}>
-              <option value="">Sélectionner…</option>
-              {(sanctionTypes ?? []).map((t) => (
-                <option key={t._id} value={t.name}>{t.name}</option>
-              ))}
-            </select>
-          </L>
+          <div className="grid grid-cols-2 gap-3">
+            <L label="Niveau">
+              <select value={level} onChange={(e) => setLevel(e.target.value)} className={FIELD}>
+                <option value="AVERTISSEMENT">Avertissement</option>
+                <option value="BLAME">Blâme</option>
+                <option value="MISE_A_PIED">Mise à pied</option>
+                <option value="RADIATION">Radiation</option>
+                <option value="AUTRE">Autre</option>
+              </select>
+            </L>
+            <L label="Sanction">
+              <select value={typeId} onChange={(e) => setTypeId(e.target.value)} className={FIELD}>
+                <option value="">Sélectionner…</option>
+                {(sanctionTypes ?? []).map((t) => (
+                  <option key={t._id} value={t._id}>{t.name}{t.suspends ? " (mise à pied)" : ""}</option>
+                ))}
+                <option value="__custom__">Personnalisée…</option>
+              </select>
+            </L>
+          </div>
+          {isCustom && (
+            <L label="Sanction personnalisée">
+              <input value={customSanction} onChange={(e) => setCustomSanction(e.target.value)} placeholder="Ex. Mise à pied jusqu'au prochain dispatch" className={FIELD} />
+            </L>
+          )}
+          {suspends && (
+            <div className="rounded-sm border border-border bg-surface-2 p-3" style={{ borderColor: "color-mix(in srgb, var(--danger) 35%, var(--border))" }}>
+              <div className="mb-[8px] flex items-center gap-2 text-[12px] font-semibold" style={{ color: "var(--danger)" }}>Mise à pied — le compte sera suspendu</div>
+              <label className="mb-2 flex items-center gap-2 text-[12.5px]">
+                <input type="checkbox" checked={untilOrder} onChange={(e) => setUntilOrder(e.target.checked)} />
+                Jusqu'à nouvel ordre (pas de date de fin)
+              </label>
+              {!untilOrder && (
+                <div>
+                  <div className="mb-[5px] text-[10.5px] font-bold uppercase tracking-[0.09em] text-faint">Fin de la mise à pied (heure de Paris)</div>
+                  <input type="datetime-local" value={untilWall} onChange={(e) => setUntilWall(e.target.value)} className={FIELD} />
+                </div>
+              )}
+            </div>
+          )}
           <L label="Motif">
             <textarea value={motif} onChange={(e) => setMotif(e.target.value)} rows={4} className="w-full resize-y rounded-sm border border-border bg-surface-2 px-3 py-2 text-[13px] outline-none focus:border-accent" />
           </L>

@@ -62,6 +62,12 @@ export default defineSchema({
     // l'échéance n'est pas passée. Posé à la main par l'État-Major.
     lockedUntil: v.optional(v.number()),
     lockedReason: v.optional(v.string()),
+    // Mise à pied disciplinaire : le compte passe SUSPENDED jusqu'à suspendedUntil
+    // (levée auto quand la date passe). suspendedUntil null = suspension jusqu'à
+    // nouvel ordre. Affiché en rouge dans l'effectif, connexion bloquée.
+    suspendedUntil: v.optional(v.number()),
+    suspendedReason: v.optional(v.string()),
+    suspendedBy: v.optional(v.id("agents")),
     // Préférences d'affichage, rattachées à l'agent pour le suivre d'un
     // navigateur à l'autre plutôt que de rester dans un stockage local.
     uiPrefs: v.optional(
@@ -1469,6 +1475,8 @@ export default defineSchema({
     name: v.string(),
     position: v.number(),
     active: v.boolean(),
+    // Ce type de sanction entraîne une mise à pied (suspension du compte).
+    suspends: v.optional(v.boolean()),
   }).index("by_position", ["position"]),
 
   disciplines: defineTable({
@@ -1481,9 +1489,38 @@ export default defineSchema({
     at: v.number(),
     deletedAt: v.optional(v.number()),
     deletedBy: v.optional(v.id("agents")),
+    // Numéro de référence unique (affiché dans l'embed Discord, ex. SANC-0042).
+    reference: v.optional(v.number()),
+    // Gravité : AVERTISSEMENT | BLAME | MISE_A_PIED | RADIATION | CUSTOM.
+    level: v.optional(v.string()),
+    // Mise à pied : échéance de fin (null = jusqu'à nouvel ordre) posée sur l'agent.
+    suspendedUntil: v.optional(v.number()),
+    suspends: v.optional(v.boolean()),
+    // File d'annonce Discord (embed + ping) : le bot dépile via sanctionsToAnnounce.
+    discordAnnounced: v.optional(v.boolean()),
   })
     .index("by_agent", ["agentId"])
-    .index("by_deleted", ["deletedAt"]),
+    .index("by_deleted", ["deletedAt"])
+    .index("by_announce", ["discordAnnounced"]),
+
+  // Convocations d'un agent devant la hiérarchie / IA (ping Discord + motif).
+  convocations: defineTable({
+    agentId: v.optional(v.id("agents")), // agent recensé (ping via son discordId)
+    discordId: v.optional(v.string()), // OU un ID Discord saisi à la main
+    agentLabel: v.optional(v.string()), // libellé lisible (nom / ID)
+    motif: v.string(),
+    convokedAt: v.optional(v.number()), // date/heure de la convocation
+    lieu: v.optional(v.string()),
+    byAgentId: v.optional(v.id("agents")),
+    at: v.number(),
+    reference: v.optional(v.number()),
+    discordAnnounced: v.optional(v.boolean()),
+    deletedAt: v.optional(v.number()),
+    deletedBy: v.optional(v.id("agents")),
+  })
+    .index("by_agent", ["agentId"])
+    .index("by_deleted", ["deletedAt"])
+    .index("by_announce", ["discordAnnounced"]),
 
   // ============ RESSOURCES (livret cadets, §9) ============
   resourceCategories: defineTable({
@@ -1549,6 +1586,10 @@ export default defineSchema({
     botRollcallPingRole: v.optional(v.string()), // rôle Discord ping à l'ouverture du roll call
     botRollcallPingEnabled: v.optional(v.boolean()), // active le ping du rôle (désactivé par défaut)
     botPresenceMessageId: v.optional(v.string()), // message de présence édité en boucle
+    // Discipline : salon où poster les sanctions ET convocations (embed) + rôle
+    // à ping pour les sanctions (les convocations pinguent l'agent concerné).
+    botSanctionsChannel: v.optional(v.string()),
+    botSanctionsPingRole: v.optional(v.string()),
     updatedBy: v.optional(v.id("agents")),
     updatedAt: v.number(),
   }),

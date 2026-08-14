@@ -40,6 +40,22 @@ type BotConfig = {
   ceremonyAt: string | null;
   rollcallPingRole: string | null;
   rollcallPingEnabled: boolean;
+  sanctionsChannel: string | null;
+  sanctionsPingRole: string | null;
+};
+
+export type SanctionAnnounce = {
+  id: string; reference: number | null;
+  agentName: string; agentMatricule: number | null; agentDiscordId: string | null;
+  motif: string; sanction: string; level: string | null;
+  suspends: boolean; suspendedUntil: number | null;
+  byName: string | null; byMatricule: number | null; at: number;
+};
+export type ConvocationAnnounce = {
+  id: string; reference: number | null;
+  agentName: string | null; agentMatricule: number | null; pingDiscordId: string | null;
+  motif: string; convokedAt: number | null; lieu: string | null;
+  byName: string | null; byMatricule: number | null; at: number;
 };
 
 export type RollStatus = "PRESENT" | "ABSENT" | "RETARD";
@@ -80,6 +96,10 @@ export const mdt = {
   markAccountDMSent: (code: string) => client.mutation(anyApi.bot.markAccountDMSent, { secret: env.botSecret, code }) as Promise<void>,
   nexusAlertQueue: () => client.query(anyApi.bot.nexusAlertQueue, { secret: env.botSecret }) as Promise<{ id: string; message: string; discordId: string }[]>,
   markNexusAlertSent: (id: string) => client.mutation(anyApi.bot.markNexusAlertSent, { secret: env.botSecret, id }) as Promise<void>,
+  sanctionsToAnnounce: () => client.query(anyApi.bot.sanctionsToAnnounce, { secret: env.botSecret }) as Promise<SanctionAnnounce[]>,
+  markSanctionAnnounced: (id: string) => client.mutation(anyApi.bot.markSanctionAnnounced, { secret: env.botSecret, id }) as Promise<void>,
+  convocationsToAnnounce: () => client.query(anyApi.bot.convocationsToAnnounce, { secret: env.botSecret }) as Promise<ConvocationAnnounce[]>,
+  markConvocationAnnounced: (id: string) => client.mutation(anyApi.bot.markConvocationAnnounced, { secret: env.botSecret, id }) as Promise<void>,
   roleJobsPending: () => client.query(anyApi.bot.roleJobsPending, { secret: env.botSecret }) as Promise<{ _id: string; discordId: string; addRoleId: string | null; removeRoleIds: string[]; reason: string | null }[]>,
   markRoleJob: (jobId: string, status: "DONE" | "ERROR", error?: string) => client.mutation(anyApi.bot.markRoleJob, { secret: env.botSecret, jobId, status, error }) as Promise<void>,
 

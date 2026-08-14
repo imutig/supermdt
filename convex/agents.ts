@@ -284,10 +284,12 @@ export const roster = query({
   handler: async (ctx) => {
     const viewer = await requireAgent(ctx);
     await requirePermission(ctx, viewer, "effectif.view");
-    const agents = await ctx.db
-      .query("agents")
-      .withIndex("by_status", (q) => q.eq("status", "ACTIVE"))
-      .collect();
+    // Actifs + suspendus (mise à pied) : les suspendus restent visibles dans
+    // l'effectif, en rouge, plutôt que de disparaître.
+    const agents = [
+      ...await ctx.db.query("agents").withIndex("by_status", (q) => q.eq("status", "ACTIVE")).collect(),
+      ...await ctx.db.query("agents").withIndex("by_status", (q) => q.eq("status", "SUSPENDED")).collect(),
+    ];
     // Trois tables chargées d'un coup puis regroupées en mémoire : une requête
     // par agent multipliait les lectures par la taille de l'effectif.
     const gradeById = new Map((await ctx.db.query("grades").collect()).map((g) => [g._id as string, g]));
@@ -327,6 +329,8 @@ export const roster = query({
         qualifications: qualCount.get(a._id as string) ?? 0,
         onDuty: onDutyIds.has(a._id as string),
         absent: absentIds.has(a._id as string),
+        suspended: a.status === "SUSPENDED",
+        suspendedUntil: a.suspendedUntil ?? null,
         dateEntree: a.dateEntree ?? null,
       });
     }
@@ -540,6 +544,8 @@ export const getAgent = query({
       matricule: a.matricule ?? (a.isOwner ? 0 : null),
       isOwner: a.isOwner,
       status: a.status,
+      suspendedUntil: a.suspendedUntil ?? null,
+      suspendedReason: a.suspendedReason ?? null,
       avatarUrl: a.avatarUrl ?? null,
       dateEntree: a.dateEntree ?? null,
       lockedUntil: a.lockedUntil ?? null,

@@ -20,4 +20,8 @@ crons.interval("revalider comptes nexus", { hours: 6 }, internal.nexusSync.reval
 // existe déjà » persistants.
 crons.hourly("nettoyer les comptes orphelins", { minuteUTC: 20 }, internal.maintenance.cleanupOrphanAuth, {});
 
+// Lève automatiquement les mises à pied dont l'échéance est passée (réactive le
+// compte). Filet en plus de la levée à la connexion.
+crons.interval("lever mises a pied echues", { minutes: 15 }, internal.disciplines.liftExpiredSuspensions, {});
+
 export default crons;

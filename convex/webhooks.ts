@@ -71,6 +71,8 @@ export const botConfig = query({
       ceremonyAt: c?.botCeremonyAt ?? "",
       rollcallPingRole: c?.botRollcallPingRole ?? "",
       rollcallPingEnabled: c?.botRollcallPingEnabled ?? false,
+      sanctionsChannel: c?.botSanctionsChannel ?? "",
+      sanctionsPingRole: c?.botSanctionsPingRole ?? "",
     };
   },
 });
@@ -87,6 +89,8 @@ export const setBotConfig = mutation({
     ceremonyAt: v.optional(v.string()),
     rollcallPingRole: v.optional(v.string()),
     rollcallPingEnabled: v.optional(v.boolean()),
+    sanctionsChannel: v.optional(v.string()),
+    sanctionsPingRole: v.optional(v.string()),
   },
   handler: async (ctx, a) => {
     const agent = await requireAgent(ctx);
@@ -119,6 +123,8 @@ export const setBotConfig = mutation({
       botCeremonyAt: time("Heure de la cérémonie", a.ceremonyAt),
       botRollcallPingRole: role(a.rollcallPingRole),
       botRollcallPingEnabled: a.rollcallPingEnabled ?? false,
+      botSanctionsChannel: chan(a.sanctionsChannel),
+      botSanctionsPingRole: role(a.sanctionsPingRole),
       updatedBy: agent._id,
       updatedAt: Date.now(),
     };

@@ -1,8 +1,18 @@
-import { mutation, query } from "./_generated/server";
+import { mutation, query, internalMutation } from "./_generated/server";
+import type { MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
 import { assertOutranks, requireAgent, requirePermission } from "./rbac";
 import { writeAudit } from "./lib/audit";
 import { notify, NOTIFY_COLOR, deepLink } from "./lib/notify";
+import { parisWallToEpoch } from "./lib/paris";
+
+// "YYYY-MM-DDTHH:MM" (datetime-local, heure de Paris) -> epoch ; undefined si vide.
+function wallToEpoch(s?: string): number | undefined {
+  if (!s) return undefined;
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/);
+  if (!m) return undefined;
+  return parisWallToEpoch(+m[1], +m[2], +m[3], +m[4], +m[5]);
+}
 
 export const list = query({
   args: {},
@@ -16,9 +26,15 @@ export const list = query({
       const by = d.byAgentId ? await ctx.db.get(d.byAgentId) : null;
       out.push({
         _id: d._id,
+        agentId: d.agentId,
         agentName: ag ? `${ag.prenomRP} ${ag.nomRP}` : "-",
+        agentSuspended: ag?.status === "SUSPENDED",
         motif: d.motif,
         sanction: d.sanction,
+        level: d.level ?? null,
+        reference: d.reference ?? null,
+        suspends: d.suspends ?? false,
+        suspendedUntil: d.suspendedUntil ?? null,
         status: d.status,
         by: by ? `${by.prenomRP} ${by.nomRP}` : "-",
         at: d.at,
@@ -38,7 +54,7 @@ export const sanctionTypes = query({
     return (await ctx.db.query("disciplineSanctionTypes").collect())
       .filter((t) => t.active)
       .sort((a, b) => a.position - b.position)
-      .map((t) => ({ _id: t._id, name: t.name }));
+      .map((t) => ({ _id: t._id, name: t.name, suspends: t.suspends ?? false }));
   },
 });
 
@@ -60,6 +76,11 @@ export const byAgent = query({
         _id: d._id,
         motif: d.motif,
         sanction: d.sanction,
+        level: d.level ?? null,
+        reference: d.reference ?? null,
+        suspends: d.suspends ?? false,
+        suspendedUntil: d.suspendedUntil ?? null,
+        status: d.status,
         by: by ? `${by.prenomRP} ${by.nomRP}` : "-",
         at: d.at,
         evidence: d.imageUrls ?? [],
@@ -91,23 +112,56 @@ export const remove = mutation({
   },
 });
 
+// Prochain numéro de référence (SANC-xxxx) : max des références existantes + 1.
+async function nextReference(ctx: MutationCtx): Promise<number> {
+  let max = 0;
+  for (const d of await ctx.db.query("disciplines").collect()) if ((d.reference ?? 0) > max) max = d.reference ?? 0;
+  return max + 1;
+}
+
 export const create = mutation({
-  args: { agentId: v.id("agents"), motif: v.string(), sanction: v.string(), imageUrls: v.optional(v.array(v.string())) },
+  args: {
+    agentId: v.id("agents"),
+    motif: v.string(),
+    sanction: v.string(),
+    level: v.optional(v.string()), // AVERTISSEMENT | BLAME | MISE_A_PIED | RADIATION | CUSTOM
+    imageUrls: v.optional(v.array(v.string())),
+    // Mise à pied : suspend le compte jusqu'à suspendedUntilWall (vide = jusqu'à
+    // nouvel ordre). Heure murale Paris "YYYY-MM-DDTHH:MM".
+    suspends: v.optional(v.boolean()),
+    suspendedUntilWall: v.optional(v.string()),
+  },
   handler: async (ctx, args) => {
     const actor = await requireAgent(ctx);
     await requirePermission(ctx, actor, "discipline.create");
     const targetAgent = await ctx.db.get(args.agentId);
     if (!targetAgent) throw new Error("Agent introuvable.");
     await assertOutranks(ctx, actor, targetAgent);
+    const reference = await nextReference(ctx);
+    const suspendedUntil = args.suspends ? wallToEpoch(args.suspendedUntilWall) : undefined;
     const id = await ctx.db.insert("disciplines", {
       agentId: args.agentId,
       motif: args.motif,
       sanction: args.sanction,
+      level: args.level,
       imageUrls: args.imageUrls,
       status: "OUVERTE",
       byAgentId: actor._id,
       at: Date.now(),
+      reference,
+      suspends: args.suspends,
+      suspendedUntil,
+      discordAnnounced: false, // le bot dépilera via sanctionsToAnnounce
     });
+    // Mise à pied : suspend le compte (rouge dans l'effectif, connexion bloquée).
+    if (args.suspends) {
+      await ctx.db.patch(args.agentId, {
+        status: "SUSPENDED",
+        suspendedUntil,
+        suspendedReason: args.motif,
+        suspendedBy: actor._id,
+      });
+    }
     await writeAudit(ctx, actor, { action: "discipline.create", resourceType: "discipline", resourceId: id });
     await notify(ctx, "discipline.create", {
       title: "Sanction disciplinaire ouverte",
@@ -124,6 +178,20 @@ export const create = mutation({
   },
 });
 
+// Levée manuelle d'une mise à pied : réactive le compte.
+export const reactivate = mutation({
+  args: { agentId: v.id("agents") },
+  handler: async (ctx, { agentId }) => {
+    const actor = await requireAgent(ctx);
+    await requirePermission(ctx, actor, "discipline.edit");
+    const target = await ctx.db.get(agentId);
+    if (!target) throw new Error("Agent introuvable.");
+    if (target.status !== "SUSPENDED") return;
+    await ctx.db.patch(agentId, { status: "ACTIVE", suspendedUntil: undefined, suspendedReason: undefined, suspendedBy: undefined });
+    await writeAudit(ctx, actor, { action: "discipline.reactivate", resourceType: "agent", resourceId: agentId });
+  },
+});
+
 export const close = mutation({
   args: { id: v.id("disciplines") },
   handler: async (ctx, { id }) => {
@@ -131,5 +199,22 @@ export const close = mutation({
     await requirePermission(ctx, actor, "discipline.edit");
     await ctx.db.patch(id, { status: "CLOSE" });
     await writeAudit(ctx, actor, { action: "discipline.close", resourceType: "discipline", resourceId: id });
+  },
+});
+
+// Cron : réactive les comptes dont la mise à pied est arrivée à échéance.
+export const liftExpiredSuspensions = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const now = Date.now();
+    const suspended = await ctx.db.query("agents").withIndex("by_status", (q) => q.eq("status", "SUSPENDED")).collect();
+    let lifted = 0;
+    for (const a of suspended) {
+      if (typeof a.suspendedUntil === "number" && a.suspendedUntil <= now) {
+        await ctx.db.patch(a._id, { status: "ACTIVE", suspendedUntil: undefined, suspendedReason: undefined, suspendedBy: undefined });
+        lifted++;
+      }
+    }
+    return { lifted };
   },
 });

@@ -361,6 +361,8 @@ export const config = query({
       ceremonyAt: cfg?.botCeremonyAt ?? null,
       rollcallPingRole: cfg?.botRollcallPingRole ?? null,
       rollcallPingEnabled: cfg?.botRollcallPingEnabled ?? false,
+      sanctionsChannel: cfg?.botSanctionsChannel ?? null,
+      sanctionsPingRole: cfg?.botSanctionsPingRole ?? null,
     };
   },
 });
@@ -600,6 +602,83 @@ export const markAbsenceAnnounced = mutation({
   handler: async (ctx, { secret, id }) => {
     assertBot(secret);
     await ctx.db.patch(id, { announced: true });
+  },
+});
+
+// ---- File d'annonce des SANCTIONS (embed + ping rôle LSPD) ----
+export const sanctionsToAnnounce = query({
+  args: { secret: v.string() },
+  handler: async (ctx, { secret }) => {
+    assertBot(secret);
+    const rows = (await ctx.db.query("disciplines").withIndex("by_announce", (q) => q.eq("discordAnnounced", false)).collect())
+      .filter((d) => !d.deletedAt)
+      .slice(0, 20);
+    const out = [];
+    for (const d of rows) {
+      const a = await ctx.db.get(d.agentId);
+      const by = d.byAgentId ? await ctx.db.get(d.byAgentId) : null;
+      out.push({
+        id: d._id,
+        reference: d.reference ?? null,
+        agentName: a ? `${a.prenomRP} ${a.nomRP}` : "Agent",
+        agentMatricule: a?.matricule ?? null,
+        agentDiscordId: a?.discordId ?? null,
+        motif: d.motif,
+        sanction: d.sanction,
+        level: d.level ?? null,
+        suspends: d.suspends ?? false,
+        suspendedUntil: d.suspendedUntil ?? null,
+        byName: by ? `${by.prenomRP} ${by.nomRP}` : null,
+        byMatricule: by?.matricule ?? null,
+        at: d.at,
+      });
+    }
+    return out;
+  },
+});
+export const markSanctionAnnounced = mutation({
+  args: { secret: v.string(), id: v.id("disciplines") },
+  handler: async (ctx, { secret, id }) => {
+    assertBot(secret);
+    await ctx.db.patch(id, { discordAnnounced: true });
+  },
+});
+
+// ---- File d'annonce des CONVOCATIONS (embed + ping de l'agent) ----
+export const convocationsToAnnounce = query({
+  args: { secret: v.string() },
+  handler: async (ctx, { secret }) => {
+    assertBot(secret);
+    const rows = (await ctx.db.query("convocations").withIndex("by_announce", (q) => q.eq("discordAnnounced", false)).collect())
+      .filter((c) => !c.deletedAt)
+      .slice(0, 20);
+    const out = [];
+    for (const c of rows) {
+      const a = c.agentId ? await ctx.db.get(c.agentId) : null;
+      const by = c.byAgentId ? await ctx.db.get(c.byAgentId) : null;
+      out.push({
+        id: c._id,
+        reference: c.reference ?? null,
+        agentName: a ? `${a.prenomRP} ${a.nomRP}` : c.agentLabel ?? null,
+        agentMatricule: a?.matricule ?? null,
+        // Ping : Discord lié de l'agent, sinon l'ID saisi à la main.
+        pingDiscordId: a?.discordId ?? c.discordId ?? null,
+        motif: c.motif,
+        convokedAt: c.convokedAt ?? null,
+        lieu: c.lieu ?? null,
+        byName: by ? `${by.prenomRP} ${by.nomRP}` : null,
+        byMatricule: by?.matricule ?? null,
+        at: c.at,
+      });
+    }
+    return out;
+  },
+});
+export const markConvocationAnnounced = mutation({
+  args: { secret: v.string(), id: v.id("convocations") },
+  handler: async (ctx, { secret, id }) => {
+    assertBot(secret);
+    await ctx.db.patch(id, { discordAnnounced: true });
   },
 });
 

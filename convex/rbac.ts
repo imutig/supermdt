@@ -104,6 +104,7 @@ export const PERMISSION_SLUGS: { slug: string; domain: string; description: stri
   { slug: "discipline.create", domain: "discipline", description: "Ouvrir une sanction / IA" },
   { slug: "discipline.edit", domain: "discipline", description: "Clôturer / modifier une sanction / IA" },
   { slug: "discipline.delete", domain: "discipline", description: "Supprimer une sanction / IA" },
+  { slug: "convocations.create", domain: "discipline", description: "Convoquer un agent (IA)" },
   { slug: "absences.request", domain: "absences", description: "Demander une absence" },
   { slug: "absences.manage", domain: "absences", description: "Gérer les absences" },
   { slug: "absences.delete", domain: "absences", description: "Supprimer une absence" },

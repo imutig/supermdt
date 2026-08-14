@@ -198,3 +198,60 @@ export function absentsListEmbed(rows: { name: string; matricule: number | null;
 export function errorEmbed(message: string): EmbedBuilder {
   return baseEmbed(BRAND.warning).setTitle("Impossible").setDescription(message);
 }
+
+// Signature Internal Affairs commune aux sanctions et convocations.
+const IA_FOOTER = "Internal Affairs Division · Station 13 · Los Santos Police Department";
+const mat5 = (m: number | null) => (m != null ? String(m).padStart(5, "0") : null);
+const issuer = (name: string | null, matricule: number | null) => {
+  const m = mat5(matricule);
+  return name ? (m ? `${m} | ${name}` : name) : "État-Major";
+};
+// Mention de l'agent concerné : ping Discord si lié, sinon matricule + nom.
+const concerned = (name: string | null, matricule: number | null, discordId: string | null) => {
+  if (discordId) return `<@${discordId}>${matricule ? ` \`${mat5(matricule)}\`` : ""}`;
+  const m = mat5(matricule);
+  return `${m ? `\`${m}\` | ` : ""}**${name ?? "Agent"}**`;
+};
+
+// Embed de sanction disciplinaire (format IA officiel, cf. maquette serveur).
+export function sanctionEmbed(s: import("./convex.js").SanctionAnnounce): EmbedBuilder {
+  const ref = s.reference != null ? `SANC-${String(s.reference).padStart(4, "0")}` : null;
+  let sanctionLine = `**${s.sanction}**`;
+  if (s.suspends) {
+    sanctionLine += s.suspendedUntil
+      ? ` — mise à pied jusqu'au ${new Date(s.suspendedUntil).toLocaleString("fr-FR", { timeZone: "Europe/Paris", dateStyle: "short", timeStyle: "short" })}`
+      : " — mise à pied jusqu'à nouvel ordre";
+  }
+  const body = [
+    `__Effectif concerné :__ ${concerned(s.agentName, s.agentMatricule, s.agentDiscordId)}`,
+    `__Date d'émission de la sanction :__ **${date(s.at)}**`,
+    `__Motif de sanction :__ **${s.motif}**`,
+    `__Sanction appliquée :__ ${sanctionLine}`,
+    "",
+    "*Que cette sanction serve d'exemple. Le respect est mutuel, quel que soit le grade ; tout manquement à la discipline sera sévèrement puni.*",
+  ].join("\n");
+  const e = baseEmbed(BRAND.danger)
+    .setAuthor({ name: issuer(s.byName, s.byMatricule) })
+    .setTitle("SANCTION DISCIPLINAIRE À EFFET IMMÉDIAT")
+    .setDescription(body)
+    .setFooter({ text: ref ? `${IA_FOOTER} · ${ref}` : IA_FOOTER });
+  return e;
+}
+
+// Embed de convocation devant l'Internal Affairs Division.
+export function convocationEmbed(c: import("./convex.js").ConvocationAnnounce): EmbedBuilder {
+  const ref = c.reference != null ? `CONV-${String(c.reference).padStart(4, "0")}` : null;
+  const lines = [
+    `__Effectif convoqué :__ ${concerned(c.agentName, c.agentMatricule, c.pingDiscordId)}`,
+  ];
+  if (c.convokedAt) lines.push(`__Date de convocation :__ **${new Date(c.convokedAt).toLocaleString("fr-FR", { timeZone: "Europe/Paris", dateStyle: "short", timeStyle: "short" })}**`);
+  if (c.lieu) lines.push(`__Lieu :__ **${c.lieu}**`);
+  lines.push(`__Motif de la convocation :__ **${c.motif}**`);
+  lines.push("");
+  lines.push("*Vous êtes prié(e) de vous présenter à la date indiquée. Toute absence non justifiée pourra faire l'objet de poursuites disciplinaires.*");
+  return baseEmbed(BRAND.warning)
+    .setAuthor({ name: issuer(c.byName, c.byMatricule) })
+    .setTitle("CONVOCATION — INTERNAL AFFAIRS DIVISION")
+    .setDescription(lines.join("\n"))
+    .setFooter({ text: ref ? `${IA_FOOTER} · ${ref}` : IA_FOOTER });
+}

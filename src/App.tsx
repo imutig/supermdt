@@ -139,7 +139,8 @@ function Gated() {
 
   const status = me.agent.status;
   if (status === "PENDING") return <PendingScreen />;
-  if (status === "INACTIVE" || status === "SUSPENDED") return <PendingScreen suspended />;
+  if (status === "INACTIVE" || status === "SUSPENDED")
+    return <PendingScreen suspended until={me.agent.suspendedUntil ?? null} reason={me.agent.suspendedReason ?? null} />;
   // Mot de passe temporaire : aucun accès au MDT tant qu'il n'est pas remplacé.
   if (me.agent.mustChangePassword) return <ChangePasswordScreen />;
   // Cadet écarté de sa promo : plus d'accès tant qu'il n'est pas réintégré.

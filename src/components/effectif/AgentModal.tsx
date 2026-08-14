@@ -10,6 +10,7 @@ import { fmtAnciennete, tsToDateInput, dateInputToTs } from "@/lib/anciennete";
 import { parisDayStart, parisDayEnd } from "@/lib/paris";
 import { actionLabel, resourceLabel } from "@/lib/auditLabels";
 import { SanctionModal } from "@/components/effectif/SanctionModal";
+import { ConvocationModal } from "@/components/effectif/ConvocationModal";
 import { FicheDocument } from "@/components/effectif/FicheDocument";
 
 export function AgentModal({ agentId, onClose }: { agentId: Id<"agents">; onClose: () => void }) {
@@ -21,6 +22,8 @@ export function AgentModal({ agentId, onClose }: { agentId: Id<"agents">; onClos
   const options = useQuery(api.config.options);
   const logs = useQuery(api.agents.recentLogs, { agentId });
   const sanctions = useQuery(api.disciplines.byAgent, { agentId });
+  const convocations = useQuery(api.convocations.byAgent, { agentId });
+  const reactivate = useMutation(api.disciplines.reactivate);
 
   const updateGrade = useMutation(api.agents.updateGrade);
   const setMatricule = useMutation(api.agents.setMatricule);
@@ -39,6 +42,7 @@ export function AgentModal({ agentId, onClose }: { agentId: Id<"agents">; onClos
   const [matInput, setMatInput] = useState("");
   const [nameEdit, setNameEdit] = useState<{ prenom: string; nom: string } | null>(null);
   const [sanctionModal, setSanctionModal] = useState(false);
+  const [convocationModal, setConvocationModal] = useState(false);
   const [absOpen, setAbsOpen] = useState(false);
   const [absFrom, setAbsFrom] = useState("");
   const [absTo, setAbsTo] = useState("");
@@ -66,6 +70,7 @@ export function AgentModal({ agentId, onClose }: { agentId: Id<"agents">; onClos
   const canResetPw = can("effectif.resetpw");
   const canManageSvc = can("services.manage");
   const canDiscipline = can("discipline.create");
+  const canConvoke = can("convocations.create");
   const canLinkDiscord = can("invites.manage");
   const canManageAbsence = can("absences.manage");
 
@@ -377,10 +382,26 @@ export function AgentModal({ agentId, onClose }: { agentId: Id<"agents">; onClos
                 )}
               </div>
 
+              {/* Mise à pied en cours */}
+              {a?.status === "SUSPENDED" && (
+                <div className="rounded-sm border px-[12px] py-[10px]" style={{ borderColor: "color-mix(in srgb, var(--danger) 40%, var(--border))", background: "color-mix(in srgb, var(--danger) 8%, transparent)" }}>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[12.5px] font-bold" style={{ color: "var(--danger)" }}>Mis à pied</span>
+                    <span className="flex-1 text-[12px] text-muted">{a.suspendedUntil ? `Fin le ${new Date(a.suspendedUntil).toLocaleString("fr-FR", { timeZone: "Europe/Paris", dateStyle: "short", timeStyle: "short" })}` : "Jusqu'à nouvel ordre"}{a.suspendedReason ? ` · ${a.suspendedReason}` : ""}</span>
+                    {canDiscipline && (
+                      <button onClick={async () => { const r = await toast.guard(reactivate({ agentId }), "Action impossible"); if (r !== undefined) toast.success("Mise à pied levée."); }} className="rounded-sm border px-[9px] py-[4px] text-[11px] font-semibold" style={{ borderColor: "var(--success)", color: "var(--success)" }}>Lever</button>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* Sanctions disciplinaires */}
               <div>
                 <div className="mb-[8px] flex items-center gap-2">
                   <div className="flex-1 text-[10.5px] font-bold uppercase tracking-[0.09em] text-faint">Sanctions</div>
+                  {canConvoke && (
+                    <button onClick={() => setConvocationModal(true)} className="flex h-[24px] items-center gap-[5px] rounded-sm border border-border bg-surface-2 px-[8px] text-[11px] font-semibold text-muted hover:border-border-strong hover:text-accent">Convoquer</button>
+                  )}
                   {canDiscipline && (
                     <button
                       onClick={() => setSanctionModal(true)}
@@ -398,10 +419,14 @@ export function AgentModal({ agentId, onClose }: { agentId: Id<"agents">; onClos
                     {(sanctions ?? []).map((s) => (
                       <div key={s._id} className="rounded-sm border border-border bg-surface-2 px-[12px] py-[9px]">
                         <div className="flex items-center gap-2">
+                          {s.reference != null && <span className="font-data text-[10.5px] text-faint">SANC-{String(s.reference).padStart(4, "0")}</span>}
                           <span className="rounded-[5px] px-[7px] py-[2px] text-[11px] font-semibold" style={{ background: "color-mix(in srgb, var(--warning) 14%, transparent)", color: "var(--warning)" }}>{s.sanction}</span>
                           <span className="flex-1 text-[12.5px]">{s.motif}</span>
                           <span className="font-data text-[11px] text-faint">{new Date(s.at).toLocaleDateString("fr-FR")}</span>
                         </div>
+                        {s.suspends && (
+                          <div className="mt-[5px] text-[11px] font-semibold" style={{ color: "var(--danger)" }}>Mise à pied{s.suspendedUntil ? ` · fin ${new Date(s.suspendedUntil).toLocaleString("fr-FR", { timeZone: "Europe/Paris", dateStyle: "short", timeStyle: "short" })}` : " · jusqu'à nouvel ordre"}</div>
+                        )}
                         {s.evidence.length > 0 && (
                           <div className="mt-[8px] flex flex-wrap gap-[6px]">
                             {s.evidence.map((url, i) => (
@@ -416,6 +441,25 @@ export function AgentModal({ agentId, onClose }: { agentId: Id<"agents">; onClos
                   </div>
                 )}
               </div>
+
+              {/* Convocations */}
+              {(convocations ?? []).length > 0 && (
+                <div>
+                  <div className="mb-[8px] text-[10.5px] font-bold uppercase tracking-[0.09em] text-faint">Convocations</div>
+                  <div className="flex flex-col gap-[7px]">
+                    {(convocations ?? []).map((c) => (
+                      <div key={c._id} className="rounded-sm border border-border bg-surface-2 px-[12px] py-[9px]">
+                        <div className="flex items-center gap-2">
+                          {c.reference != null && <span className="font-data text-[10.5px] text-faint">CONV-{String(c.reference).padStart(4, "0")}</span>}
+                          <span className="flex-1 text-[12.5px]">{c.motif}</span>
+                          <span className="font-data text-[11px] text-faint">{c.convokedAt ? new Date(c.convokedAt).toLocaleDateString("fr-FR") : new Date(c.at).toLocaleDateString("fr-FR")}</span>
+                        </div>
+                        {c.lieu && <div className="mt-[3px] text-[11px] text-muted">Lieu : {c.lieu}</div>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Logs récents */}
               <div>
@@ -538,6 +582,7 @@ export function AgentModal({ agentId, onClose }: { agentId: Id<"agents">; onClos
       </div>
 
       {sanctionModal && <SanctionModal initialAgentId={agentId} onClose={() => setSanctionModal(false)} />}
+      {convocationModal && <ConvocationModal initialAgentId={agentId} onClose={() => setConvocationModal(false)} />}
       {ficheOpen && a && <FicheDocument agentId={agentId} agentName={`${a.prenomRP} ${a.nomRP}`} onClose={() => setFicheOpen(false)} />}
     </div>
   );

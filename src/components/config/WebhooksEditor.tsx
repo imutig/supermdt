@@ -115,8 +115,8 @@ function BotConfigEditor() {
   const current = useQuery(api.webhooks.botConfig);
   const save = useMutation(api.webhooks.setBotConfig);
   const toast = useToast();
-  const [f, setF] = useState<null | { presenceChannel: string; dailyChannel: string; rollcallChannel: string; absenceChannel: string; dailyAt: string; rollcallStartAt: string; rollcallEndAt: string; ceremonyAt: string; rollcallPingRole: string; rollcallPingEnabled: boolean }>(null);
-  const shown = f ?? current ?? { presenceChannel: "", dailyChannel: "", rollcallChannel: "", absenceChannel: "", dailyAt: "23:30", rollcallStartAt: "", rollcallEndAt: "", ceremonyAt: "", rollcallPingRole: "", rollcallPingEnabled: false };
+  const [f, setF] = useState<null | { presenceChannel: string; dailyChannel: string; rollcallChannel: string; absenceChannel: string; dailyAt: string; rollcallStartAt: string; rollcallEndAt: string; ceremonyAt: string; rollcallPingRole: string; rollcallPingEnabled: boolean; sanctionsChannel: string; sanctionsPingRole: string }>(null);
+  const shown = f ?? current ?? { presenceChannel: "", dailyChannel: "", rollcallChannel: "", absenceChannel: "", dailyAt: "23:30", rollcallStartAt: "", rollcallEndAt: "", ceremonyAt: "", rollcallPingRole: "", rollcallPingEnabled: false, sanctionsChannel: "", sanctionsPingRole: "" };
 
   const field = "flex-1 rounded-[9px] border border-border bg-surface-2 px-[11px] py-[9px] font-data text-[12.5px] outline-none focus:border-accent";
   // `set` renvoie un gestionnaire stable de frappe ; les champs sont écrits en
@@ -135,6 +135,8 @@ function BotConfigEditor() {
         <ChanRow label="Salon du roll call" value={shown.rollcallChannel} onChange={set("rollcallChannel")} cls={field} hint="Roll call quotidien : les agents indiquent Présent, En retard ou Absent." />
         <ChanRow label="Salon des absences" value={shown.absenceChannel} onChange={set("absenceChannel")} cls={field} hint="Chaque absence validée y est publiée sous forme d'embed." />
         <ChanRow label="Rôle à ping (roll call)" value={shown.rollcallPingRole} onChange={set("rollcallPingRole")} cls={field} hint="Identifiant du rôle mentionné à l'ouverture du roll call." />
+        <ChanRow label="Salon des sanctions / convocations" value={shown.sanctionsChannel} onChange={set("sanctionsChannel")} cls={field} hint="Les sanctions disciplinaires et les convocations y sont publiées en embed." />
+        <ChanRow label="Rôle à ping (sanctions)" value={shown.sanctionsPingRole} onChange={set("sanctionsPingRole")} cls={field} hint="Rôle mentionné lors d'une sanction (les convocations pinguent l'agent concerné)." />
         <label className="flex items-center gap-2 text-[12.5px]">
           <input type="checkbox" checked={shown.rollcallPingEnabled} onChange={(e) => setF({ ...shown, rollcallPingEnabled: e.target.checked })} />
           <span>Activer le ping du rôle à l'ouverture du roll call <span className="text-faint">(décoché = aucun ping, même si un rôle est renseigné)</span></span>

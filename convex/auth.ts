@@ -43,8 +43,20 @@ export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
       // Pas encore de profil : inscription en cours, on laisse passer.
       if (!agent) return;
 
-      if (agent.status === "INACTIVE" || agent.status === "SUSPENDED") {
+      if (agent.status === "INACTIVE") {
         throw new Error("Ce compte a été désactivé. Contactez l'État-Major.");
+      }
+      // Mise à pied : bloque avec l'échéance, ou lève automatiquement si passée.
+      if (agent.status === "SUSPENDED") {
+        const until = agent.suspendedUntil;
+        if (typeof until === "number" && until <= Date.now()) {
+          await db.patch(agent._id, { status: "ACTIVE", suspendedUntil: undefined, suspendedReason: undefined, suspendedBy: undefined });
+        } else if (typeof until === "number") {
+          const d = new Date(until).toLocaleString("fr-FR", { timeZone: "Europe/Paris" });
+          throw new Error(`Vous êtes en mise à pied jusqu'au ${d}${agent.suspendedReason ? ` — ${agent.suspendedReason}` : ""}.`);
+        } else {
+          throw new Error(`Vous êtes en mise à pied jusqu'à nouvel ordre${agent.suspendedReason ? ` — ${agent.suspendedReason}` : ""}. Contactez l'État-Major.`);
+        }
       }
       if (typeof agent.lockedUntil === "number" && agent.lockedUntil > Date.now()) {
         const until = new Date(agent.lockedUntil).toLocaleString("fr-FR", { timeZone: "Europe/Paris" });
