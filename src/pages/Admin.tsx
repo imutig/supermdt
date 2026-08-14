@@ -630,7 +630,7 @@ function PermissionsTab() {
       <div className="flex flex-wrap items-center gap-2 border-b border-border bg-surface-2 px-4 py-[10px]">
         <span className="text-[11.5px] font-semibold text-muted">Prévisualiser en tant que</span>
         <select value={previewPick} onChange={(e) => setPreviewPick(e.target.value)} className="h-8 rounded-sm border border-border bg-surface px-2 text-[12px] outline-none focus:border-accent">
-          <option value="">— grade —</option>
+          <option value="">- grade -</option>
           {data.grades.map((g) => <option key={g._id} value={g._id}>{g.name}</option>)}
         </select>
         <button
@@ -651,12 +651,12 @@ function PermissionsTab() {
       <div className="flex flex-wrap items-center gap-2 border-b border-border bg-surface-2 px-4 py-[10px]">
         <span className="text-[11.5px] font-semibold text-muted">Copier depuis</span>
         <select value={copyFrom} onChange={(e) => setCopyFrom(e.target.value)} className="h-8 rounded-sm border border-border bg-surface px-2 text-[12px] outline-none focus:border-accent">
-          <option value="">— grade source —</option>
+          <option value="">- grade source -</option>
           {data.grades.map((g) => <option key={g._id} value={g._id}>{g.name}</option>)}
         </select>
         <span className="text-[11.5px] font-semibold text-muted">vers</span>
         <select value={copyTo} onChange={(e) => setCopyTo(e.target.value)} className="h-8 rounded-sm border border-border bg-surface px-2 text-[12px] outline-none focus:border-accent">
-          <option value="">— grade cible —</option>
+          <option value="">- grade cible -</option>
           {data.grades.map((g) => <option key={g._id} value={g._id}>{g.name}</option>)}
         </select>
         <button

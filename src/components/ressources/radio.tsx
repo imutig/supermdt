@@ -140,7 +140,7 @@ export function Lexique() {
         <div className="flex flex-col gap-4">
           <div className="rounded-card border border-border bg-surface p-4">
             <SectionTitle color="#3b82f6">Lexique professionnel</SectionTitle>
-            <div className="text-[12.5px] leading-relaxed text-muted"><b className="text-text">SITREP</b> : quand un opérateur (souvent le dispatcher) demande un SITREP, déclarez votre situation — indicatif de patrouille + code CODE 4/5/6. Sans réponse après trois appels, l'unité est considérée disparue et recherchée par toutes les unités.</div>
+            <div className="text-[12.5px] leading-relaxed text-muted"><b className="text-text">SITREP</b> : quand un opérateur (souvent le dispatcher) demande un SITREP, déclarez votre situation - indicatif de patrouille + code CODE 4/5/6. Sans réponse après trois appels, l'unité est considérée disparue et recherchée par toutes les unités.</div>
           </div>
           <div className="rounded-card border border-border bg-surface p-4">
             <SectionTitle color="#eab308">Les codes purs</SectionTitle>

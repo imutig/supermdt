@@ -95,20 +95,20 @@ function PersonCard({ a, color, grade }: { a: Agent; color: string; grade: strin
   const initials = `${a.name.charAt(0)}${a.name.split(" ")[1]?.charAt(0) ?? ""}`.toUpperCase();
   return (
     <div className="mdt-lift flex w-[132px] flex-col items-center overflow-hidden rounded-[15px] border border-border bg-surface text-center shadow-[0_1px_0_rgba(0,0,0,.04)]" style={{ borderTop: `3px solid ${color}` }}>
-      {/* Grande photo (trombinoscope) — pas un simple rond */}
+      {/* Grande photo (trombinoscope) - pas un simple rond */}
       <div className="relative w-full" style={{ aspectRatio: "1 / 1.12" }}>
         {a.avatarUrl ? (
           <img src={a.avatarUrl} alt="" className="h-full w-full object-cover" />
         ) : (
           <div className="flex h-full w-full items-center justify-center text-[30px] font-bold" style={{ background: `color-mix(in srgb, ${color} 12%, var(--surface-2))`, color }}>
-            {initials || "—"}
+            {initials || "-"}
           </div>
         )}
       </div>
       <div className="w-full px-[8px] py-[9px]">
         <div className="truncate text-[12.5px] font-semibold leading-tight" title={a.name}>{a.name}</div>
         <div className="mt-[2px] truncate text-[11px] font-semibold leading-tight" style={{ color }} title={grade}>{grade}</div>
-        <div className="mt-[3px] font-data text-[10.5px] text-faint">{fmtMatricule(a.matricule) ?? "—"}</div>
+        <div className="mt-[3px] font-data text-[10.5px] text-faint">{fmtMatricule(a.matricule) ?? "-"}</div>
       </div>
     </div>
   );

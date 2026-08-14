@@ -3,6 +3,7 @@ import { X } from "lucide-react";
 import { useMutation, useQuery } from "convex/react";
 import { api, type Id } from "@/lib/api";
 import { useToast } from "@/providers/toast";
+import { AgentSelect } from "@/components/common/AgentSelect";
 
 const FIELD = "h-10 w-full rounded-sm border border-border bg-surface-2 px-3 text-[13px] outline-none focus:border-accent";
 
@@ -51,12 +52,7 @@ export function ConvocationModal({ initialAgentId, onClose }: { initialAgentId?:
               <button onClick={() => setMode("discord")} className="rounded-[5px] border px-[9px] py-[4px] text-[11.5px] font-semibold" style={mode === "discord" ? { borderColor: "var(--accent)", color: "var(--accent)" } : { borderColor: "var(--border)", color: "var(--muted)" }}>ID Discord</button>
             </div>
             {mode === "agent" ? (
-              <select value={agentId} onChange={(e) => setAgentId(e.target.value)} className={FIELD}>
-                <option value="">Sélectionner…</option>
-                {(roster ?? []).map((a) => (
-                  <option key={a._id} value={a._id}>{a.matricule != null ? `#${String(a.matricule).padStart(5, "0")} ` : ""}{a.prenomRP} {a.nomRP}</option>
-                ))}
-              </select>
+              <AgentSelect roster={roster ?? []} value={agentId || null} onChange={(id) => setAgentId(id ?? "")} />
             ) : (
               <>
                 <input value={discordId} onChange={(e) => setDiscordId(e.target.value)} placeholder="ID Discord (17 à 20 chiffres)" className={`${FIELD} font-data`} />

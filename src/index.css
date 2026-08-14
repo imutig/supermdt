@@ -282,7 +282,7 @@ body {
 .s13-leaf { transform-box: view-box; transform-origin: 200px 190px; opacity: 0; animation: s13Leaf .8s cubic-bezier(.16,1,.3,1) forwards; }
 
 /* ============================================================================
-   Système « trèfle » — micro-interactions, apparitions, transitions, skeletons
+   Système « trèfle » - micro-interactions, apparitions, transitions, skeletons
    ============================================================================ */
 
 :root { --danger-soft: rgba(220, 38, 38, 0.08); }

@@ -96,7 +96,7 @@ export function LoginPage() {
         ) : undefined
       }
     >
-      {/* Onglets — l'inscription n'apparaît que pour amorcer l'owner initial. */}
+      {/* Onglets - l'inscription n'apparaît que pour amorcer l'owner initial. */}
       {allowSignup && (
         <div className="mx-4 mt-4 flex gap-[3px] rounded-[11px] border border-border bg-surface-2 p-[5px]">
           <button onClick={() => { setMode("login"); setErr(null); }} className={tab(isLogin)}>Se connecter</button>

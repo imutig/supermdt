@@ -35,7 +35,7 @@ export function Synchronisation() {
       {/* KPI */}
       <div className="mb-[18px] grid grid-cols-2 gap-px overflow-hidden rounded-card border border-border bg-border sm:grid-cols-4">
         <Tile label="Appels (30j)" value={String(d.totals.total)} />
-        <Tile label="Taux de succès" value={d.totals.successRate == null ? "—" : `${d.totals.successRate}%`} color={d.totals.successRate != null && d.totals.successRate < 100 ? "var(--warning)" : "var(--success)"} sub={`${d.totals.errCount} en échec`} />
+        <Tile label="Taux de succès" value={d.totals.successRate == null ? "-" : `${d.totals.successRate}%`} color={d.totals.successRate != null && d.totals.successRate < 100 ? "var(--warning)" : "var(--success)"} sub={`${d.totals.errCount} en échec`} />
         <Tile label="Imports" value={String(d.totals.byDirection.IMPORT ?? 0)} />
         <Tile label="Écritures" value={String(d.totals.byDirection.WRITE ?? 0)} />
       </div>
@@ -105,7 +105,7 @@ export function Synchronisation() {
                   <span className="mt-[4px] h-[8px] w-[8px] flex-shrink-0 rounded-full" style={{ background: r.ok ? "var(--success)" : "var(--danger)" }} />
                   <div className="min-w-0 flex-1">
                     <div className="text-[12.5px] font-semibold">{r.ok ? "Réussie" : "Échec"}<span className="ml-2 font-data text-[11px] font-normal text-faint">{new Date(r.at).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</span></div>
-                    <div className="truncate text-[11.5px] text-muted">{r.error ? <span style={{ color: "var(--danger)" }}>{r.error}</span> : (r.detail ?? "—")}</div>
+                    <div className="truncate text-[11.5px] text-muted">{r.error ? <span style={{ color: "var(--danger)" }}>{r.error}</span> : (r.detail ?? "-")}</div>
                   </div>
                   {r.durationMs != null && <span className="flex-shrink-0 font-data text-[11px] text-faint">{(r.durationMs / 1000).toFixed(1)}s</span>}
                 </div>

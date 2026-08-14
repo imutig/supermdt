@@ -13,7 +13,7 @@ export interface MapMarker {
   points?: Pt[] | null;
 }
 
-// Carte réutilisable — désormais rendue avec Leaflet sur les tuiles GTA (zoom
+// Carte réutilisable - désormais rendue avec Leaflet sur les tuiles GTA (zoom
 // profond et net). Même API qu'avant : coordonnées en % (0-100), marqueurs
 // LIEU/SECTEUR, pastille (pin), tracé en cours (draft), clic -> onPick(x,y).
 const TILE = "/tiles/gta/atlas/{z}_{x}_{y}.jpg"; // tuiles auto-hébergées (public/tiles/gta), zoom 0-7

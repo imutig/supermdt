@@ -4,6 +4,7 @@ import { useMutation, useQuery } from "convex/react";
 import { api, type Id } from "@/lib/api";
 import { useToast } from "@/providers/toast";
 import { ImageGallery } from "@/components/common/ImageGallery";
+import { AgentSelect } from "@/components/common/AgentSelect";
 
 const FIELD = "h-10 w-full rounded-sm border border-border bg-surface-2 px-3 text-[13px] outline-none focus:border-accent";
 
@@ -64,14 +65,7 @@ export function SanctionModal({
         </div>
         <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-[18px] py-4">
           <L label="Agent">
-            <select value={agentId} onChange={(e) => setAgentId(e.target.value)} className={FIELD}>
-              <option value="">Sélectionner…</option>
-              {(roster ?? []).map((a) => (
-                <option key={a._id} value={a._id}>
-                  {a.matricule != null ? `#${String(a.matricule).padStart(5, "0")} ` : ""}{a.prenomRP} {a.nomRP}
-                </option>
-              ))}
-            </select>
+            <AgentSelect roster={roster ?? []} value={agentId || null} onChange={(id) => setAgentId(id ?? "")} />
           </L>
           <div className="grid grid-cols-2 gap-3">
             <L label="Niveau">
@@ -100,7 +94,7 @@ export function SanctionModal({
           )}
           {suspends && (
             <div className="rounded-sm border border-border bg-surface-2 p-3" style={{ borderColor: "color-mix(in srgb, var(--danger) 35%, var(--border))" }}>
-              <div className="mb-[8px] flex items-center gap-2 text-[12px] font-semibold" style={{ color: "var(--danger)" }}>Mise à pied — le compte sera suspendu</div>
+              <div className="mb-[8px] flex items-center gap-2 text-[12px] font-semibold" style={{ color: "var(--danger)" }}>Mise à pied - le compte sera suspendu</div>
               <label className="mb-2 flex items-center gap-2 text-[12.5px]">
                 <input type="checkbox" checked={untilOrder} onChange={(e) => setUntilOrder(e.target.checked)} />
                 Jusqu'à nouvel ordre (pas de date de fin)

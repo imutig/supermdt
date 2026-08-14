@@ -8,7 +8,7 @@ import { RichTextEditor } from "@/components/common/RichTextEditor";
 import { AgentPicker } from "@/components/common/AgentPicker";
 
 // Déposition (format NexusMDT) : autonome, avec un objet et les officiers
-// présents. Synchronisée en write-through — réservée aux comptes Nexus liés.
+// présents. Synchronisée en write-through - réservée aux comptes Nexus liés.
 export function DepositionModal({ citizenId, onClose }: { citizenId: Id<"citizens">; onClose: () => void }) {
   const { can } = useCan();
   const createSynced = useAction(api.nexusSync.createDeposition);
@@ -48,7 +48,7 @@ export function DepositionModal({ citizenId, onClose }: { citizenId: Id<"citizen
               <span>Les dépositions sont synchronisées avec le NexusMDT. Lie ton compte Nexus dans <b>Mon profil</b> pour pouvoir en créer.</span>
             </div>
           )}
-          <div><div className="mb-[6px] text-[10.5px] font-bold uppercase tracking-[0.09em] text-faint">Objet *</div><input value={objet} onChange={(e) => setObjet(e.target.value)} disabled={!syncActive} placeholder="Ex. Interrogatoire — provenance de stupéfiants" className={F} /></div>
+          <div><div className="mb-[6px] text-[10.5px] font-bold uppercase tracking-[0.09em] text-faint">Objet *</div><input value={objet} onChange={(e) => setObjet(e.target.value)} disabled={!syncActive} placeholder="Ex. Interrogatoire - provenance de stupéfiants" className={F} /></div>
           <div><div className="mb-[6px] text-[10.5px] font-bold uppercase tracking-[0.09em] text-faint">Officiers présents</div><AgentPicker roster={roster} selected={agentIds} onChange={setAgentIds} disabled={!syncActive} /></div>
           <div><div className="mb-[6px] text-[10.5px] font-bold uppercase tracking-[0.09em] text-faint">Déposition *</div><RichTextEditor value={body} onChange={setBody} editable={syncActive} minHeight={190} placeholder="Propos recueillis…" /></div>
         </div>

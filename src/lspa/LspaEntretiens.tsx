@@ -151,7 +151,7 @@ function InterviewPanel({ id, onClose }: { id: Id<"interviews">; onClose: () => 
         <div className="flex flex-shrink-0 items-center gap-3 border-b border-border px-[18px] py-4">
           <span className="flex h-[38px] w-[38px] items-center justify-center rounded-[10px] bg-surface-2 text-accent"><ClipboardCheck className="h-[19px] w-[19px]" /></span>
           <div className="min-w-0 flex-1">
-            <div className="truncate text-[15px] font-bold">Entretien — {prenom} {nom}</div>
+            <div className="truncate text-[15px] font-bold">Entretien - {prenom} {nom}</div>
             {data && <div className="text-[11.5px] text-muted">Par {data.createdByName} · {dt(data.createdAt)}</div>}
           </div>
           <div className="flex flex-col items-end">

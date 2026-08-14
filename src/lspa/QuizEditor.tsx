@@ -229,7 +229,7 @@ export function QuizEditor() {
             <div className="flex items-center gap-[7px]">
               <input
                 type="number" min={0} defaultValue={quiz.durationSeconds ? Math.round(quiz.durationSeconds / 60) : ""}
-                disabled={!canEdit} placeholder="—"
+                disabled={!canEdit} placeholder="-"
                 onBlur={(e) => void patch({ durationSeconds: Number(e.target.value || 0) * 60 })}
                 className={`${F} font-data`}
               />
@@ -582,7 +582,7 @@ function QuestionPanel({ quizId, draft, onClose }: { quizId: Id<"quizzes">; draf
             </Field>
             <Field label="Temps de la question" hint="En secondes. Vide = pas de limite propre.">
               <input
-                type="number" min={0} value={d.timeLimitSeconds ?? ""} placeholder="—"
+                type="number" min={0} value={d.timeLimitSeconds ?? ""} placeholder="-"
                 onChange={(e) => setD((s) => ({ ...s, timeLimitSeconds: e.target.value ? Number(e.target.value) : null }))}
                 className={`${F} font-data`}
               />

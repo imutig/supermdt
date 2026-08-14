@@ -40,7 +40,7 @@ export function DelitsMineurs() {
   return (
     <GravityPage title="Les délits" accent="mineurs" color="#16a34a"
       definition={<>Un délit mineur est un non-respect « léger » de la loi, pouvant être un danger immédiat et direct pour une tierce personne.</>}
-      sanction={<>« Rapport d'arrestation » et « Amende », voire « Garde à vue » — <b>constituent un casier judiciaire</b>.</>}
+      sanction={<>« Rapport d'arrestation » et « Amende », voire « Garde à vue » - <b>constituent un casier judiciaire</b>.</>}
       examples={[{ icon: <Ban className="h-6 w-6" />, label: "Refus d'obtempérer" }, { icon: <Pill className="h-6 w-6" />, label: "Possession de stupéfiants" }, { icon: <Swords className="h-6 w-6" />, label: "Bagarres" }]} />
   );
 }
@@ -48,7 +48,7 @@ export function DelitsMajeurs() {
   return (
     <GravityPage title="Les délits" accent="majeurs" color="#eab308"
       definition={<>Un délit majeur est un non-respect « important » de la loi, pouvant être un danger immédiat et direct pour une tierce personne.</>}
-      sanction={<>« Dossier d'arrestation » et « Comparution devant un Procureur », voire « Prison » — casier judiciaire si le verdict est « Coupable ».</>}
+      sanction={<>« Dossier d'arrestation » et « Comparution devant un Procureur », voire « Prison » - casier judiciaire si le verdict est « Coupable ».</>}
       examples={[{ icon: <Skull className="h-6 w-6" />, label: "Homicides involontaires" }, { icon: <Package className="h-6 w-6" />, label: "Grande possession de stupéfiants" }, { icon: <VenetianMask className="h-6 w-6" />, label: "Braquages" }]} />
   );
 }
@@ -56,7 +56,7 @@ export function Crimes() {
   return (
     <GravityPage title="Les" accent="crimes" color="#dc2626"
       definition={<>Un crime est un non-respect « très grave » de la loi, étant un danger immédiat et direct pour une tierce personne ou l'État.</>}
-      sanction={<>« Dossier d'arrestation » et « Comparution au Tribunal », voire « Prison à vie » — casier judiciaire si le verdict est « Coupable ».</>}
+      sanction={<>« Dossier d'arrestation » et « Comparution au Tribunal », voire « Prison à vie » - casier judiciaire si le verdict est « Coupable ».</>}
       examples={[{ icon: <Syringe className="h-6 w-6" />, label: "Meurtres" }, { icon: <Package className="h-6 w-6" />, label: "Trafic de stupéfiants" }, { icon: <Bomb className="h-6 w-6" />, label: "Terrorisme" }]} />
   );
 }

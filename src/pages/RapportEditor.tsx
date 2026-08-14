@@ -10,6 +10,7 @@ import { useToast } from "@/providers/toast";
 import { RapportDoc } from "@/components/docs/RapportDoc";
 import { RichTextEditor, RichTextToolbar, richTextExtensions } from "@/components/common/RichTextEditor";
 import { AgentTag } from "@/components/common/AgentTag";
+import { AgentSelect } from "@/components/common/AgentSelect";
 import { ImageGallery } from "@/components/common/ImageGallery";
 import { LosSantosMap } from "@/components/carte/LosSantosMap";
 import { CasingsEditor, type Casing } from "@/components/dossier/CasingsEditor";
@@ -343,20 +344,7 @@ function RoleSelect({
   return (
     <div>
       <div className="mb-[5px] text-[11px] text-muted">{label}</div>
-      <select
-        value={value ?? ""}
-        disabled={!editable}
-        onChange={(e) => onChange(e.target.value)}
-        className="h-9 w-full rounded-sm border border-border bg-surface-2 px-2 text-[12.5px] outline-none focus:border-accent disabled:opacity-60"
-      >
-        {!required && <option value="">-</option>}
-        {required && !value && <option value="">-</option>}
-        {roster.map((a) => (
-          <option key={a._id} value={a._id}>
-            {a.matricule != null ? `#${String(a.matricule).padStart(5, "0")} ` : ""}{a.prenomRP} {a.nomRP}
-          </option>
-        ))}
-      </select>
+      <AgentSelect roster={roster} value={value} onChange={(id) => onChange(id ?? "")} disabled={!editable} allowClear={!required} />
     </div>
   );
 }

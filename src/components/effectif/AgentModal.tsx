@@ -167,7 +167,7 @@ export function AgentModal({ agentId, onClose }: { agentId: Id<"agents">; onClos
             </div>
           ) : (
             <>
-              {/* Renommage identité RP (prénom / nom) — n'affecte pas le login */}
+              {/* Renommage identité RP (prénom / nom) - n'affecte pas le login */}
               {nameEdit && canEditAgent && (
                 <div className="rounded-sm border border-border bg-surface-2 p-[13px]">
                   <div className="mb-[10px] text-[10.5px] font-bold uppercase tracking-[0.09em] text-faint">Renommer l'agent</div>

@@ -149,7 +149,7 @@ function ItemRow({ agentId, it, onSave }: {
         <input
           key={`t-${it.entrySeconds}`}
           defaultValue={fmtTime(it.entrySeconds)}
-          placeholder="—"
+          placeholder="-"
           onBlur={(e) => save({ seconds: parseTime(e.target.value) })}
           className="h-8 w-[70px] flex-shrink-0 rounded-sm border border-border bg-surface px-2 text-center font-data text-[13px] outline-none focus:border-accent"
         />

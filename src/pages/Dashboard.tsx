@@ -207,7 +207,7 @@ export function Dashboard() {
 
         {/* Right column */}
         <div className="mdt-stagger flex flex-col gap-[18px]">
-          {/* Service — interrupteur trèfle (élément 3). Désactivé tant que la
+          {/* Service - interrupteur trèfle (élément 3). Désactivé tant que la
               prise de service via le MDT est off (FEATURES.service). */}
           {FEATURES.service && (
             <div className="rounded-card border border-border bg-surface p-4">
@@ -273,7 +273,7 @@ export function Dashboard() {
             )}
           </div>
 
-          {/* Présence « en service » — masquée tant que la prise de service MDT est off. */}
+          {/* Présence « en service » - masquée tant que la prise de service MDT est off. */}
           {FEATURES.service && (
           <div className="overflow-hidden rounded-card border border-border bg-surface">
             <div className="flex items-center gap-2 border-b border-border px-4 py-[13px]">

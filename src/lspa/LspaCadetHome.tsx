@@ -43,7 +43,7 @@ export function LspaCadetHome() {
           <div className="min-w-0 flex-1">
             <div className="text-[14.5px] font-bold">{activeSession.title}</div>
             <div className="text-[12.5px] text-muted">
-              {activeSession.status === "RUNNING" ? (activeSession.joined ? "Épreuve en cours — reprenez votre copie" : "Épreuve en cours") : activeSession.joined ? "En salle d'attente" : "Une session est ouverte, rejoignez-la"}
+              {activeSession.status === "RUNNING" ? (activeSession.joined ? "Épreuve en cours - reprenez votre copie" : "Épreuve en cours") : activeSession.joined ? "En salle d'attente" : "Une session est ouverte, rejoignez-la"}
             </div>
           </div>
           <span className="flex items-center gap-[6px] text-[13px] font-bold text-accent">Rejoindre <ArrowRight className="h-[15px] w-[15px]" /></span>

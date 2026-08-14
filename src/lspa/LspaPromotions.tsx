@@ -314,7 +314,7 @@ export function LspaPromotion() {
                         className="h-[28px] flex-shrink-0 rounded-[7px] border border-border bg-surface-2 px-[6px] text-[12px] outline-none"
                         title="Groupe"
                       >
-                        <option value="">—</option>
+                        <option value="">-</option>
                         <option value="A">A</option>
                         <option value="B">B</option>
                       </select>

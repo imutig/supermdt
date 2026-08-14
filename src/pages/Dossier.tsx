@@ -319,7 +319,7 @@ export function Dossier() {
                     </div>
                   ))}
                 </div>
-                {/* Bloc médical / contact d'urgence — affiché seulement si renseigné. */}
+                {/* Bloc médical / contact d'urgence - affiché seulement si renseigné. */}
                 {(c.allergies || c.antecedents || c.traitements || c.contactUrgence?.nom || c.contactUrgence?.telephone) && (
                   <div className="grid grid-cols-2 gap-px border-t border-border bg-border">
                     {c.allergies && <div className="bg-surface px-4 py-3"><div className="mb-1 text-[10px] font-bold uppercase tracking-[0.08em] text-faint">Allergies</div><div className="text-[13px] whitespace-pre-wrap">{c.allergies}</div></div>}

@@ -284,7 +284,7 @@ export function Dispatch() {
                     </div>
                   )}
                   {zone.patrols.map(renderCard)}
-                  {zone.patrols.length === 0 && <div className="flex min-h-[28px] flex-1 items-center justify-center text-center text-[10.5px] text-faint">—</div>}
+                  {zone.patrols.length === 0 && <div className="flex min-h-[28px] flex-1 items-center justify-center text-center text-[10.5px] text-faint">-</div>}
                 </div>
               ))}
             </div>
