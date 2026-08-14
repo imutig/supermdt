@@ -87,7 +87,7 @@ export function Contraventions() {
             <span className="truncate text-[12.5px] text-muted">{r.motif}</span>
             <span className="font-data text-[13px] font-semibold">${r.totalFine.toLocaleString("fr-FR")}</span>
             <span className="text-[12.5px] text-muted">
-              <AgentTag agent={r.officer} />
+              <AgentTag agent={{ ...r.officer, linked: r.officerDetected }} />
             </span>
             <span className="font-data text-[11.5px] text-muted">{new Date(r.at).toLocaleDateString("fr-FR")}</span>
           </div>

@@ -24,9 +24,13 @@ export const casierAndCitations = query({
       motif: string;
       totalFine: number;
       officer: { matricule: number | null; name: string };
+      // false = officier issu du Nexus non rattaché à un compte local (ancien
+      // agent, ou compte pas encore créé) : à styliser côté UI.
+      officerDetected: boolean;
       status: string;
       at: number;
     }[] = [];
+    const digits = (s?: string) => { const d = (s ?? "").replace(/\D/g, ""); return d ? Number(d) : null; };
 
     // Tri par date d'arrestation (by_at) et non par _creationTime : les casiers
     // importés du Nexus sont tous créés au même instant, leur ordre d'insertion
@@ -39,6 +43,21 @@ export const casierAndCitations = query({
         .query("casierCharges")
         .withIndex("by_entry", (q) => q.eq("entryId", e._id))
         .collect();
+      // Officier créateur : compte relié si possible, sinon nom + matricule
+      // relevés dans le Nexus (officier non détecté -> stylisé côté UI).
+      const snap = e.officers?.[0];
+      let officer: { matricule: number | null; name: string };
+      let officerDetected: boolean;
+      if (snap?.agentId) {
+        officer = await agentLabel(ctx, snap.agentId);
+        officerDetected = true;
+      } else if (snap && (snap.name || snap.matricule)) {
+        officer = { matricule: digits(snap.matricule), name: snap.name || "-" };
+        officerDetected = false;
+      } else {
+        officer = await agentLabel(ctx, e.officerIds[0]);
+        officerDetected = e.officerIds.length > 0;
+      }
       out.push({
         _id: e._id,
         kind: "casier",
@@ -47,7 +66,8 @@ export const casierAndCitations = query({
         citizenName: citizen ? `${citizen.prenom} ${citizen.nom}` : "-",
         motif: charges.map((c) => c.snapshot.name).join(", ") || "-",
         totalFine: e.totalFine,
-        officer: await agentLabel(ctx, e.officerIds[0]),
+        officer,
+        officerDetected,
         status: e.status,
         at: e.at,
       });
@@ -60,11 +80,13 @@ export const casierAndCitations = query({
         .query("citationCharges")
         .withIndex("by_citation", (q) => q.eq("citationId", c._id))
         .collect();
-      // Verbalisateur non relié (import Nexus) : officerId retombe sur l'owner.
+      // Verbalisateur non relié (import Nexus) : officerId retombe sur l'owner,
+      // on affiche alors le nom + matricule relevés dans le Nexus (non détecté).
       let officer = await agentLabel(ctx, c.officerId);
+      let officerDetected = true;
       if (c.officerName) {
         const a = await ctx.db.get(c.officerId);
-        if (a?.isOwner) officer = { matricule: null, name: c.officerName };
+        if (a?.isOwner) { officer = { matricule: c.officerMatricule ?? null, name: c.officerName }; officerDetected = false; }
       }
       out.push({
         _id: c._id,
@@ -74,6 +96,7 @@ export const casierAndCitations = query({
         motif: charges.map((x) => x.snapshot.name).join(", ") || "-",
         totalFine: c.totalFine,
         officer,
+        officerDetected,
         status: c.status,
         at: c.at,
       });

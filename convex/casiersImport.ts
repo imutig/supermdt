@@ -545,6 +545,7 @@ export const _upsertContraventions = internalMutation({
           const patch: Record<string, unknown> = {};
           if (officerId && prev.officerId === refs.owner._id) { patch.officerId = officerId; contravRelies++; officiersLies++; }
           if ((prev.officerName ?? undefined) !== (a.createdByNom || undefined)) patch.officerName = a.createdByNom || undefined;
+          if ((prev.officerMatricule ?? undefined) !== (a.createdByMatricule ?? undefined)) patch.officerMatricule = a.createdByMatricule ?? undefined;
           if (prev.finePaid !== a.finePaid) patch.finePaid = a.finePaid;
           if (prev.status !== status) patch.status = status;
           // Parité : montant majoré + références juridiques + id Nexus.
@@ -592,6 +593,7 @@ export const _upsertContraventions = internalMutation({
         citizenId: citizenId as Id<"citizens">, at: a.at,
         officerId: officerId || refs.owner._id,
         officerName: a.createdByNom || undefined,
+        officerMatricule: a.createdByMatricule ?? undefined,
         defconSnapshot: { name: "Import", fineMultiplier: 1, sensitiveFineMultiplier: 1 },
         totalFine: a.montant, status,
         finePaid: a.finePaid,

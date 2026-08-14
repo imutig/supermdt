@@ -22,7 +22,9 @@ async function officerViews(
         const l = await agentLabel(ctx, o.agentId);
         out.push({ name: l.name, matricule: l.matricule, linked: true });
       } else {
-        out.push({ name: o.name, matricule: null, linked: false });
+        // Non relié : on garde le matricule Nexus (chiffres) pour l'affichage.
+        const d = (o.matricule ?? "").replace(/\D/g, "");
+        out.push({ name: o.name, matricule: d ? Number(d) : null, linked: false });
       }
     }
     return out;

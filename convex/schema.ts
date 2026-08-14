@@ -1668,8 +1668,10 @@ export default defineSchema({
     deletedAt: v.optional(v.number()),
     deletedBy: v.optional(v.id("agents")),
     createdBy: v.id("agents"),
-    // Officier verbalisateur : nom écrit dans le rapport quand pas de compte relié.
+    // Officier verbalisateur : nom (+ matricule) écrit dans le rapport quand pas
+    // de compte relié (ancien agent, ou compte pas encore créé côté MDT).
     officerName: v.optional(v.string()),
+    officerMatricule: v.optional(v.number()),
     // Import depuis le MDT Nexus (/api/amendes) : idempotence + JSON brut.
     importRef: v.optional(v.string()),
     importRaw: v.optional(v.string()),

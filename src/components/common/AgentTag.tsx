@@ -21,11 +21,16 @@ export function AgentTag({
 }) {
   if (!agent) return <span className={className}>-</span>;
   if (agent.linked === false) {
+    const name = (agent.name || "").trim();
+    // Aucun officier réel (placeholder) : on n'affiche pas le badge « non relié ».
+    if (!name || name === "-") return <span className={className}>-</span>;
+    const mat = fmtMatricule(agent.matricule);
     return (
       <span className={`inline-flex items-center gap-1 ${className}`}>
-        <span className="italic text-muted">{agent.name || "?"}</span>
+        {mat && <span className="font-data italic text-muted">{mat}</span>}
+        <span className="italic text-muted">{name}</span>
         <span
-          title="Nom saisi dans le rapport, non relié à un agent du MDT"
+          title="Officier issu du Nexus, non relié à un compte du MDT (ancien agent ou compte pas encore créé)"
           className="rounded border border-white/10 bg-white/5 px-1 text-[10px] uppercase tracking-wide text-muted"
         >
           non relié
