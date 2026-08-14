@@ -1,13 +1,19 @@
 import { query } from "./_generated/server";
+import { v } from "convex/values";
 import { requireAgent, requirePermission, agentLabel, can } from "./rbac";
 
 // Historique combiné des entrées de casier ET des contraventions (§4),
 // cliquable vers les dossiers. Sert la page "Historique".
 export const casierAndCitations = query({
-  args: {},
-  handler: async (ctx) => {
+  args: { limit: v.optional(v.number()) },
+  handler: async (ctx, { limit }) => {
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "casier.view");
+
+    // Page d'historique dédiée : on montre bien plus qu'un simple fil.
+    // Plafond configurable (défaut 250) pour couvrir plusieurs semaines et
+    // pas seulement les tout derniers jours.
+    const cap = Math.min(Math.max(limit ?? 250, 20), 1000);
 
     const out: {
       _id: string;
@@ -22,13 +28,11 @@ export const casierAndCitations = query({
       at: number;
     }[] = [];
 
-    // Le fil n'affiche qu'une quarantaine de lignes : en charger 120 pour en
-    // jeter les deux tiers coûtait autant de requêtes de charges inutiles.
     // Tri par date d'arrestation (by_at) et non par _creationTime : les casiers
     // importés du Nexus sont tous créés au même instant, leur ordre d'insertion
-    // ne reflète pas la chronologie. On en prend un peu plus pour absorber les
-    // supprimés filtrés ensuite.
-    const entries = (await ctx.db.query("casierEntries").withIndex("by_at").order("desc").take(60)).filter((e) => !e.deletedAt).slice(0, 25);
+    // ne reflète pas la chronologie. On en charge un peu plus que le plafond
+    // pour absorber les fiches supprimées filtrées ensuite.
+    const entries = (await ctx.db.query("casierEntries").withIndex("by_at").order("desc").take(cap + 40)).filter((e) => !e.deletedAt).slice(0, cap);
     for (const e of entries) {
       const citizen = await ctx.db.get(e.citizenId);
       const charges = await ctx.db
@@ -49,7 +53,7 @@ export const casierAndCitations = query({
       });
     }
 
-    const citations = (await ctx.db.query("citations").withIndex("by_at").order("desc").take(60)).filter((c) => !c.deletedAt).slice(0, 25);
+    const citations = (await ctx.db.query("citations").withIndex("by_at").order("desc").take(cap + 40)).filter((c) => !c.deletedAt).slice(0, cap);
     for (const c of citations) {
       const citizen = await ctx.db.get(c.citizenId);
       const charges = await ctx.db
@@ -75,7 +79,7 @@ export const casierAndCitations = query({
       });
     }
 
-    return out.sort((a, b) => b.at - a.at).slice(0, 40);
+    return out.sort((a, b) => b.at - a.at).slice(0, cap);
   },
 });
 

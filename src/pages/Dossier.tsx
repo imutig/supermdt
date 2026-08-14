@@ -19,7 +19,6 @@ import { AgentTag } from "@/components/common/AgentTag";
 import { DeleteButton } from "@/components/common/DeleteButton";
 import { EmptyState } from "@/components/common/EmptyState";
 import { useCan } from "@/hooks/useCan";
-import { useToast } from "@/providers/toast";
 import { RichTextEditor } from "@/components/common/RichTextEditor";
 import { FEATURES, NEXUS_MSG } from "@/lib/features";
 
@@ -30,7 +29,6 @@ const TABS = [
   { key: "casier", label: "Casier" },
   { key: "mandats", label: "Mandats" },
   { key: "contraventions", label: "Contraventions" },
-  { key: "amendes", label: "Amendes" },
   { key: "plaintes", label: "Plaintes" },
   { key: "depositions", label: "Dépositions" },
   { key: "rapports", label: "Rapports" },
@@ -60,7 +58,6 @@ function ageFrom(dob?: string) {
 export function Dossier() {
   const { id } = useParams();
   const { openCalc, openMandat } = useApp();
-  const toast = useToast();
   const { can } = useCan();
   // Chaque action vise sa propre permission. Un contrôle unique fondé sur le
   // corps du grade ignorait la configuration : un Officier ne pouvait rien
@@ -86,7 +83,6 @@ export function Dossier() {
   const canExecuteMandat = can("mandats.execute");
   const canPlainte = can("plaintes.create") || can("plaintes.edit") || can("plaintes.delete");
   const canDeposition = can("depositions.create");
-  const canFinance = can("finances.manage");
   const navigate = useNavigate();
   const [tab, setTab] = useState<TabKey>("identite");
 
@@ -111,8 +107,6 @@ export function Dossier() {
   const rapports = useQuery(api.reports.byCitizen, citizenId && can("rapports.view") ? { citizenId } : "skip");
   const plaintes = useQuery(api.complaints.byCitizen, citizenId && can("plaintes.view") ? { citizenId } : "skip");
   const depositions = useQuery(api.depositions.byCitizen, citizenId && can("depositions.view") ? { citizenId } : "skip");
-  const finances = useQuery(api.finances.byCitizen, citizenId && can("casier.view") ? { citizenId } : "skip");
-  const setFinePaid = useMutation(api.finances.setPaid);
   const logView = useMutation(api.citizens.logView);
   const removeMandat = useMutation(api.mandats.remove);
   const executeMandat = useMutation(api.mandats.execute);
@@ -250,16 +244,6 @@ export function Dossier() {
                   style={{ background: "color-mix(in srgb, var(--danger) 14%, transparent)", color: "var(--danger)" }}
                 >
                   {activeMandatsCount} mandat{activeMandatsCount > 1 ? "s" : ""} actif{activeMandatsCount > 1 ? "s" : ""}
-                </span>
-              )}
-              {finances && finances.unpaidTotal > 0 && (
-                <span
-                  onClick={() => setTab("amendes")}
-                  className="cursor-pointer rounded-[6px] px-[10px] py-[4px] text-[11.5px] font-semibold"
-                  style={{ background: "color-mix(in srgb, var(--warning) 16%, transparent)", color: "var(--warning)" }}
-                  title="Voir les amendes"
-                >
-                  ${finances.unpaidTotal.toLocaleString("fr-FR")} impayé{finances.unpaidCount > 1 ? "s" : ""}
                 </span>
               )}
               {data.flags.map((f) => (
@@ -484,14 +468,6 @@ export function Dossier() {
                             DOJ requise
                           </span>
                         )}
-                        {e.totalFine > 0 && !e.finePaid && (
-                          <span
-                            className="rounded-[5px] px-[7px] py-[2px] text-[10.5px] font-semibold"
-                            style={{ background: "color-mix(in srgb, var(--danger) 14%, transparent)", color: "var(--danger)" }}
-                          >
-                            Amende impayée
-                          </span>
-                        )}
                         <div className="flex-1" />
                         <span className="font-data text-[11.5px] text-faint">
                           {new Date(e.at).toLocaleDateString("fr-FR")}
@@ -632,67 +608,6 @@ export function Dossier() {
                         </span>
                       </div>
                     ))}
-                  </>
-                )}
-              </div>
-            ) : tab === "amendes" ? (
-              <div>
-                {finances && finances.items.length > 0 && (
-                  <div className="grid grid-cols-3 gap-px border-b border-border bg-border">
-                    <div className="bg-surface px-4 py-[13px]">
-                      <div className="text-[10px] font-bold uppercase tracking-[0.08em] text-faint">Total dû</div>
-                      <div className="mt-1 font-data text-[18px] font-bold" style={{ color: finances.unpaidTotal > 0 ? "var(--danger)" : "var(--success)" }}>${finances.unpaidTotal.toLocaleString("fr-FR")}</div>
-                    </div>
-                    <div className="bg-surface px-4 py-[13px]">
-                      <div className="text-[10px] font-bold uppercase tracking-[0.08em] text-faint">Amendes impayées</div>
-                      <div className="mt-1 font-data text-[18px] font-bold">{finances.unpaidCount}</div>
-                    </div>
-                    <div className="bg-surface px-4 py-[13px]">
-                      <div className="text-[10px] font-bold uppercase tracking-[0.08em] text-faint">Plus ancienne impayée</div>
-                      <div className="mt-1 text-[13px] font-semibold">{finances.oldestUnpaid ? `${Math.floor((Date.now() - finances.oldestUnpaid) / 86400000)} j` : "-"}</div>
-                    </div>
-                  </div>
-                )}
-                {finances === undefined ? (
-                  <div className="flex min-h-[180px] items-center justify-center text-[13px] text-faint">Chargement…</div>
-                ) : finances.items.length === 0 ? (
-                  <EmptyState title="Aucune amende" message="Ce citoyen n'a aucune amende enregistrée." />
-                ) : (
-                  <>
-                    <div className="grid grid-cols-[1fr_.7fr_.8fr_.9fr_.7fr] gap-3 border-b border-border px-4 py-[11px] text-[10px] font-bold uppercase tracking-[0.08em] text-faint">
-                      <span>Motif</span><span>Montant</span><span>Origine</span><span>Impayée depuis</span><span>Statut</span>
-                    </div>
-                    {finances.items.map((f) => {
-                      const days = Math.floor((Date.now() - f.at) / 86400000);
-                      return (
-                        <div
-                          key={`${f.kind}-${f._id}`}
-                          onClick={() => f.kind === "casier" ? setCasierModalId(f._id as Id<"casierEntries">) : setContravModalId(f._id as Id<"citations">)}
-                          className="grid cursor-pointer grid-cols-[1fr_.7fr_.8fr_.9fr_.7fr] items-center gap-3 border-b border-border px-4 py-3 hover:bg-surface-2"
-                        >
-                          <div>
-                            <div className="truncate text-[13px] font-medium">{f.motif}</div>
-                            <div className="font-data text-[11px] text-faint">{new Date(f.at).toLocaleDateString("fr-FR")}</div>
-                          </div>
-                          <span className="font-data text-[13px] font-semibold">${f.amount.toLocaleString("fr-FR")}</span>
-                          <span className="text-[11.5px]"><span className="rounded-[5px] px-[7px] py-[2px] font-semibold" style={f.kind === "casier" ? { background: "color-mix(in srgb, var(--danger) 12%, transparent)", color: "var(--danger)" } : { background: "color-mix(in srgb, var(--warning) 14%, transparent)", color: "var(--warning)" }}>{f.kind === "casier" ? "Casier" : "Contrav."}</span></span>
-                          <span className="text-[12.5px] text-muted">{f.paid ? "-" : `${days} j`}</span>
-                          <span onClick={(e) => e.stopPropagation()}>
-                            {canFinance ? (
-                              <button
-                                onClick={() => toast.guard(setFinePaid({ kind: f.kind, id: f._id, paid: !f.paid }), "Action impossible")}
-                                className="rounded-[5px] border px-[9px] py-[3px] text-[11.5px] font-semibold"
-                                style={f.paid ? { background: "color-mix(in srgb, var(--success) 14%, transparent)", borderColor: "var(--success)", color: "var(--success)" } : { background: "var(--surface-2)", borderColor: "var(--border)", color: "var(--muted)" }}
-                              >
-                                {f.paid ? "Payée" : "Non payée"}
-                              </button>
-                            ) : (
-                              <span className="text-[12px] font-semibold" style={{ color: f.paid ? "var(--success)" : "var(--danger)" }}>{f.paid ? "Payée" : "Impayée"}</span>
-                            )}
-                          </span>
-                        </div>
-                      );
-                    })}
                   </>
                 )}
               </div>
