@@ -19,6 +19,7 @@ import { Calendrier } from "@/pages/Calendrier";
 import { Ceremonies } from "@/pages/Ceremonies";
 import { Plaintes } from "@/pages/Plaintes";
 import { Armes } from "@/pages/Armes";
+import { Calls911 } from "@/pages/Calls911";
 import { Vehicules } from "@/pages/Vehicules";
 import { Saisies } from "@/pages/Saisies";
 import { Dispatch } from "@/pages/Dispatch";
@@ -209,6 +210,7 @@ function Gated() {
         <Route path="/vehicules" element={<RequirePerm perm={["vehicules.view", "flotte.view"]}><Vehicules /></RequirePerm>} />
         <Route path="/saisies" element={<RequirePerm perm="saisies.view"><Saisies /></RequirePerm>} />
         <Route path="/dispatch" element={FEATURES.dispatch ? <RequirePerm perm="dispatch.view"><Dispatch /></RequirePerm> : <Navigate to="/" replace />} />
+        <Route path="/911" element={<RequirePerm perm={["n911.view", "n911.operate"]}><Calls911 /></RequirePerm>} />
         <Route path="/absences" element={<RequirePerm perm="absences.request"><Absences /></RequirePerm>} />
         <Route path="/discipline" element={<RequirePerm perm="discipline.view"><Discipline /></RequirePerm>} />
         <Route path="/services" element={FEATURES.service ? <RequirePerm perm="service.self"><Services /></RequirePerm> : <Navigate to="/" replace />} />

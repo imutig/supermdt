@@ -27,6 +27,7 @@ import {
   RefreshCw,
   ChevronDown,
   CircleUser,
+  PhoneCall,
   type LucideIcon,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -66,6 +67,7 @@ const GROUPS: NavGroup[] = [
     items: [
       { key: "profil", label: "Mon profil", icon: CircleUser, to: "/profil" },
       { key: "dispatch", label: "Dispatch", icon: Radio, to: "/dispatch", perm: "dispatch.view" },
+      { key: "calls911", label: "Appels 911", icon: PhoneCall, to: "/911", anyPerm: ["n911.view", "n911.operate"] },
       { key: "carte", label: "Carte", icon: MapIcon, to: "/carte" },
       { key: "calendrier", label: "Calendrier", icon: CalendarDays, to: "/calendrier", perm: "calendrier.view" },
     ],

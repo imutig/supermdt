@@ -1654,6 +1654,38 @@ export default defineSchema({
     .index("by_active", ["active"])
     .index("by_deleted", ["deletedAt"]),
 
+  // ============ FICHES 911 (opérateurs) ============
+  // Fiche d'appel remplie par un opérateur 911 : trace l'appel, puis est
+  // consultée (lecture seule) par les agents. Statut : en cours -> attribué à
+  // une patrouille -> résolu. Seul le créateur peut modifier.
+  calls911: defineTable({
+    number: v.number(), // n° séquentiel de fiche ("fiche numéro 2")
+    status: v.union(v.literal("EN_COURS"), v.literal("ATTRIBUE"), v.literal("RESOLU")),
+    // Informations de l'appel
+    callerName: v.optional(v.string()),
+    callerPhone: v.optional(v.string()),
+    location: v.optional(v.string()),
+    nature: v.optional(v.string()), // nature / motif de l'appel
+    priority: v.optional(v.string()), // P1 / P2 / P3
+    info: v.string(), // récit / informations recueillies
+    peopleInvolved: v.optional(v.string()),
+    weapons: v.optional(v.boolean()),
+    vehicle: v.optional(v.string()),
+    citizenId: v.optional(v.id("citizens")), // appelant relié à une fiche citoyen (optionnel)
+    // Attribution
+    assignedPatrol: v.optional(v.string()), // indicatif de la patrouille attribuée
+    createdBy: v.id("agents"),
+    at: v.number(),
+    updatedAt: v.optional(v.number()),
+    resolvedAt: v.optional(v.number()),
+    deletedAt: v.optional(v.number()),
+    deletedBy: v.optional(v.id("agents")),
+  })
+    .index("by_status", ["status"])
+    .index("by_number", ["number"])
+    .index("by_creator", ["createdBy"])
+    .index("by_deleted", ["deletedAt"]),
+
   // ============ CONTRAVENTIONS (§10.9) ============
   citations: defineTable({
     citizenId: v.id("citizens"),

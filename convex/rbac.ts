@@ -150,6 +150,9 @@ export const PERMISSION_SLUGS: { slug: string; domain: string; description: stri
   { slug: "saisies.view", domain: "saisies", description: "Consulter le registre des saisies" },
   { slug: "saisies.create", domain: "saisies", description: "Enregistrer une saisie" },
   { slug: "saisies.delete", domain: "saisies", description: "Supprimer une saisie" },
+  // Fiches 911 (opérateurs)
+  { slug: "n911.view", domain: "n911", description: "Consulter les fiches d'appel 911" },
+  { slug: "n911.operate", domain: "n911", description: "Opérateur 911 : créer et gérer ses fiches d'appel" },
 ];
 
 // Slugs attribués par défaut à l'État-Major (seed).
