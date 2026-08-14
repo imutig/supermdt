@@ -2064,7 +2064,10 @@ export default defineSchema({
     closedBy: v.optional(v.string()),
   })
     .index("by_channel", ["channelId"])
-    .index("by_owner", ["ownerId"]),
+    .index("by_owner", ["ownerId"])
+    // Les sondages du bot (rappels d'entretien, fermetures dues) ne concernent
+    // que les tickets OUVERTS : cet index évite de relire tous les tickets clos.
+    .index("by_status", ["status"]),
 
   // Archives des tickets de candidature (Police Academy) : conservées à la
   // fermeture définitive, consultables sur le portail LSPA. Journal complet +
