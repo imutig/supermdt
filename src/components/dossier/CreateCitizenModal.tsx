@@ -5,6 +5,7 @@ import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "@/lib/api";
 import { ImageUpload } from "@/components/common/ImageUpload";
 import { DateField } from "@/components/common/DateField";
+import { AliasesInput } from "@/components/dossier/AliasesInput";
 import { FEATURES } from "@/lib/features";
 import { useToast } from "@/providers/toast";
 
@@ -31,6 +32,7 @@ export function CreateCitizenModal({
   onCreated: (id: string) => void;
 }) {
   const create = useMutation(api.citizens.create);
+  const setAliases = useMutation(api.citizens.setAliases);
   const createSynced = useAction(api.nexusSync.createCitizen);
   const nexusStatus = useQuery(api.nexusSync.myStatus);
   const opts = useQuery(api.configEditors.options);
@@ -40,6 +42,7 @@ export function CreateCitizenModal({
   const canWrite = FEATURES.citizenWrite || syncActive;
   const [busy, setBusy] = useState(false);
   const [mugshotUrl, setMugshotUrl] = useState<string | null>(null);
+  const [aliases, setAliasesState] = useState<string[]>([]);
   const [f, setF] = useState<Form>({
     prenom: prenom0, nom: nom0, dateNaissance: "", sexe: "", nationalite: "",
     telephone: "", email: "", taille: "", poids: "", ethnie: "", cheveux: "", yeux: "",
@@ -64,6 +67,8 @@ export function CreateCitizenModal({
       // Synchro active : on écrit d'abord sur Nexus (en ton nom). Si ça échoue,
       // rien n'est créé côté SuperMDT (write-through strict).
       const id = syncActive ? await createSynced(fields) : await create(fields);
+      // Alias : champ local (non synchronisé Nexus), posé après création.
+      if (aliases.length) await setAliases({ id, aliases });
       toast.success(syncActive ? "Citoyen créé et synchronisé sur le NexusMDT." : "Citoyen créé.");
       onCreated(id);
     } catch (e) {
@@ -117,6 +122,7 @@ export function CreateCitizenModal({
               <L label="Nationalité"><input value={f.nationalite} onChange={set("nationalite")} className={FIELD} /></L>
               <L label="Téléphone"><input value={f.telephone} onChange={set("telephone")} className={`${FIELD} font-data`} /></L>
               <L label="Email (optionnel)"><input value={f.email} onChange={set("email")} className={FIELD} /></L>
+              <div className="col-span-2"><L label="Alias / AKA"><AliasesInput value={aliases} onChange={setAliasesState} /></L></div>
             </Group>
 
             <Group title="Description physique">

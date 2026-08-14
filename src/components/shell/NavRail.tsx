@@ -21,6 +21,7 @@ import {
   SlidersHorizontal,
   ShieldAlert,
   BarChart3,
+  Activity,
   Archive as ArchiveIcon,
   Shield,
   Award,
@@ -113,6 +114,7 @@ const GROUPS: NavGroup[] = [
     commandOnly: true,
     items: [
       { key: "statistiques", label: "Statistiques", icon: BarChart3, to: "/statistiques", perm: "stats.view" },
+      { key: "analytics", label: "Analytics", icon: Activity, to: "/analytics", perm: "audit.view" },
       { key: "config", label: "Configuration", icon: SlidersHorizontal, to: "/config", perm: "rbac.manage" },
       { key: "synchronisation", label: "Synchronisation", icon: RefreshCw, to: "/synchronisation", perm: "rbac.manage" },
       { key: "archive", label: "Archive", icon: ArchiveIcon, to: "/archive", perm: "archive.view" },

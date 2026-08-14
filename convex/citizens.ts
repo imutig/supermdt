@@ -4,10 +4,12 @@ import { requireAgent, requirePermission } from "./rbac";
 import { writeAudit } from "./lib/audit";
 import { touchStats } from "./stats";
 
-function buildSearchText(c: { nom: string; prenom: string; telephone?: string; email?: string; dateNaissance?: string }) {
+function buildSearchText(c: { nom: string; prenom: string; telephone?: string; email?: string; dateNaissance?: string; aliases?: string[] }) {
   // La date de naissance est indexée telle quelle ET sans séparateurs (01/08/1994 et 01081994).
+  // Les alias (AKA) sont inclus : rechercher un pseudo retombe sur la fiche.
   const dob = c.dateNaissance ?? "";
-  return `${c.prenom} ${c.nom} ${c.telephone ?? ""} ${c.email ?? ""} ${dob} ${dob.replace(/[^0-9]/g, "")}`
+  const aliases = (c.aliases ?? []).join(" ");
+  return `${c.prenom} ${c.nom} ${aliases} ${c.telephone ?? ""} ${c.email ?? ""} ${dob} ${dob.replace(/[^0-9]/g, "")}`
     .normalize("NFD")
     .replace(/[̀-ͯ]/g, "")
     .toLowerCase();
@@ -185,6 +187,7 @@ export const search = query({
 const CITIZEN_FIELDS = {
   nom: v.string(),
   prenom: v.string(),
+  aliases: v.optional(v.array(v.string())), // alias / AKA (recherchables)
   dateNaissance: v.optional(v.string()), // JJ/MM/AAAA
   sexe: v.optional(v.string()), // H / F
   nationalite: v.optional(v.string()),
@@ -259,6 +262,35 @@ export const setDeceased = mutation({
     await ctx.db.patch(id, { deceased });
     await writeAudit(ctx, agent, {
       action: deceased ? "citizen.deceased" : "citizen.revived",
+      resourceType: "citizen",
+      resourceId: id,
+      resourceLabel: `${c.prenom} ${c.nom}`,
+    });
+  },
+});
+
+// Alias / AKA — champ local (non synchronisé Nexus), indexé dans la recherche.
+export const setAliases = mutation({
+  args: { id: v.id("citizens"), aliases: v.array(v.string()) },
+  handler: async (ctx, { id, aliases }) => {
+    const agent = await requireAgent(ctx);
+    await requirePermission(ctx, agent, "citoyens.edit");
+    const c = await ctx.db.get(id);
+    if (!c) throw new ConvexError("Dossier introuvable.");
+    // Nettoyage : trim, non-vides, dédoublonnage insensible à la casse.
+    const seen = new Set<string>();
+    const clean: string[] = [];
+    for (const a of aliases) {
+      const t = a.trim();
+      if (!t) continue;
+      const k = t.toLowerCase();
+      if (seen.has(k)) continue;
+      seen.add(k);
+      clean.push(t);
+    }
+    await ctx.db.patch(id, { aliases: clean, searchText: buildSearchText({ ...c, aliases: clean }) });
+    await writeAudit(ctx, agent, {
+      action: "citizen.aliases",
       resourceType: "citizen",
       resourceId: id,
       resourceLabel: `${c.prenom} ${c.nom}`,

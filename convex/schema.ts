@@ -1072,6 +1072,7 @@ export default defineSchema({
     empreinte: v.optional(v.string()), // retiré de l'UI (item 8), conservé pour données existantes
     nom: v.string(),
     prenom: v.string(),
+    aliases: v.optional(v.array(v.string())), // alias / AKA (inclus dans searchText)
     dateNaissance: v.optional(v.string()), // JJ/MM/AAAA
     sexe: v.optional(v.string()),
     nationalite: v.optional(v.string()),

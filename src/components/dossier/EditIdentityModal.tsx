@@ -5,6 +5,7 @@ import { useAction, useMutation, useQuery } from "convex/react";
 import { api, type Doc } from "@/lib/api";
 import { ImageUpload } from "@/components/common/ImageUpload";
 import { DateField } from "@/components/common/DateField";
+import { AliasesInput } from "@/components/dossier/AliasesInput";
 import { useToast } from "@/providers/toast";
 
 const FIELD =
@@ -20,6 +21,7 @@ export function EditIdentityModal({
   onArchived: () => void;
 }) {
   const update = useMutation(api.citizens.update);
+  const setAliases = useMutation(api.citizens.setAliases);
   const updateSynced = useAction(api.nexusSync.updateCitizen);
   const nexusStatus = useQuery(api.nexusSync.myStatus);
   const syncActive = !!nexusStatus?.configured && nexusStatus.status === "OK";
@@ -30,6 +32,7 @@ export function EditIdentityModal({
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState(false);
   const [mugshotUrl, setMugshotUrl] = useState<string | null>(citizen.mugshotUrl ?? null);
+  const [aliases, setAliasesState] = useState<string[]>(citizen.aliases ?? []);
 
   const [f, setF] = useState({
     prenom: citizen.prenom, nom: citizen.nom,
@@ -61,6 +64,11 @@ export function EditIdentityModal({
       // Synchro active : édition d'abord sur Nexus, sinon en local.
       if (syncActive) await updateSynced({ citizenId: citizen._id, ...fields });
       else await update({ id: citizen._id, ...fields });
+      // Alias : champ local (non synchronisé Nexus), sauvegardé à part.
+      const prev = citizen.aliases ?? [];
+      if (aliases.length !== prev.length || aliases.some((a, i) => a !== prev[i])) {
+        await setAliases({ id: citizen._id, aliases });
+      }
       toast.success("Fiche mise à jour.");
       onClose();
     } catch (e) {
@@ -110,6 +118,7 @@ export function EditIdentityModal({
               <L label="Nationalité"><input value={f.nationalite} onChange={set("nationalite")} className={FIELD} /></L>
               <L label="Téléphone"><input value={f.telephone} onChange={set("telephone")} className={`${FIELD} font-data`} /></L>
               <L label="Email"><input value={f.email} onChange={set("email")} className={FIELD} /></L>
+              <div className="col-span-2"><L label="Alias / AKA"><AliasesInput value={aliases} onChange={setAliasesState} /></L></div>
             </Group>
             <Group title="Description physique">
               <L label="Taille"><input value={f.taille} onChange={set("taille")} className={FIELD} /></L>

@@ -531,6 +531,67 @@ export const casierByName = query({
   },
 });
 
+// Fiche synthétique d'un citoyen recherché par son nom (« prénom nom »).
+// Données personnelles : commande SENSIBLE (voir SENSITIVE_COMMANDS).
+export const citizenByName = query({
+  args: { secret: v.string(), query: v.string() },
+  handler: async (ctx, { secret, query }) => {
+    assertBot(secret);
+    const needle = nrm(query);
+    if (!needle) return null;
+    // Même approche que casierByName : match exact prénom/nom (ou inversé),
+    // sinon repli sur une correspondance partielle. On ignore les fiches
+    // archivées/fusionnées (status !== ACTIVE) et soft-supprimées.
+    const citizens = (await ctx.db.query("citizens").collect()).filter((x) => !x.deletedAt && x.status === "ACTIVE");
+    const c =
+      citizens.find((x) => nrm(`${x.prenom} ${x.nom}`) === needle || nrm(`${x.nom} ${x.prenom}`) === needle) ??
+      citizens.find((x) => nrm(`${x.prenom} ${x.nom}`).includes(needle));
+    if (!c) return null;
+
+    // Casiers vivants (rapports/dossiers non annulés, non supprimés).
+    const casierEntries = await ctx.db.query("casierEntries").withIndex("by_citizen", (q) => q.eq("citizenId", c._id)).collect();
+    const casierCount = casierEntries.filter((e) => !e.deletedAt && e.status !== "ANNULEE").length;
+
+    // Contraventions vivantes.
+    const citations = await ctx.db.query("citations").withIndex("by_citizen", (q) => q.eq("citizenId", c._id)).collect();
+    const citationCount = citations.filter((e) => !e.deletedAt && e.status !== "ANNULEE").length;
+
+    // Véhicules dont le citoyen est propriétaire.
+    const vehicles = await ctx.db.query("vehicles").withIndex("by_owner", (q) => q.eq("ownerId", c._id)).collect();
+    const vehicleCount = vehicles.filter((veh) => !veh.deletedAt).length;
+
+    // « Recherché » : dérivé des mandats actifs marksWanted (cf. citizens.isWanted).
+    let wanted = false;
+    const now = Date.now();
+    for (const m of await ctx.db.query("mandats").withIndex("by_citizen", (q) => q.eq("citizenId", c._id)).collect()) {
+      if (m.deletedAt || m.status !== "ACTIF") continue;
+      if (m.expiresAt != null && m.expiresAt < now) continue;
+      const type = await ctx.db.get(m.typeId);
+      if (type?.marksWanted) { wanted = true; break; }
+    }
+
+    // Avis de recherche (BOLO) actif visant ce citoyen, le cas échéant.
+    const bolos = (await ctx.db.query("bolos").withIndex("by_active", (q) => q.eq("active", true)).collect())
+      .filter((b) => b.citizenId === c._id);
+    const bolo = bolos.length > 0 ? { title: bolos[0].title, danger: bolos.some((b) => b.danger === true) } : null;
+
+    return {
+      prenom: c.prenom,
+      nom: c.nom,
+      dateNaissance: c.dateNaissance ?? null,
+      sexe: c.sexe ?? null,
+      telephone: c.telephone ?? null,
+      nationalite: c.nationalite ?? null,
+      deceased: c.deceased === true,
+      wanted,
+      casierCount,
+      citationCount,
+      vehicleCount,
+      bolo,
+    };
+  },
+});
+
 // ============ Écritures self-service ============
 
 // Demande d'absence posée depuis Discord pour un agent nommé. Statut EN_ATTENTE,
@@ -568,7 +629,7 @@ export const requestAbsence = mutation({
 // Contrôle d'accès d'une commande Discord. Ouvert par défaut (aucune config).
 // Commandes exposant des données personnelles ou créant des enregistrements :
 // fail-closed « agents liés uniquement » par défaut (voir commandAllowed).
-const SENSITIVE_COMMANDS = new Set(["plaque", "casier", "absence"]);
+const SENSITIVE_COMMANDS = new Set(["plaque", "casier", "citoyen", "absence"]);
 
 // Sinon autorisé si : owner ; OU un des rôles du membre est listé ; OU l'agent
 // lié a un grade >= au grade minimum configuré.

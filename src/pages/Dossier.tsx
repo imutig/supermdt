@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery } from "convex/react";
 import { api, type Id } from "@/lib/api";
@@ -14,6 +14,7 @@ import { FlagsManager } from "@/components/dossier/FlagsManager";
 import { CasierExtract } from "@/components/dossier/CasierExtract";
 import { DepositionModal } from "@/components/dossier/DepositionModal";
 import { FamilyTab } from "@/components/dossier/FamilyTab";
+import { CitizenTimeline, type TimelineEvent } from "@/components/dossier/CitizenTimeline";
 import { ComplaintModal } from "@/pages/Plaintes";
 import { AgentTag } from "@/components/common/AgentTag";
 import { DeleteButton } from "@/components/common/DeleteButton";
@@ -24,6 +25,7 @@ import { FEATURES, NEXUS_MSG } from "@/lib/features";
 
 const TABS = [
   { key: "identite", label: "Identité" },
+  { key: "timeline", label: "Timeline" },
   { key: "famille", label: "Famille" },
   { key: "vehicules", label: "Véhicules" },
   { key: "casier", label: "Casier" },
@@ -116,6 +118,64 @@ export function Dossier() {
   useEffect(() => {
     if (citizenId) logView({ id: citizenId }).catch(() => {});
   }, [citizenId, logView]);
+
+  // Timeline unifiée : agrège les sources déjà chargées pour les onglets.
+  const timelineEvents = useMemo<TimelineEvent[]>(() => {
+    const ev: TimelineEvent[] = [];
+    for (const e of casier ?? []) {
+      ev.push({
+        id: e._id, at: e.at, kind: "casier",
+        title: `${e.chargeCount} charge${e.chargeCount > 1 ? "s" : ""} · ${e.arrestType === "DOSSIER" ? "Dossier" : "Rapport"} d'arrestation`,
+        sub: e.charges.slice(0, 4).join(" · ") + (e.charges.length > 4 ? ` +${e.charges.length - 4}` : ""),
+        badge: e.status === "ANNULEE" ? "Annulée" : undefined,
+        muted: e.status === "ANNULEE",
+        onClick: () => { setTab("casier"); setCasierModalId(e._id); },
+      });
+    }
+    for (const cv of contraventions ?? []) {
+      ev.push({
+        id: cv._id, at: cv.at, kind: "contravention",
+        title: cv.motif,
+        sub: `$${cv.totalFine.toLocaleString("fr-FR")}`,
+        badge: cv.status === "ANNULEE" ? "Annulée" : undefined,
+        muted: cv.status === "ANNULEE",
+        onClick: () => { setTab("contraventions"); setContravModalId(cv._id); },
+      });
+    }
+    for (const m of mandats ?? []) {
+      ev.push({
+        id: m._id, at: m.issuedAt, kind: "mandat",
+        title: m.motif, sub: m.typeName,
+        badge: m.effectiveActive ? "Actif" : undefined,
+        muted: !m.effectiveActive,
+        onClick: () => setTab("mandats"),
+      });
+    }
+    for (const r of rapports ?? []) {
+      ev.push({
+        id: r._id, at: r.at, kind: "rapport",
+        title: r.title, sub: r.typeName,
+        badge: r.status.charAt(0) + r.status.slice(1).toLowerCase(),
+        onClick: () => navigate(`/rapport/${r._id}`),
+      });
+    }
+    for (const d of depositions ?? []) {
+      ev.push({
+        id: d._id, at: d.at, kind: "deposition",
+        title: d.title || d.linkLabel, sub: d.linkLabel,
+        onClick: () => setTab("depositions"),
+      });
+    }
+    for (const p of [...(plaintes?.filed ?? []), ...(plaintes?.against ?? [])]) {
+      ev.push({
+        id: p._id, at: p.at, kind: "plainte",
+        title: p.motif, sub: `${p.plaignant ?? "?"} → ${p.defendant ?? "?"}`,
+        badge: p.status,
+        onClick: () => setComplaintModal({ id: p._id as Id<"complaints"> }),
+      });
+    }
+    return ev;
+  }, [casier, contraventions, mandats, rapports, depositions, plaintes, navigate]);
 
   if (data === undefined) {
     return <div className="p-[22px_26px] text-[13px] text-muted">Chargement du dossier…</div>;
@@ -245,6 +305,14 @@ export function Dossier() {
                 {c.dateNaissance ?? "-"}
                 {age != null ? ` · ${age} ans` : ""} · {c.nationalite ?? "-"}
               </div>
+              {(c.aliases?.length ?? 0) > 0 && (
+                <div className="mt-[6px] flex flex-wrap items-center gap-[6px]">
+                  <span className="text-[10.5px] font-bold uppercase tracking-[0.08em] text-faint">Alias</span>
+                  {c.aliases!.map((a) => (
+                    <span key={a} className="rounded-full border border-border bg-surface-2 px-[9px] py-[2px] text-[11.5px] text-text">{a}</span>
+                  ))}
+                </div>
+              )}
             </div>
             <div className="flex-1" />
             <div className="flex flex-wrap gap-[7px]">
@@ -371,6 +439,8 @@ export function Dossier() {
                   {citizenId && <FlagsManager citizenId={citizenId} flags={data.flags} canManage={can("citoyens.flag") && cw} />}
                 </div>
               </div>
+            ) : tab === "timeline" ? (
+              <CitizenTimeline events={timelineEvents} />
             ) : tab === "famille" ? (
               citizenId ? <FamilyTab citizenId={citizenId} canEdit={can("citoyens.edit") && cw} onOpen={(id) => navigate(`/citoyen/${id}`)} /> : null
             ) : tab === "vehicules" ? (

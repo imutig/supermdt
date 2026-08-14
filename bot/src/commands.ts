@@ -5,7 +5,7 @@ import {
 import { env } from "./env.js";
 import { mdt } from "./convex.js";
 import {
-  vehicleEmbed, vehicleNotFoundEmbed, casierEmbed, absenceEmbed, absentsListEmbed, errorEmbed,
+  vehicleEmbed, vehicleNotFoundEmbed, casierEmbed, citizenEmbed, citizenNotFoundEmbed, absenceEmbed, absentsListEmbed, errorEmbed,
 } from "./embeds.js";
 import { openHub, sendTemplate, renderTemplatesCmd, startTemplateBuilder, integrer, validation, parisWallToEpoch } from "./tickets.js";
 
@@ -19,6 +19,10 @@ export const commands = [
     .setName("casier")
     .setDescription("Extrait de casier d'un citoyen")
     .addStringOption((o) => o.setName("citoyen").setDescription("Prénom et nom du citoyen").setRequired(true)),
+  new SlashCommandBuilder()
+    .setName("citoyen")
+    .setDescription("Fiche d'un citoyen enregistré")
+    .addStringOption((o) => o.setName("nom").setDescription("Prénom et nom du citoyen").setRequired(true)),
   new SlashCommandBuilder()
     .setName("absence")
     .setDescription("Déclarer une absence (la tienne, ou celle d'un agent)")
@@ -79,7 +83,7 @@ export async function handleCommand(interaction: ChatInputCommandInteraction) {
     // Ouvert par défaut ; refus explicite sinon (les gardes internes des tickets
     // restent en plus). Si le MDT est injoignable, on échoue OUVERT pour les
     // commandes anodines mais FERMÉ pour les commandes sensibles (PII / création).
-    const SENSITIVE = new Set(["plaque", "casier", "absence"]);
+    const SENSITIVE = new Set(["plaque", "casier", "citoyen", "absence"]);
     const roleIds = interaction.inCachedGuild() ? [...interaction.member.roles.cache.keys()] : [];
     const allowed = await mdt.commandAllowed(interaction.commandName, interaction.user.id, roleIds)
       .catch(() => !SENSITIVE.has(interaction.commandName));
@@ -108,6 +112,13 @@ export async function handleCommand(interaction: ChatInputCommandInteraction) {
       await interaction.deferReply();
       const q = interaction.options.getString("citoyen", true);
       await interaction.editReply({ embeds: [casierEmbed(await mdt.casierByName(q), q)] });
+      return;
+    }
+    if (interaction.commandName === "citoyen") {
+      await interaction.deferReply();
+      const q = interaction.options.getString("nom", true);
+      const cit = await mdt.citizenByName(q);
+      await interaction.editReply({ embeds: [cit ? citizenEmbed(cit) : citizenNotFoundEmbed(q)] });
       return;
     }
     if (interaction.commandName === "absence") {

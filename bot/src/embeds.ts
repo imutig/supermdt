@@ -1,7 +1,7 @@
 import { EmbedBuilder } from "discord.js";
 import { baseEmbed, BRAND, ago, fmtDuration, badge } from "./theme.js";
 import { dailyPresenceChart, weeklyHoursChart } from "./charts.js";
-import type { OnDutyAgent, DayStats, Overview, WeeklyHours, VehicleInfo, CasierInfo } from "./convex.js";
+import type { OnDutyAgent, DayStats, Overview, WeeklyHours, VehicleInfo, CasierInfo, CitizenInfo } from "./convex.js";
 
 // Embed de présence : agents actuellement en service, groupés et signés.
 export function presenceEmbed(agents: OnDutyAgent[]): EmbedBuilder {
@@ -158,6 +158,42 @@ export function casierEmbed(c: CasierInfo, query: string): EmbedBuilder {
     if (c.count > c.rows.length) e.setFooter({ text: `LSPD · Station 13 · ${c.count - c.rows.length} entrée(s) supplémentaire(s) non affichée(s)` });
   }
   return e;
+}
+
+// Fiche synthétique d'un citoyen (identité + compteurs + signalements).
+export function citizenEmbed(c: CitizenInfo): EmbedBuilder {
+  const identite = [
+    c.dateNaissance ? `Né(e) le ${c.dateNaissance}` : null,
+    c.sexe ? (c.sexe === "H" ? "Homme" : c.sexe === "F" ? "Femme" : c.sexe) : null,
+    c.nationalite,
+    c.telephone ? `☎️ ${c.telephone}` : null,
+  ].filter(Boolean).join(" · ");
+
+  // Couleur d'alerte si recherché, avis de recherche, ou décédé.
+  const alert = c.wanted || !!c.bolo;
+  const e = baseEmbed(alert ? BRAND.danger : c.deceased ? BRAND.muted : BRAND.info)
+    .setTitle(`👤 ${c.prenom} ${c.nom}`)
+    .setDescription(identite || "*Identité non renseignée.*");
+
+  const badges: string[] = [];
+  if (c.wanted) badges.push("🔴 **RECHERCHÉ**");
+  if (c.deceased) badges.push("🕯️ **DÉCÉDÉ(E)**");
+  if (badges.length) e.addFields({ name: "​", value: badges.join(" · ") });
+
+  e.addFields(
+    { name: "📁 Casiers", value: `**${c.casierCount}**`, inline: true },
+    { name: "🎫 Contraventions", value: `**${c.citationCount}**`, inline: true },
+    { name: "🚗 Véhicules", value: `**${c.vehicleCount}**`, inline: true },
+  );
+
+  if (c.bolo) {
+    e.addFields({ name: `📌 Avis de recherche${c.bolo.danger ? " ⚠️" : ""}`, value: c.bolo.title.slice(0, 1000) });
+  }
+  return e;
+}
+
+export function citizenNotFoundEmbed(query: string): EmbedBuilder {
+  return baseEmbed(BRAND.warning).setTitle("Citoyen introuvable").setDescription(`Aucun citoyen ne correspond à **${query}**.`);
 }
 
 // Confirmation d'une demande d'absence.

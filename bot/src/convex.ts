@@ -68,6 +68,14 @@ type CasierInfo =
   | { found: false }
   | { found: true; name: string; dateNaissance: string | null; sexe: string | null; nationalite: string | null; totalFine: number; totalJailSeconds: number; count: number; rows: { at: number; type: string; charges: string; fine: number; jailSeconds: number }[] };
 
+type CitizenInfo = {
+  prenom: string; nom: string;
+  dateNaissance: string | null; sexe: string | null; telephone: string | null; nationalite: string | null;
+  deceased: boolean; wanted: boolean;
+  casierCount: number; citationCount: number; vehicleCount: number;
+  bolo: { title: string; danger: boolean } | null;
+};
+
 type WeeklyHours =
   | { found: false }
   | { found: true; name: string; matricule: number | null; grade: string; totalMinutes: number; perDay: number[] };
@@ -110,6 +118,7 @@ export const mdt = {
 
   vehicleByPlate: (plaque: string) => client.query(anyApi.bot.vehicleByPlate, { secret: env.botSecret, plaque }) as Promise<VehicleInfo | null>,
   casierByName: (query: string) => client.query(anyApi.bot.casierByName, { secret: env.botSecret, query }) as Promise<CasierInfo>,
+  citizenByName: (query: string) => client.query(anyApi.bot.citizenByName, { secret: env.botSecret, query }) as Promise<CitizenInfo | null>,
   requestAbsence: (discordId: string, query: string | undefined, from: number, to: number, reason: string, discordName: string) =>
     client.mutation(anyApi.bot.requestAbsence, { secret: env.botSecret, discordId, query, from, to, reason, discordName }) as Promise<{ ok: boolean; reason?: string; name?: string }>,
   absentDiscordIds: () => client.query(anyApi.bot.absentDiscordIds, { secret: env.botSecret }) as Promise<string[]>,
@@ -199,4 +208,4 @@ export type TicketConfig = {
 export type TicketTemplate = { _id: string; name: string; pingOwner: boolean; embed: RichEmbed };
 export type TicketOwner = { ownerId: string; ownerName: string; prenom: string; nom: string; status: string; integrationStatus: IntegStatus | null; interviewAt: number | null; interviewById: string | null; interviewPresence: "CONFIRMED" | "DECLINED" | null; interviewMsgId: string | null; voteMsgId: string | null };
 
-export type { OnDutyAgent, DayStats, Overview, BotConfig, WeeklyHours, RollcallState, VehicleInfo, CasierInfo };
+export type { OnDutyAgent, DayStats, Overview, BotConfig, WeeklyHours, RollcallState, VehicleInfo, CasierInfo, CitizenInfo };
