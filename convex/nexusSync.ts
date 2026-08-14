@@ -246,6 +246,24 @@ export const _credFor = internalQuery({
     return row ? { email: row.email, secretEnc: row.secretEnc, tokenCache: row.tokenCache ?? null, tokenExpiry: row.tokenExpiry ?? null } : null;
   },
 });
+// Premier compte Nexus lié et VALIDE (pour la synchro auto : lecture seule, un
+// compte lié quelconque suffit à obtenir un token). null si aucun.
+export const _anyLinkedCred = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    const row = (await ctx.db.query("nexusCredentials").collect()).find((r) => r.status === "OK");
+    return row ? { agentId: row.agentId, email: row.email, secretEnc: row.secretEnc, tokenCache: row.tokenCache ?? null, tokenExpiry: row.tokenExpiry ?? null } : null;
+  },
+});
+export const anyLinkedToken = internalAction({
+  args: {},
+  handler: async (ctx): Promise<string | null> => {
+    const cred = await ctx.runQuery(internal.nexusSync._anyLinkedCred, {});
+    if (!cred) return null;
+    return await getToken(ctx, cred.agentId, cred);
+  },
+});
+
 // Token Nexus d'un agent lié (pour que le bouton « Synchroniser » réutilise le
 // compte de l'admin plutôt qu'un compte de service séparé). null si non lié.
 export const tokenFor = internalAction({

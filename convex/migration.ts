@@ -272,12 +272,17 @@ async function vizuLogin(): Promise<string> {
 export const autoSync = internalAction({
   args: { retry: v.optional(v.number()) },
   handler: async (ctx, { retry }): Promise<unknown> => {
-    if (!process.env.VIZU_EMAIL || !process.env.VIZU_PASSWORD) {
-      console.log("[autoSync] identifiants vizu non configurés : synchro ignorée.");
-      return { skipped: true };
-    }
     try {
-      const token = await vizuLogin();
+      // Priorité à un compte Nexus LIÉ et valide (write-through) : son mot de
+      // passe est à jour dans le coffre. Sinon le compte de service VIZU_*.
+      let token: string | null = await ctx.runAction(internal.nexusSync.anyLinkedToken, {});
+      if (!token) {
+        if (!process.env.VIZU_EMAIL || !process.env.VIZU_PASSWORD) {
+          console.log("[autoSync] aucun compte lié et VIZU_EMAIL/PASSWORD absents : synchro ignorée.");
+          return { skipped: true };
+        }
+        token = await vizuLogin();
+      }
       const rep = await ctx.runAction(internal.migration.sync, { token });
       console.log("[autoSync] synchro terminée :", JSON.stringify(rep));
       return rep;
@@ -318,6 +323,8 @@ export const runSync = action({
     // le compte de service VIZU_EMAIL/PASSWORD.
     const agentId = await ctx.runQuery(api.nexusSync.myAgentId, {});
     let token: string | null = agentId ? await ctx.runAction(internal.nexusSync.tokenFor, { agentId }) : null;
+    // Sinon n'importe quel compte lié valide, puis le compte de service.
+    if (!token) token = await ctx.runAction(internal.nexusSync.anyLinkedToken, {});
     if (!token) {
       if (!process.env.VIZU_EMAIL || !process.env.VIZU_PASSWORD)
         throw new Error("Aucun identifiant Nexus : lie ton compte dans Mon profil (Utiliser SuperMDT comme MDT principal), ou configure VIZU_EMAIL / VIZU_PASSWORD.");
