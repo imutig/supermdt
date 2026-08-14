@@ -79,7 +79,7 @@ export const mdt = {
   weeklyHours: (query: string) => client.query(anyApi.bot.agentWeeklyHours, { secret: env.botSecret, query }) as Promise<WeeklyHours>,
 
   rollcallToday: (date: string) => client.query(anyApi.bot.rollcallToday, { secret: env.botSecret, date }) as Promise<RollcallRef | null>,
-  rollcallPrevious: (date: string) => client.query(anyApi.bot.rollcallPrevious, { secret: env.botSecret, date }) as Promise<{ channelId: string; messageId: string } | null>,
+  rollcallPrevious: (date: string) => client.query(anyApi.bot.rollcallPrevious, { secret: env.botSecret, date }) as Promise<{ channelId: string; messageId: string; reminderMsgIds: string[] } | null>,
   rollcallReserve: (date: string, channelId: string, endsAt: number, ceremony?: boolean, ceremonyTime?: string | null, displayTime?: string | null) =>
     client.mutation(anyApi.bot.rollcallReserve, { secret: env.botSecret, date, channelId, endsAt, ceremony, ceremonyTime: ceremonyTime ?? undefined, displayTime: displayTime ?? undefined }) as Promise<{ _id: string; created: boolean }>,
   rollcallSetMessage: (rollcallId: string, messageId: string) =>
@@ -90,6 +90,7 @@ export const mdt = {
   rollcallClose: (rollcallId: string) => client.mutation(anyApi.bot.rollcallClose, { secret: env.botSecret, rollcallId }) as Promise<void>,
   rollcallVoters: (rollcallId: string) => client.query(anyApi.bot.rollcallVoters, { secret: env.botSecret, rollcallId }) as Promise<string[]>,
   rollcallMarkReminders: (rollcallId: string, slots: string[]) => client.mutation(anyApi.bot.rollcallMarkReminders, { secret: env.botSecret, rollcallId, slots }) as Promise<void>,
+  rollcallAddReminderMsgs: (rollcallId: string, messageIds: string[]) => client.mutation(anyApi.bot.rollcallAddReminderMsgs, { secret: env.botSecret, rollcallId, messageIds }) as Promise<void>,
 
   syncDiscordMembers: (members: { discordId: string; username: string; displayName: string; roleIds?: string[] }[]) => client.mutation(anyApi.bot.syncDiscordMembers, { secret: env.botSecret, members }) as Promise<{ count: number }>,
   accountDMQueue: () => client.query(anyApi.bot.accountDMQueue, { secret: env.botSecret }) as Promise<{ code: string; discordId: string; baseUrl: string }[]>,

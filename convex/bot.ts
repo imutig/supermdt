@@ -173,6 +173,17 @@ export const rollcallMarkReminders = mutation({
   },
 });
 
+// Mémorise les messages de relance envoyés, pour les supprimer avec le roll call.
+export const rollcallAddReminderMsgs = mutation({
+  args: { secret: v.string(), rollcallId: v.id("rollcalls"), messageIds: v.array(v.string()) },
+  handler: async (ctx, { secret, rollcallId, messageIds }) => {
+    assertBot(secret);
+    const rc = await ctx.db.get(rollcallId);
+    if (!rc) return;
+    await ctx.db.patch(rollcallId, { reminderMsgIds: [...(rc.reminderMsgIds ?? []), ...messageIds] });
+  },
+});
+
 // Roll call précédent (message Discord à supprimer quand le nouveau est posté ;
 // les présences restent en base). On garde l'historique, on ne retire que le
 // message le plus récent qui précède la date donnée.
@@ -183,7 +194,7 @@ export const rollcallPrevious = query({
     const prev = (await ctx.db.query("rollcalls").collect())
       .filter((r) => r.date < date)
       .sort((a, b) => b.date.localeCompare(a.date))[0];
-    return prev ? { channelId: prev.channelId, messageId: prev.messageId } : null;
+    return prev ? { channelId: prev.channelId, messageId: prev.messageId, reminderMsgIds: prev.reminderMsgIds ?? [] } : null;
   },
 });
 

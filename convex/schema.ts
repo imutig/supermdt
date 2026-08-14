@@ -1617,6 +1617,7 @@ export default defineSchema({
     startTime: v.optional(v.string()), // (déprécié) ancienne heure d'ouverture affichée
     displayTime: v.optional(v.string()), // heure de présence affichée (= clôture des votes)
     remindersSent: v.optional(v.array(v.string())), // créneaux de relance déjà envoyés ("HH:MM")
+    reminderMsgIds: v.optional(v.array(v.string())), // messages de relance (à supprimer avec le roll call)
   }).index("by_date", ["date"]),
 
   rollcallVotes: defineTable({

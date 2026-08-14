@@ -119,11 +119,17 @@ export async function openRollcall(client: Client, opts: {
   const ping = { content: `<@&${LSPD_ROLE}>`, allowedMentions: { roles: [LSPD_ROLE] } };
   const sent = await chan.send({ ...ping, embeds: [rollcallEmbed(state)], components: buttons(res._id) });
   await mdt.rollcallSetMessage(res._id, sent.id).catch(() => {});
-  // Supprime le message du roll call précédent (l'historique reste en base).
-  if (prev && prev.messageId && prev.messageId !== sent.id) {
+  // Supprime le message du roll call précédent ET ses messages de relance
+  // (l'historique des présences reste en base).
+  if (prev && prev.channelId) {
     const prevChan = await channel(client, prev.channelId);
-    const prevMsg = prevChan ? await prevChan.messages.fetch(prev.messageId).catch(() => null) : null;
-    await prevMsg?.delete().catch(() => {});
+    if (prevChan) {
+      const toDelete = [prev.messageId, ...(prev.reminderMsgIds ?? [])].filter((id) => id && id !== sent.id);
+      for (const id of toDelete) {
+        const msg = await prevChan.messages.fetch(id).catch(() => null);
+        await msg?.delete().catch(() => {});
+      }
+    }
   }
   console.log(`[rollcall] roll call ouvert (${date}).`);
 }
@@ -147,11 +153,15 @@ export async function remindNonVoters(client: Client, rc: { _id: string; channel
   if (!chan) return;
   const link = `https://discord.com/channels/${guild.id}/${rc.channelId}/${rc.messageId}`;
   // Discord limite le nombre de mentions par message : on découpe par 90.
+  const sentIds: string[] = [];
   for (let i = 0; i < nonVoters.length; i += 90) {
     const chunk = nonVoters.slice(i, i + 90);
     const head = i === 0 ? `📣 **Roll call** - vous n'avez pas encore indiqué votre présence. Merci de voter : ${link}\n` : "";
-    await chan.send({ content: `${head}${chunk.map((id) => `<@${id}>`).join(" ")}`, allowedMentions: { users: chunk } }).catch(() => {});
+    const msg = await chan.send({ content: `${head}${chunk.map((id) => `<@${id}>`).join(" ")}`, allowedMentions: { users: chunk } }).catch(() => null);
+    if (msg) sentIds.push(msg.id);
   }
+  // Mémorise ces messages pour les supprimer avec le roll call du lendemain.
+  if (sentIds.length) await mdt.rollcallAddReminderMsgs(rc._id, sentIds).catch(() => {});
   console.log(`[rollcall] relance envoyée à ${nonVoters.length} non-votant(s).`);
 }
 
