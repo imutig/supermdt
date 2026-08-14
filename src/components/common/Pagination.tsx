@@ -8,9 +8,9 @@ export function Pagination({ page, pages, total, onPage, label = "éléments" }:
     <div className="flex items-center gap-3 border-t border-border px-4 py-[10px]">
       {total != null && <span className="text-[11.5px] text-faint">{total} {label}</span>}
       <div className="flex-1" />
-      <button disabled={page <= 1} onClick={() => onPage(page - 1)} className={btn}><ChevronLeft className="h-4 w-4" /></button>
+      <button aria-label="Page précédente" disabled={page <= 1} onClick={() => onPage(page - 1)} className={btn}><ChevronLeft className="h-4 w-4" /></button>
       <span className="font-data text-[12px] text-muted">Page {page} / {pages}</span>
-      <button disabled={page >= pages} onClick={() => onPage(page + 1)} className={btn}><ChevronRight className="h-4 w-4" /></button>
+      <button aria-label="Page suivante" disabled={page >= pages} onClick={() => onPage(page + 1)} className={btn}><ChevronRight className="h-4 w-4" /></button>
     </div>
   );
 }

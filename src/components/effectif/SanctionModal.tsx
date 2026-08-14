@@ -17,7 +17,7 @@ export function SanctionModal({
   initialAgentId?: Id<"agents">;
   onClose: () => void;
 }) {
-  const roster = useQuery(api.agents.roster);
+  const roster = useQuery(api.agents.pickerList);
   const sanctionTypes = useQuery(api.disciplines.sanctionTypes);
   const create = useMutation(api.disciplines.create);
   const toast = useToast();

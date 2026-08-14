@@ -149,7 +149,7 @@ function CeremonyDrawer({ ceremonyId, onClose }: { ceremonyId: Id<"ceremonies">;
   const toast = useToast();
   const { can } = useCan();
   const c = useQuery(api.ceremonies.get, { ceremonyId });
-  const roster = useQuery(api.agents.roster, can("effectif.view") ? {} : "skip") ?? [];
+  const roster = useQuery(api.agents.pickerList, can("effectif.view") ? {} : "skip") ?? [];
   const options = useQuery(api.config.options);
 
   const addReminder = useMutation(api.ceremonies.addReminder);

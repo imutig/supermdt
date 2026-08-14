@@ -1317,7 +1317,10 @@ export default defineSchema({
     .index("by_import", ["importRef"])
     // Tri par date d'arrestation (les imports arrivent tous en même temps, donc
     // _creationTime ne reflète plus la chronologie réelle).
-    .index("by_at", ["at"]),
+    .index("by_at", ["at"])
+    // Casiers VIVANTS triés par date : q.eq("deletedAt", undefined).order("desc").
+    // Évite de lire les casiers archivés dans les listes chaudes (accueil, historique).
+    .index("by_live_at", ["deletedAt", "at"]),
 
   casierCharges: defineTable({
     entryId: v.id("casierEntries"),
@@ -1729,7 +1732,9 @@ export default defineSchema({
     .index("by_vehicle", ["vehicleId"])
     .index("by_deleted", ["deletedAt"])
     .index("by_import", ["importRef"])
-    .index("by_at", ["at"]),
+    .index("by_at", ["at"])
+    // Contraventions VIVANTES triées par date (listes chaudes sans lignes archivées).
+    .index("by_live_at", ["deletedAt", "at"]),
 
   citationCharges: defineTable({
     citationId: v.id("citations"),

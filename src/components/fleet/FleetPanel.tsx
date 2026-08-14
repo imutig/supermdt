@@ -49,6 +49,9 @@ export function FleetPanel() {
       </div>
 
       <div className="overflow-hidden rounded-card border border-border bg-surface">
+        {/* Scroll horizontal sur petit écran : en-tête et lignes partagent le même min-w. */}
+        <div className="overflow-x-auto">
+        <div className="min-w-[640px]">
         <div className="grid grid-cols-[56px_.7fr_1.4fr_1fr_.9fr] gap-3 border-b border-border px-4 py-[11px] text-[10px] font-bold uppercase tracking-[0.08em] text-faint">
           <span />
           <span>N° toit</span><span>Modèle</span><span>Plaque</span><span>Indicatif</span>
@@ -80,6 +83,8 @@ export function FleetPanel() {
             </div>
           ))
         )}
+        </div>
+        </div>
       </div>
 
       {modal && <FleetVehicleModal id={modal.id} canEdit={canEdit || (modal.id === undefined && canCreate)} onClose={() => setModal(null)} />}

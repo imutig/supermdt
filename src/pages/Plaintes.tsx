@@ -69,7 +69,7 @@ export function ComplaintModal({
   const existing = useQuery(api.complaints.get, complaintId ? { id: complaintId } : "skip");
   const { can } = useCan();
   const opts = useQuery(api.configEditors.options);
-  const roster = useQuery(api.agents.roster, can("effectif.view") ? {} : "skip") ?? [];
+  const roster = useQuery(api.agents.pickerList, can("effectif.view") ? {} : "skip") ?? [];
   const createSynced = useAction(api.nexusSync.createComplaint);
   const updateSynced = useAction(api.nexusSync.updateComplaint);
   const delSynced = useAction(api.nexusSync.deleteRecord);

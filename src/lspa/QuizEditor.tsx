@@ -9,6 +9,7 @@ import { api } from "@/lib/api";
 import type { Id } from "convex/_generated/dataModel";
 import { useCan } from "@/hooks/useCan";
 import { useToast } from "@/providers/toast";
+import { useDialogs } from "@/components/detective/dialogs";
 import { Button } from "@/components/common/Button";
 import { EmptyState } from "@/components/common/EmptyState";
 import { SkeletonRows } from "@/components/common/Skeleton";
@@ -68,6 +69,7 @@ export function QuizEditor() {
   const moveQuestion = useMutation(api.quiz.moveQuestion);
   const navigate = useNavigate();
   const toast = useToast();
+  const { confirm } = useDialogs();
   const { can } = useCan();
   const canEdit = can("lspa.quiz.edit");
   const canManage = can("lspa.session.manage");
@@ -367,7 +369,15 @@ export function QuizEditor() {
                     <IconBtn
                       title="Supprimer"
                       danger
-                      onClick={async () => { await toast.guard(removeQuestion({ questionId: q._id }), "Suppression impossible"); }}
+                      onClick={async () => {
+                        if (!(await confirm({
+                          title: "Supprimer la question",
+                          message: `La question ${i + 1} et ses réponses seront supprimées définitivement.`,
+                          confirmLabel: "Supprimer",
+                          danger: true,
+                        }))) return;
+                        await toast.guard(removeQuestion({ questionId: q._id }), "Suppression impossible");
+                      }}
                     >
                       <Trash2 className="h-[14px] w-[14px]" />
                     </IconBtn>

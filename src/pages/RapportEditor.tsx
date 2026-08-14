@@ -27,7 +27,7 @@ export function RapportEditor() {
   const navigate = useNavigate();
   const reportId = id as Id<"reports">;
   const report = useQuery(api.reports.get, { id: reportId });
-  const roster = useQuery(api.agents.roster);
+  const roster = useQuery(api.agents.pickerList);
   const { can } = useCan();
   const toast = useToast();
 

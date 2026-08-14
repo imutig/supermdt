@@ -14,7 +14,7 @@ export function DepositionModal({ citizenId, onClose }: { citizenId: Id<"citizen
   const createSynced = useAction(api.nexusSync.createDeposition);
   const nexusStatus = useQuery(api.nexusSync.myStatus);
   const syncActive = !!nexusStatus?.configured && nexusStatus.status === "OK";
-  const roster = useQuery(api.agents.roster, can("effectif.view") ? {} : "skip") ?? [];
+  const roster = useQuery(api.agents.pickerList, can("effectif.view") ? {} : "skip") ?? [];
   const toast = useToast();
   const [objet, setObjet] = useState("");
   const [agentIds, setAgentIds] = useState<string[]>([]);

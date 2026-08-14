@@ -23,6 +23,9 @@ export function TripsPanel() {
   return (
     <>
       <div className="overflow-hidden rounded-card border border-border bg-surface">
+        {/* Scroll horizontal sur petit écran : en-tête et lignes partagent le même min-w. */}
+        <div className="overflow-x-auto">
+        <div className="min-w-[720px]">
         <div className="grid grid-cols-[.7fr_1.6fr_1.3fr_1.4fr_.8fr] gap-3 border-b border-border px-4 py-[11px] text-[10px] font-bold uppercase tracking-[0.08em] text-faint">
           <span>Indicatif</span><span>Véhicule</span><span>Sorti par</span><span>Période</span><span>Agents</span>
         </div>
@@ -52,6 +55,8 @@ export function TripsPanel() {
             </div>
           ))
         )}
+        </div>
+        </div>
       </div>
 
       {sel && <TripDetailModal tripId={sel as Id<"fleetTrips">} onClose={() => setSel(null)} />}

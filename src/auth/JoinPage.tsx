@@ -204,7 +204,7 @@ export function JoinPage() {
         )}
 
         {err && (
-          <div className="mt-4 flex items-center gap-[9px] rounded-[9px] px-[13px] py-[10px] text-[12.5px]" style={{ background: "rgba(220,38,38,.09)", border: "1px solid rgba(220,38,38,.3)", color: "#c02828" }}>
+          <div role="alert" className="mt-4 flex items-center gap-[9px] rounded-[9px] px-[13px] py-[10px] text-[12.5px]" style={{ background: "rgba(220,38,38,.09)", border: "1px solid rgba(220,38,38,.3)", color: "#c02828" }}>
             <span className="flex-shrink-0">⚠</span>
             {err}
           </div>

@@ -72,6 +72,9 @@ function SanctionsTable({ canManage }: { canManage: boolean }) {
 
   return (
     <div className="overflow-hidden rounded-card border border-border bg-surface">
+      {/* Scroll horizontal sur petit écran : en-tête et lignes partagent le même min-w. */}
+      <div className="overflow-x-auto">
+      <div className="min-w-[820px]">
       <div className="grid grid-cols-[.6fr_1.1fr_1.5fr_1.1fr_.9fr_.8fr_auto] gap-3 border-b border-border px-4 py-[11px] text-[10px] font-bold uppercase tracking-[0.08em] text-faint">
         <span>Réf.</span><span>Agent</span><span>Motif</span><span>Sanction</span><span>Par</span><span>Date</span><span></span>
       </div>
@@ -122,6 +125,8 @@ function SanctionsTable({ canManage }: { canManage: boolean }) {
         </Fragment>
         );
       })}
+      </div>
+      </div>
     </div>
   );
 }
@@ -134,6 +139,9 @@ function ConvocationsTable({ canManage }: { canManage: boolean }) {
 
   return (
     <div className="overflow-hidden rounded-card border border-border bg-surface">
+      {/* Scroll horizontal sur petit écran : en-tête et lignes partagent le même min-w. */}
+      <div className="overflow-x-auto">
+      <div className="min-w-[760px]">
       <div className="grid grid-cols-[.6fr_1.2fr_1.8fr_1.1fr_.9fr_auto] gap-3 border-b border-border px-4 py-[11px] text-[10px] font-bold uppercase tracking-[0.08em] text-faint">
         <span>Réf.</span><span>Convoqué</span><span>Motif</span><span>Convocation</span><span>Par</span><span></span>
       </div>
@@ -161,6 +169,8 @@ function ConvocationsTable({ canManage }: { canManage: boolean }) {
           </span>
         </div>
       ))}
+      </div>
+      </div>
     </div>
   );
 }

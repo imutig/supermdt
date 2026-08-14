@@ -35,7 +35,19 @@ export function Board({ divisionId, caseId, canWrite }: { divisionId: Id<"divisi
   const removeEdge = useMutation(api.detectiveBoard.removeEdge);
   const toast = useToast();
   const go = useDetectiveNav();
-  const { prompt } = useDialogs();
+  const { prompt, confirm } = useDialogs();
+
+  // Retrait d'un lien : action immédiate, on confirme avant.
+  async function handleRemoveEdge(id: Id<"dbBoardEdges">) {
+    if (!(await confirm({ title: "Supprimer le lien", message: "Ce lien entre deux nœuds sera retiré du tableau.", confirmLabel: "Supprimer", danger: true }))) return;
+    await toast.guard(removeEdge({ id }), "Action impossible");
+  }
+
+  // Retrait d'un nœud : action immédiate, on confirme avant.
+  async function handleRemoveNode(id: Id<"dbBoardNodes">, name: string) {
+    if (!(await confirm({ title: "Retirer le nœud", message: `Le nœud « ${name} » et ses liens seront retirés du tableau.`, confirmLabel: "Retirer", danger: true }))) return;
+    await toast.guard(removeNode({ id }), "Action impossible");
+  }
   const wrapRef = useRef<HTMLDivElement>(null);
   const [view, setView] = useState({ x: 0, y: 0, z: 1 });
   const [drag, setDrag] = useState<{ id: Id<"dbBoardNodes">; x: number; y: number } | null>(null);
@@ -156,7 +168,7 @@ export function Board({ divisionId, caseId, canWrite }: { divisionId: Id<"divisi
             const a = nodes.find((n) => n._id === e.fromNodeId); const b = nodes.find((n) => n._id === e.toNodeId);
             if (!a || !b) return null;
             const ca = center(a); const cb = center(b);
-            return <button key={`del-${e._id}`} onPointerDown={(ev) => ev.stopPropagation()} onClick={() => toast.guard(removeEdge({ id: e._id }), "Action impossible")}
+            return <button key={`del-${e._id}`} onPointerDown={(ev) => ev.stopPropagation()} onClick={() => void handleRemoveEdge(e._id)}
               className="absolute z-10 flex h-4 w-4 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-black/60 text-white hover:bg-danger"
               style={{ left: (ca.x + cb.x) / 2, top: (ca.y + cb.y) / 2 + 8 }} title="Supprimer le lien"><X className="h-2.5 w-2.5" /></button>;
           })}
@@ -175,7 +187,7 @@ export function Board({ divisionId, caseId, canWrite }: { divisionId: Id<"divisi
                     {canWrite && (
                       <span className="flex items-center gap-1" data-noderole="action">
                         <button onClick={() => setLinkFrom(n._id)} title="Relier" className="text-[#7a6a55] hover:text-[#241a12]"><Link2 className="h-3.5 w-3.5" /></button>
-                        <button onClick={() => toast.guard(removeNode({ id: n._id }), "Action impossible")} title="Retirer" className="text-[#7a6a55] hover:text-danger"><Trash2 className="h-3.5 w-3.5" /></button>
+                        <button onClick={() => void handleRemoveNode(n._id, n.title || n.label || "ce nœud")} title="Retirer" className="text-[#7a6a55] hover:text-danger"><Trash2 className="h-3.5 w-3.5" /></button>
                       </span>
                     )}
                   </div>

@@ -13,7 +13,7 @@ import { SkeletonRows } from "@/components/common/Skeleton";
 export function DiscordAccounts({ onClose }: { onClose: () => void }) {
   const toast = useToast();
   const members = useQuery(api.discordLink.list);
-  const roster = useQuery(api.agents.roster);
+  const roster = useQuery(api.agents.pickerList);
   const sendAccount = useMutation(api.discordLink.sendAccount);
   const linkExisting = useMutation(api.discordLink.linkExisting);
   const unlink = useMutation(api.discordLink.unlink);

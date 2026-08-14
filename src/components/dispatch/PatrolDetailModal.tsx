@@ -3,6 +3,7 @@ import { X, Search, Plus, Trash2 } from "lucide-react";
 import { useMutation, useQuery } from "convex/react";
 import { api, type Id } from "@/lib/api";
 import { useToast } from "@/providers/toast";
+import { useDialogs } from "@/components/detective/dialogs";
 import { AgentTag, fmtMatricule } from "@/components/common/AgentTag";
 import { PATROL_COLORS, patrolBg } from "@/lib/patrolColors";
 import { StatusFieldsModal, FIELD_LABELS, type PatrolFields } from "@/components/dispatch/statusFields";
@@ -23,7 +24,7 @@ export function PatrolDetailModal({ patrol, statuses, sectors, canEdit, isMember
   canJoin: boolean;
   onClose: () => void;
 }) {
-  const roster = useQuery(api.agents.roster) ?? [];
+  const roster = useQuery(api.agents.pickerList) ?? [];
   const update = useMutation(api.dispatch.update);
   const addMember = useMutation(api.dispatch.addMember);
   const removeMember = useMutation(api.dispatch.removeMember);
@@ -32,6 +33,19 @@ export function PatrolDetailModal({ patrol, statuses, sectors, canEdit, isMember
   const dissolve = useMutation(api.dispatch.dissolve);
   const join = useMutation(api.dispatch.join);
   const toast = useToast();
+  const { confirm } = useDialogs();
+
+  // Dissolution : action irréversible, on confirme avant de fermer la patrouille.
+  async function handleDissolve() {
+    if (!(await confirm({
+      title: "Dissoudre la patrouille",
+      message: `La patrouille ${patrol.label} sera fermée et ses membres libérés. Cette action est irréversible.`,
+      confirmLabel: "Dissoudre",
+      danger: true,
+    }))) return;
+    const r = await toast.guard(dissolve({ patrolId: patrol._id as Id<"patrols"> }), "Action impossible");
+    if (r !== undefined) onClose();
+  }
 
   const [num, setNum] = useState(patrol.vehicleNumber);
   const [detail, setDetailText] = useState(patrol.detail ?? "");
@@ -162,7 +176,7 @@ export function PatrolDetailModal({ patrol, statuses, sectors, canEdit, isMember
                 </div>
               </div>
 
-              <button onClick={() => toast.guard(dissolve({ patrolId: patrol._id as Id<"patrols"> }), "Action impossible").then((r) => r !== undefined && onClose())} className="flex w-full items-center justify-center gap-[7px] rounded-sm border border-border bg-surface-2 px-4 py-[9px] text-[12.5px] font-semibold text-danger hover:border-danger">
+              <button onClick={() => void handleDissolve()} className="flex w-full items-center justify-center gap-[7px] rounded-sm border border-border bg-surface-2 px-4 py-[9px] text-[12.5px] font-semibold text-danger hover:border-danger">
                 <Trash2 className="h-[14px] w-[14px]" /> Dissoudre la patrouille
               </button>
             </>

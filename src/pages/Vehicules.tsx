@@ -57,6 +57,9 @@ export function Vehicules() {
       <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Rechercher (plaque, modèle, couleur, type)…" className="mb-[14px] h-10 w-full max-w-[440px] rounded-sm border border-border bg-surface-2 px-3 text-[13px] outline-none focus:border-accent" />
 
       <div className="overflow-hidden rounded-card border border-border bg-surface">
+        {/* Scroll horizontal sur petit écran : en-tête et lignes partagent le même min-w. */}
+        <div className="overflow-x-auto">
+        <div className="min-w-[860px]">
         <div className="grid grid-cols-[56px_1fr_1.2fr_.9fr_.9fr_1.2fr_1fr] gap-3 border-b border-border px-4 py-[11px] text-[10px] font-bold uppercase tracking-[0.08em] text-faint">
           <span />
           <span>Plaque</span><span>Modèle</span><span>Couleur</span><span>Type</span><span>Propriétaire</span><span>Signalements</span>
@@ -82,6 +85,8 @@ export function Vehicules() {
             </span>
           </div>
         ))}
+        </div>
+        </div>
         {!searching && <LoadMore status={paged.status} onLoadMore={() => paged.loadMore(20)} count={vehicles.length} label="véhicules" />}
       </div>
       </>

@@ -107,7 +107,7 @@ export function Onboarding() {
           {hint}
         </div>
 
-        {err && <div className="mt-3 text-[12.5px] text-danger">{err}</div>}
+        {err && <div role="alert" className="mt-3 text-[12.5px] text-danger">{err}</div>}
 
         <button
           type="submit"

@@ -348,6 +348,40 @@ export const roster = query({
   },
 });
 
+// Version LÉGÈRE du roster pour les sélecteurs d'agent (recherche par nom /
+// matricule). N'inclut PAS les jointures coûteuses divisions / qualifications /
+// services / absences : seul le petit référentiel des grades est chargé. À
+// utiliser partout où l'on ne fait que CHOISIR un agent (sanction, convocation,
+// déposition, patrouille, rapport…), et réserver `roster` à l'écran Effectif.
+export const pickerList = query({
+  args: {},
+  handler: async (ctx) => {
+    const viewer = await requireAgent(ctx);
+    await requirePermission(ctx, viewer, "effectif.view");
+    const agents = [
+      ...await ctx.db.query("agents").withIndex("by_status", (q) => q.eq("status", "ACTIVE")).collect(),
+      ...await ctx.db.query("agents").withIndex("by_status", (q) => q.eq("status", "SUSPENDED")).collect(),
+    ];
+    const gradeById = new Map((await ctx.db.query("grades").collect()).map((g) => [g._id as string, g]));
+    const out = [];
+    for (const a of agents) {
+      if (a.isOwner) continue;
+      const grade = a.gradeId ? gradeById.get(a.gradeId as string) ?? null : null;
+      if (grade?.external) continue;
+      out.push({
+        _id: a._id,
+        nomRP: a.nomRP,
+        prenomRP: a.prenomRP,
+        matricule: a.matricule,
+        grade: grade?.name ?? null,
+        gradePosition: grade?.position ?? -1,
+        suspended: a.status === "SUSPENDED",
+      });
+    }
+    return out.sort((a, b) => b.gradePosition - a.gradePosition);
+  },
+});
+
 // Photo de profil de l'agent courant (item 7).
 // Préférences d'affichage de l'agent courant. Chacun ne règle que les siennes.
 export const setUiPrefs = mutation({

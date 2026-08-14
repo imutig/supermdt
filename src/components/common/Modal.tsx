@@ -35,6 +35,8 @@ export function Modal({
       style={{ background: "var(--scrim)", backdropFilter: "blur(6px)", animation: "mdtFade .15s ease" }}
     >
       <div
+        role="dialog"
+        aria-modal="true"
         onClick={(e) => e.stopPropagation()}
         className="flex h-full flex-col border-l border-border-strong bg-elev shadow-[-24px_0_70px_rgba(0,0,0,.3)]"
         style={{ width, maxWidth: "96vw", animation: "mdtSlide .26s cubic-bezier(.16,1,.3,1)" }}
@@ -44,6 +46,7 @@ export function Modal({
           <h2 className="m-0 flex-1 text-[15px] font-bold">{title}</h2>
           <button
             onClick={onClose}
+            aria-label="Fermer"
             className="flex h-[28px] w-[28px] items-center justify-center rounded-sm border border-border bg-surface-2 text-muted hover:border-border-strong"
           >
             <X className="h-4 w-4" />

@@ -79,11 +79,10 @@ export const casierAndCitations = query({
     }[] = [];
     const digits = (s?: string) => { const d = (s ?? "").replace(/\D/g, ""); return d ? Number(d) : null; };
 
-    // Tri par date d'arrestation (by_at) et non par _creationTime : les casiers
-    // importés du Nexus sont tous créés au même instant, leur ordre d'insertion
-    // ne reflète pas la chronologie. On en charge un peu plus que le plafond
-    // pour absorber les fiches supprimées filtrées ensuite.
-    const entries = (await ctx.db.query("casierEntries").withIndex("by_at").order("desc").take(cap + 40)).filter((e) => !e.deletedAt).slice(0, cap);
+    // Tri par date d'arrestation (et non _creationTime : les casiers importés du
+    // Nexus arrivent tous au même instant). L'index VIVANT `by_live_at` exclut
+    // directement les casiers archivés de la lecture (moins d'I/O, pas de sur-lecture).
+    const entries = await ctx.db.query("casierEntries").withIndex("by_live_at", (q) => q.eq("deletedAt", undefined)).order("desc").take(cap);
     for (const e of entries) {
       const citizen = await ctx.db.get(e.citizenId);
       const charges = await ctx.db
@@ -120,7 +119,7 @@ export const casierAndCitations = query({
       });
     }
 
-    const citations = (await ctx.db.query("citations").withIndex("by_at").order("desc").take(cap + 40)).filter((c) => !c.deletedAt).slice(0, cap);
+    const citations = await ctx.db.query("citations").withIndex("by_live_at", (q) => q.eq("deletedAt", undefined)).order("desc").take(cap);
     for (const c of citations) {
       const citizen = await ctx.db.get(c.citizenId);
       const charges = await ctx.db
@@ -174,9 +173,8 @@ export const home = query({
     }[] = [];
 
     if (canCasier) {
-      // Tri par date d'arrestation (voir casierAndCitations) : les imports Nexus
-      // partagent le même _creationTime, seul `at` donne le bon ordre.
-      const entries = (await ctx.db.query("casierEntries").withIndex("by_at").order("desc").take(40)).filter((e) => !e.deletedAt).slice(0, 12);
+      // Tri par date d'arrestation (voir casierAndCitations) via l'index vivant.
+      const entries = await ctx.db.query("casierEntries").withIndex("by_live_at", (q) => q.eq("deletedAt", undefined)).order("desc").take(12);
       for (const e of entries) {
         const citizen = await ctx.db.get(e.citizenId);
         const charges = await ctx.db
@@ -196,7 +194,7 @@ export const home = query({
       }
     }
     if (canContraventions) {
-      const cits = (await ctx.db.query("citations").withIndex("by_at").order("desc").take(40)).filter((c) => !c.deletedAt).slice(0, 12);
+      const cits = await ctx.db.query("citations").withIndex("by_live_at", (q) => q.eq("deletedAt", undefined)).order("desc").take(12);
       for (const c of cits) {
         const citizen = await ctx.db.get(c.citizenId);
         const charges = await ctx.db

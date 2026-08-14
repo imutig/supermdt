@@ -76,7 +76,12 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <Ctx.Provider value={api}>
       {children}
-      <div className="pointer-events-none fixed bottom-4 right-4 z-[100] flex w-[360px] max-w-[92vw] flex-col gap-2">
+      <div
+        role="status"
+        aria-live="polite"
+        aria-atomic="false"
+        className="pointer-events-none fixed bottom-4 right-4 z-[100] flex w-[360px] max-w-[92vw] flex-col gap-2"
+      >
         {toasts.map((t) => {
           const { color, Icon } = STYLES[t.kind];
           return (
@@ -89,6 +94,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               <span className="flex-1 text-[13px] leading-[1.4]">{t.message}</span>
               <button
                 onClick={() => remove(t.id)}
+                aria-label="Fermer la notification"
                 className="flex-shrink-0 text-faint hover:text-text"
               >
                 <X className="h-[15px] w-[15px]" />

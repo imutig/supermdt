@@ -55,6 +55,10 @@ export function Contraventions() {
       </div>
 
       <div className="overflow-hidden rounded-card border border-border bg-surface">
+        {/* Scroll horizontal sur petit écran : les colonnes gardent leur largeur mini,
+            en-tête et lignes partagent le même min-w pour rester alignés. */}
+        <div className="overflow-x-auto">
+        <div className="min-w-[760px]">
         <div className="grid grid-cols-[.7fr_1.2fr_1.8fr_.8fr_1fr_.9fr] gap-3 border-b border-border px-4 py-[11px] text-[10px] font-bold uppercase tracking-[0.08em] text-faint">
           <span>Type</span>
           <span>Citoyen</span>
@@ -92,6 +96,8 @@ export function Contraventions() {
             <span className="font-data text-[11.5px] text-muted">{new Date(r.at).toLocaleDateString("fr-FR")}</span>
           </div>
         ))}
+        </div>
+        </div>
         <Pagination page={safePage} pages={pages} total={rows.length} onPage={setPage} label="entrées" />
       </div>
 

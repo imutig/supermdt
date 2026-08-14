@@ -13,7 +13,7 @@ type Member = { _id: string; name: string; matricule: number | null };
 // Création de patrouille : on indique les agents présents (le créateur n'est PAS ajouté d'office).
 // L'indicateur (L/A/T/X) se déduit de l'effectif ; une spécialité peut le forcer.
 export function PatrolCreateModal({ onClose }: { onClose: () => void }) {
-  const roster = useQuery(api.agents.roster) ?? [];
+  const roster = useQuery(api.agents.pickerList) ?? [];
   const callsigns = useQuery(api.dispatch.callsigns) ?? [];
   const opts = useQuery(api.dispatch.statusOptions);
   const create = useMutation(api.dispatch.create);

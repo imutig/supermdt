@@ -65,7 +65,7 @@ export const TacticalMap = forwardRef<TacticalMapHandle, {
 
   // Dialogue de saisie in-app (jamais de prompt() natif). Réf pour l'utiliser
   // dans les écouteurs Leaflet enregistrés une seule fois.
-  const { prompt: askDialog } = useDialogs();
+  const { prompt: askDialog, confirm } = useDialogs();
   const promptRef = useRef(askDialog);
   useEffect(() => { promptRef.current = askDialog; }, [askDialog]);
   useEffect(() => { colorRef.current = color; }, [color]);
@@ -245,8 +245,16 @@ export const TacticalMap = forwardRef<TacticalMapHandle, {
     else if (t === "free") { freehand.current.on = true; map.dragging.disable(); map.getContainer().style.cursor = "crosshair"; }
   }
 
-  function clearAll() {
+  async function clearAll() {
     const map = mapRef.current; if (!map) return;
+    if (drawn.current.length === 0) return;
+    // Effacement global : irréversible, on confirme avant de tout retirer.
+    if (!(await confirm({
+      title: "Tout effacer",
+      message: "Toutes les formes tracées sur la carte seront supprimées. Cette action est irréversible.",
+      confirmLabel: "Tout effacer",
+      danger: true,
+    }))) return;
     drawn.current.forEach((l) => map.removeLayer(l)); drawn.current = [];
   }
 
@@ -265,7 +273,7 @@ export const TacticalMap = forwardRef<TacticalMapHandle, {
           <div className="mx-[2px] h-[22px] w-px bg-border" />
           <Btn active={tool === "edit"} onClick={() => pick("edit")} icon={<Pencil className="h-[15px] w-[15px]" />} label="Éditer" />
           <Btn active={tool === "remove"} onClick={() => pick("remove")} icon={<Trash2 className="h-[15px] w-[15px]" />} label="Supprimer" />
-          <button onClick={clearAll} className="flex items-center gap-[6px] rounded-sm border border-border bg-surface-2 px-[10px] py-[7px] text-[12px] font-semibold text-muted hover:border-danger hover:text-danger">
+          <button onClick={() => void clearAll()} className="flex items-center gap-[6px] rounded-sm border border-border bg-surface-2 px-[10px] py-[7px] text-[12px] font-semibold text-muted hover:border-danger hover:text-danger">
             <Eraser className="h-[15px] w-[15px]" /> Effacer tout
           </button>
           <label className="ml-auto flex items-center gap-[7px] text-[12px] font-semibold text-muted">

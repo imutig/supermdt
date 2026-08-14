@@ -141,10 +141,12 @@ export const rangeStats = query({
     const fetchInRange = async <T extends { at: number; deletedAt?: number; status?: string }>(
       table: "casierEntries" | "citations",
     ): Promise<T[]> => {
+      // Index VIVANT [deletedAt, at] : on ne lit que les fiches non archivées de
+      // la plage (les archivées ne pèsent plus sur l'I/O de cette query réactive).
       const rows = lo == null
-        ? await ctx.db.query(table).withIndex("by_at", (q) => q.lte("at", hi)).collect()
-        : await ctx.db.query(table).withIndex("by_at", (q) => q.gte("at", lo).lte("at", hi)).collect();
-      return (rows as unknown as T[]).filter((r) => !r.deletedAt && r.status !== "ANNULEE");
+        ? await ctx.db.query(table).withIndex("by_live_at", (q) => q.eq("deletedAt", undefined).lte("at", hi)).collect()
+        : await ctx.db.query(table).withIndex("by_live_at", (q) => q.eq("deletedAt", undefined).gte("at", lo).lte("at", hi)).collect();
+      return (rows as unknown as T[]).filter((r) => r.status !== "ANNULEE");
     };
     const casiers = await fetchInRange<{ _id: import("./_generated/dataModel").Id<"casierEntries">; at: number; deletedAt?: number; status?: string; officerIds: import("./_generated/dataModel").Id<"agents">[]; createdBy: import("./_generated/dataModel").Id<"agents"> }>("casierEntries");
     const citations = await fetchInRange<{ _id: import("./_generated/dataModel").Id<"citations">; at: number; deletedAt?: number; status?: string; officerId: import("./_generated/dataModel").Id<"agents"> }>("citations");
@@ -171,15 +173,16 @@ export const rangeStats = query({
       return list;
     };
 
-    // ---- Top infractions sur la plage (jointure charges -> entrée) ----
-    const casIds = new Set(casiers.map((e) => e._id as string));
-    const citIds = new Set(citations.map((c) => c._id as string));
+    // ---- Top infractions sur la plage ----
+    // On charge les charges des SEULES entrées de la plage (via by_entry /
+    // by_citation), au lieu de scanner toute la table (ce qui frôlait la limite
+    // Convex de 16k docs et lisait des charges hors plage inutilement).
     const chargeTally = new Map<string, number>();
-    for (const ch of await ctx.db.query("casierCharges").take(20000)) {
-      if (casIds.has(ch.entryId as string)) bump(chargeTally, ch.snapshot.name);
+    for (const e of casiers) {
+      for (const ch of await ctx.db.query("casierCharges").withIndex("by_entry", (q) => q.eq("entryId", e._id)).collect()) bump(chargeTally, ch.snapshot.name);
     }
-    for (const ch of await ctx.db.query("citationCharges").take(20000)) {
-      if (citIds.has(ch.citationId as string)) bump(chargeTally, ch.snapshot.name);
+    for (const c of citations) {
+      for (const ch of await ctx.db.query("citationCharges").withIndex("by_citation", (q) => q.eq("citationId", c._id)).collect()) bump(chargeTally, ch.snapshot.name);
     }
     const topCharges = [...chargeTally.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([name, count]) => ({ name, count }));
 
@@ -230,9 +233,9 @@ export const myRangeStats = query({
 
     const inRange = async (table: "casierEntries" | "citations") => {
       const rows = lo == null
-        ? await ctx.db.query(table).withIndex("by_at", (q) => q.lte("at", hi)).collect()
-        : await ctx.db.query(table).withIndex("by_at", (q) => q.gte("at", lo).lte("at", hi)).collect();
-      return (rows as any[]).filter((r) => !r.deletedAt && r.status !== "ANNULEE");
+        ? await ctx.db.query(table).withIndex("by_live_at", (q) => q.eq("deletedAt", undefined).lte("at", hi)).collect()
+        : await ctx.db.query(table).withIndex("by_live_at", (q) => q.eq("deletedAt", undefined).gte("at", lo).lte("at", hi)).collect();
+      return (rows as any[]).filter((r) => r.status !== "ANNULEE");
     };
     // Le compte owner sert de REPLI aux officiers d'import non reliés : on écarte
     // donc les fiches qui ne lui reviennent que par ce repli (createdBy owner sans
@@ -254,13 +257,12 @@ export const myRangeStats = query({
     const totalFine = casiers.reduce((s: number, e: any) => s + (e.totalFine ?? 0), 0)
       + citations.reduce((s: number, c: any) => s + (c.totalFine ?? 0), 0);
 
-    // Top infractions (charges de mes casiers + contraventions).
-    const casIds = new Set(casiers.map((e: any) => e._id as string));
-    const citIds = new Set(citations.map((c: any) => c._id as string));
+    // Top infractions : charges des SEULES fiches de l'agent (borné, pas de scan
+    // global de toutes les charges).
     const chargeTally = new Map<string, number>();
     const bump = (m: Map<string, number>, k: string) => m.set(k, (m.get(k) ?? 0) + 1);
-    if (casIds.size) for (const ch of await ctx.db.query("casierCharges").take(20000)) if (casIds.has(ch.entryId as string)) bump(chargeTally, ch.snapshot.name);
-    if (citIds.size) for (const ch of await ctx.db.query("citationCharges").take(20000)) if (citIds.has(ch.citationId as string)) bump(chargeTally, ch.snapshot.name);
+    for (const e of casiers) for (const ch of await ctx.db.query("casierCharges").withIndex("by_entry", (q) => q.eq("entryId", e._id)).collect()) bump(chargeTally, ch.snapshot.name);
+    for (const c of citations) for (const ch of await ctx.db.query("citationCharges").withIndex("by_citation", (q) => q.eq("citationId", c._id)).collect()) bump(chargeTally, ch.snapshot.name);
     const topCharges = [...chargeTally.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([name, count]) => ({ name, count }));
 
     // Série temporelle (même pas adaptatif que rangeStats).

@@ -78,6 +78,8 @@ function BoloCarousel({ rows, canManage, onCompose, nav, close, toast, compose, 
 
         <div
           key={b._id}
+          // Un avis « armé et dangereux » est une alerte : annoncé d'office aux lecteurs d'écran.
+          role={b.danger ? "alert" : undefined}
           className="mdt-reveal flex min-w-0 flex-1 gap-[16px] overflow-hidden rounded-card border p-[16px]"
           style={{
             borderColor: b.danger ? "var(--danger)" : "var(--border-strong)",

@@ -10,7 +10,7 @@ const FIELD = "h-10 w-full rounded-sm border border-border bg-surface-2 px-3 tex
 // Convocation d'un agent devant l'IA : agent recensé (ping via Discord lié) ou
 // ID Discord saisi à la main, avec motif + date.
 export function ConvocationModal({ initialAgentId, onClose }: { initialAgentId?: Id<"agents">; onClose: () => void }) {
-  const roster = useQuery(api.agents.roster);
+  const roster = useQuery(api.agents.pickerList);
   const create = useMutation(api.convocations.create);
   const toast = useToast();
   const [mode, setMode] = useState<"agent" | "discord">("agent");
