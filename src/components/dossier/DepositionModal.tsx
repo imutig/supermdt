@@ -1,35 +1,32 @@
 import { useState } from "react";
-import { X } from "lucide-react";
-import { useMutation, useQuery } from "convex/react";
+import { X, Link2Off } from "lucide-react";
+import { useAction, useQuery } from "convex/react";
 import { api, type Id } from "@/lib/api";
+import { useCan } from "@/hooks/useCan";
 import { useToast } from "@/providers/toast";
 import { RichTextEditor } from "@/components/common/RichTextEditor";
+import { AgentPicker } from "@/components/common/AgentPicker";
 
-// Ajout d'une déposition, reliée à une plainte OU un rapport (item 7).
+// Déposition (format NexusMDT) : autonome, avec un objet et les officiers
+// présents. Synchronisée en write-through — réservée aux comptes Nexus liés.
 export function DepositionModal({ citizenId, onClose }: { citizenId: Id<"citizens">; onClose: () => void }) {
-  const opts = useQuery(api.depositions.linkOptions, { citizenId });
-  const create = useMutation(api.depositions.create);
+  const { can } = useCan();
+  const createSynced = useAction(api.nexusSync.createDeposition);
+  const nexusStatus = useQuery(api.nexusSync.myStatus);
+  const syncActive = !!nexusStatus?.configured && nexusStatus.status === "OK";
+  const roster = useQuery(api.agents.roster, can("effectif.view") ? {} : "skip") ?? [];
   const toast = useToast();
-  const [linkType, setLinkType] = useState<"COMPLAINT" | "REPORT">("COMPLAINT");
-  const [linkId, setLinkId] = useState("");
-  const [title, setTitle] = useState("");
+  const [objet, setObjet] = useState("");
+  const [agentIds, setAgentIds] = useState<string[]>([]);
   const [body, setBody] = useState("");
   const [busy, setBusy] = useState(false);
 
-  const list = linkType === "COMPLAINT" ? opts?.complaints ?? [] : opts?.reports ?? [];
-
   async function submit() {
-    if (!body.trim() || !linkId) { toast.error("Rattachement et corps requis."); return; }
+    if (!syncActive) { toast.error("Nécessite un compte NexusMDT lié (voir Mon profil)."); return; }
+    if (!objet.trim() || !body.trim()) { toast.error("Objet et corps requis."); return; }
     setBusy(true);
     const r = await toast.guard(
-      create({
-        citizenId,
-        linkType,
-        complaintId: linkType === "COMPLAINT" ? (linkId as Id<"complaints">) : undefined,
-        reportId: linkType === "REPORT" ? (linkId as Id<"reports">) : undefined,
-        title: title.trim() || undefined,
-        body: body.trim(),
-      }),
+      createSynced({ citizenId, title: objet.trim(), body: body.trim(), agentIds: agentIds as Id<"agents">[] }),
       "Ajout impossible",
     );
     setBusy(false);
@@ -45,24 +42,19 @@ export function DepositionModal({ citizenId, onClose }: { citizenId: Id<"citizen
           <button onClick={onClose} className="flex h-[30px] w-[30px] items-center justify-center rounded-sm border border-border bg-surface-2 text-muted hover:border-border-strong"><X className="h-4 w-4" /></button>
         </div>
         <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-[18px] py-4">
-          <div>
-            <div className="mb-[6px] text-[10.5px] font-bold uppercase tracking-[0.09em] text-faint">Rattachée à</div>
-            <div className="mb-2 flex gap-2">
-              <button onClick={() => { setLinkType("COMPLAINT"); setLinkId(""); }} className="flex-1 rounded-sm border px-2 py-[7px] text-[12.5px] font-semibold" style={linkType === "COMPLAINT" ? { background: "var(--accent-soft)", borderColor: "var(--accent)", color: "var(--accent)" } : { borderColor: "var(--border)", color: "var(--muted)" }}>Une plainte</button>
-              <button onClick={() => { setLinkType("REPORT"); setLinkId(""); }} className="flex-1 rounded-sm border px-2 py-[7px] text-[12.5px] font-semibold" style={linkType === "REPORT" ? { background: "var(--accent-soft)", borderColor: "var(--accent)", color: "var(--accent)" } : { borderColor: "var(--border)", color: "var(--muted)" }}>Un rapport</button>
+          {!syncActive && nexusStatus !== undefined && (
+            <div className="flex items-start gap-[9px] rounded-sm px-3 py-[10px] text-[12px]" style={{ background: "color-mix(in srgb, var(--warning) 10%, transparent)", color: "var(--warning)" }}>
+              <Link2Off className="mt-[1px] h-[15px] w-[15px] flex-shrink-0" />
+              <span>Les dépositions sont synchronisées avec le NexusMDT. Lie ton compte Nexus dans <b>Mon profil</b> pour pouvoir en créer.</span>
             </div>
-            <select value={linkId} onChange={(e) => setLinkId(e.target.value)} className={F}>
-              <option value="">Sélectionner…</option>
-              {list.map((o) => <option key={o._id} value={o._id}>{o.label}</option>)}
-            </select>
-            {list.length === 0 && <div className="mt-1 text-[11.5px] text-faint">{linkType === "COMPLAINT" ? "Aucune plainte liée à ce citoyen." : "Aucun rapport impliquant ce citoyen."}</div>}
-          </div>
-          <div><div className="mb-[6px] text-[10.5px] font-bold uppercase tracking-[0.09em] text-faint">Titre (optionnel)</div><input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Ex. Déposition d'otage" className={F} /></div>
-          <div><div className="mb-[6px] text-[10.5px] font-bold uppercase tracking-[0.09em] text-faint">Déposition</div><RichTextEditor value={body} onChange={setBody} minHeight={190} placeholder="Propos recueillis…" /></div>
+          )}
+          <div><div className="mb-[6px] text-[10.5px] font-bold uppercase tracking-[0.09em] text-faint">Objet *</div><input value={objet} onChange={(e) => setObjet(e.target.value)} disabled={!syncActive} placeholder="Ex. Interrogatoire — provenance de stupéfiants" className={F} /></div>
+          <div><div className="mb-[6px] text-[10.5px] font-bold uppercase tracking-[0.09em] text-faint">Officiers présents</div><AgentPicker roster={roster} selected={agentIds} onChange={setAgentIds} disabled={!syncActive} /></div>
+          <div><div className="mb-[6px] text-[10.5px] font-bold uppercase tracking-[0.09em] text-faint">Déposition *</div><RichTextEditor value={body} onChange={setBody} editable={syncActive} minHeight={190} placeholder="Propos recueillis…" /></div>
         </div>
         <div className="flex flex-shrink-0 gap-2 border-t border-border px-[18px] py-4">
           <button onClick={onClose} className="rounded-sm border border-border bg-surface-2 px-4 py-[10px] text-[13px] font-semibold hover:border-border-strong">Annuler</button>
-          <button onClick={submit} disabled={busy || !body.trim() || !linkId} className="flex-1 rounded-sm bg-accent px-4 py-[10px] text-[13px] font-semibold text-accent-contrast hover:brightness-[1.06] disabled:opacity-50">{busy ? "…" : "Enregistrer"}</button>
+          <button onClick={submit} disabled={busy || !syncActive || !objet.trim() || !body.trim()} className="flex-1 rounded-sm bg-accent px-4 py-[10px] text-[13px] font-semibold text-accent-contrast hover:brightness-[1.06] disabled:opacity-50">{busy ? "…" : "Enregistrer"}</button>
         </div>
       </div>
     </div>

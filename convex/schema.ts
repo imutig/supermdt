@@ -1734,7 +1734,9 @@ export default defineSchema({
 
   // ============ PLAINTES (item 2) ============
   complaints: defineTable({
-    plaignantId: v.id("citizens"),
+    // Plaignant : citoyen recensé (id) OU simple nom (import Nexus sans fiche).
+    plaignantId: v.optional(v.id("citizens")),
+    plaignantName: v.optional(v.string()),
     defendantCitizenId: v.optional(v.id("citizens")), // OU
     defendantName: v.optional(v.string()), // personne non recensée
     agentIds: v.array(v.id("agents")), // agents en charge
@@ -1746,10 +1748,21 @@ export default defineSchema({
     createdBy: v.optional(v.id("agents")),
     deletedAt: v.optional(v.number()),
     deletedBy: v.optional(v.id("agents")),
+    // Parité NexusMDT (sync write-through). Côté Nexus le « contre » est un texte
+    // libre (nom/groupe/« X »), les avocats une liste, plus un statut détaillé.
+    contre: v.optional(v.string()), // défendeur en texte libre (miroir Nexus)
+    avocats: v.optional(v.array(v.string())),
+    raisonStatut: v.optional(v.string()),
+    photos: v.optional(v.array(v.string())),
+    officiers: v.optional(v.array(v.object({ matricule: v.optional(v.string()), nom: v.string() }))),
+    numero: v.optional(v.number()), // numéro séquentiel Nexus
+    nexusId: v.optional(v.string()), // _id Mongo (edit/delete par id)
+    importRef: v.optional(v.string()), // clé d'anti-doublon (= numero)
   })
     .index("by_plaignant", ["plaignantId"])
     .index("by_defendant", ["defendantCitizenId"])
-    .index("by_deleted", ["deletedAt"]),
+    .index("by_deleted", ["deletedAt"])
+    .index("by_import", ["importRef"]),
 
   // ============ ARMES (item 3) ============
   weapons: defineTable({
@@ -1821,19 +1834,26 @@ export default defineSchema({
   // ============ DÉPOSITIONS (item 7) ============
   depositions: defineTable({
     citizenId: v.id("citizens"),
-    linkType: v.union(v.literal("COMPLAINT"), v.literal("DOSSIER"), v.literal("REPORT")),
+    // STANDALONE : déposition sans rattachement (format NexusMDT).
+    linkType: v.union(v.literal("COMPLAINT"), v.literal("DOSSIER"), v.literal("REPORT"), v.literal("STANDALONE")),
     complaintId: v.optional(v.id("complaints")),
     casierEntryId: v.optional(v.id("casierEntries")), // legacy
     reportId: v.optional(v.id("reports")),
-    title: v.optional(v.string()),
+    title: v.optional(v.string()), // = « objet » côté Nexus
     body: v.string(),
     at: v.number(),
     createdBy: v.optional(v.id("agents")),
     deletedAt: v.optional(v.number()),
     deletedBy: v.optional(v.id("agents")),
+    // Parité NexusMDT (sync write-through).
+    officiers: v.optional(v.array(v.object({ matricule: v.optional(v.string()), nom: v.string() }))),
+    numero: v.optional(v.number()),
+    nexusId: v.optional(v.string()),
+    importRef: v.optional(v.string()),
   })
     .index("by_citizen", ["citizenId"])
-    .index("by_deleted", ["deletedAt"]),
+    .index("by_deleted", ["deletedAt"])
+    .index("by_import", ["importRef"]),
 
   // ============ ENTRETIENS (portail LSPA) ============
   // Banque configurable de questions et de mises en situation. Chaque élément a

@@ -215,16 +215,21 @@ export const sync = internalAction({
     const casiersRep: unknown = await ctx.runAction(internal.casiersImport.casiersSync, { token: tk, dryRun, createMissing: createMissingCitizens });
     // Contraventions (amendes Nexus) : même modèle que les casiers.
     const contraventionsRep: unknown = await ctx.runAction(internal.casiersImport.contraventionsSync, { token: tk, dryRun, createMissing: createMissingCitizens });
+    // Plaintes & dépositions : après les citoyens (rattachement du plaignant).
+    const plaintesRep: unknown = await ctx.runAction(internal.plaintesImport.plaintesSync, { token: tk, dryRun });
+    const depositionsRep: unknown = await ctx.runAction(internal.plaintesImport.depositionsSync, { token: tk, dryRun });
 
     // Journalise l'import pour la page de monitoring (sauf aperçu).
     if (!dryRun) {
       const cit = citoyensRep as CitRep;
       const cas = casiersRep as { ajoutes?: number; supprimes?: number };
       const con = contraventionsRep as { ajoutes?: number; supprimes?: number };
+      const pla = plaintesRep as { ajoutes?: number; maj?: number };
+      const dep = depositionsRep as { ajoutes?: number; maj?: number };
       await ctx.runMutation(internal.nexusSync._log, {
         direction: "IMPORT", entity: "import-complet", op: "SYNC", ok: true,
         durationMs: Date.now() - t0,
-        detail: `citoyens +${cit.ajoutes}/enr ${cit.enrichis} · casiers +${cas.ajoutes ?? 0}/-${cas.supprimes ?? 0} · contraventions +${con.ajoutes ?? 0}/-${con.supprimes ?? 0}`,
+        detail: `citoyens +${cit.ajoutes}/enr ${cit.enrichis} · casiers +${cas.ajoutes ?? 0}/-${cas.supprimes ?? 0} · contraventions +${con.ajoutes ?? 0}/-${con.supprimes ?? 0} · plaintes +${pla.ajoutes ?? 0}/~${pla.maj ?? 0} · dépositions +${dep.ajoutes ?? 0}/~${dep.maj ?? 0}`,
       });
     }
 
@@ -238,6 +243,8 @@ export const sync = internalAction({
       vehicules: vehiculesRep,
       casiers: casiersRep,
       contraventions: contraventionsRep,
+      plaintes: plaintesRep,
+      depositions: depositionsRep,
     };
   },
 });

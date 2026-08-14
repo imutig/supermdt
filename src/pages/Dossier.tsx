@@ -613,7 +613,7 @@ export function Dossier() {
               </div>
             ) : tab === "plaintes" ? (
               <div className="p-[14px]">
-                {canPlainte && (
+                {canPlainte && syncActive && (
                   <div className="mb-3 flex justify-end">
                     <button onClick={() => setComplaintModal({})} className={TAB_ADD_BTN}>+ Plainte</button>
                   </div>
@@ -634,7 +634,7 @@ export function Dossier() {
               </div>
             ) : tab === "depositions" ? (
               <div className="p-[14px]">
-                {canDeposition && (
+                {canDeposition && syncActive && (
                   <div className="mb-3 flex justify-end">
                     <button onClick={() => setDepositionModal(true)} className={TAB_ADD_BTN}>+ Déposition</button>
                   </div>

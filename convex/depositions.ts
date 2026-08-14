@@ -24,6 +24,8 @@ export const byCitizen = query({
         linkLabel = r ? `Rapport · ${r.title}` : "Rapport";
       } else if (d.linkType === "DOSSIER" && d.casierEntryId) {
         linkLabel = "Dossier d'arrestation";
+      } else if (d.linkType === "STANDALONE") {
+        linkLabel = d.title ? `Déposition · ${d.title}` : "Déposition";
       }
       out.push({
         _id: d._id,

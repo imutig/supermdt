@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { X } from "lucide-react";
-import { useMutation, useQuery } from "convex/react";
+import { X, Link2Off } from "lucide-react";
+import { useAction, useQuery } from "convex/react";
 import { api, type Id } from "@/lib/api";
 import { useCan } from "@/hooks/useCan";
 import { useToast } from "@/providers/toast";
@@ -15,7 +15,9 @@ import { Clover } from "@/components/common/Clover";
 
 export function Plaintes() {
   const { can } = useCan();
-  const canCreate = can("plaintes.create");
+  const nexusStatus = useQuery(api.nexusSync.myStatus);
+  const syncActive = !!nexusStatus?.configured && nexusStatus.status === "OK";
+  const canCreate = can("plaintes.create") && syncActive;
   const canManage = can("plaintes.create") || can("plaintes.edit") || can("plaintes.delete");
   const listQ = useQuery(api.complaints.list);
   const list = listQ ?? [];
@@ -68,9 +70,11 @@ export function ComplaintModal({
   const { can } = useCan();
   const opts = useQuery(api.configEditors.options);
   const roster = useQuery(api.agents.roster, can("effectif.view") ? {} : "skip") ?? [];
-  const create = useMutation(api.complaints.create);
-  const update = useMutation(api.complaints.update);
-  const remove = useMutation(api.complaints.remove);
+  const createSynced = useAction(api.nexusSync.createComplaint);
+  const updateSynced = useAction(api.nexusSync.updateComplaint);
+  const delSynced = useAction(api.nexusSync.deleteRecord);
+  const nexusStatus = useQuery(api.nexusSync.myStatus);
+  const syncActive = !!nexusStatus?.configured && nexusStatus.status === "OK";
   const toast = useToast();
 
   const [init, setInit] = useState(isCreate);
@@ -85,7 +89,9 @@ export function ComplaintModal({
   const [body, setBody] = useState("");
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState(false);
-  const readonly = !canManage;
+  // Plaintes synchronisées au NexusMDT : création/édition/suppression réservées
+  // aux comptes liés (write-through). Sans liaison : consultation seule.
+  const readonly = !canManage || !syncActive;
 
   if (!init && existing) {
     setInit(true);
@@ -99,6 +105,7 @@ export function ComplaintModal({
   const effStatus = status || opts?.complaintStatuses?.[0]?.name || "Ouverte";
 
   async function save() {
+    if (!syncActive) { toast.error("Nécessite un compte NexusMDT lié (voir Mon profil)."); return; }
     if (!plaignant || !motif.trim() || !body.trim()) { toast.error("Plaignant, motif et corps requis."); return; }
     setBusy(true);
     const payload = {
@@ -107,9 +114,10 @@ export function ComplaintModal({
       agentIds: agentIds as Id<"agents">[],
       motif: motif.trim(), status: effStatus, avocat: avocat.trim() || undefined, body: body.trim(),
     };
+    // Write-through : d'abord côté NexusMDT, puis en local (rollback si échec).
     const r = isCreate
-      ? await toast.guard(create({ plaignantId: plaignant.id as Id<"citizens">, ...payload }), "Création impossible")
-      : await toast.guard(update({ id: complaintId!, ...payload }), "Modification impossible");
+      ? await toast.guard(createSynced({ plaignantId: plaignant.id as Id<"citizens">, ...payload }), "Création impossible")
+      : await toast.guard(updateSynced({ id: complaintId!, ...payload }), "Modification impossible");
     setBusy(false);
     if (r !== undefined) { toast.success("Plainte enregistrée."); onClose(); }
   }
@@ -149,13 +157,19 @@ export function ComplaintModal({
           </L>
           <L label="Corps de la plainte *"><RichTextEditor value={body} onChange={setBody} editable={!readonly} minHeight={150} placeholder="Exposé des faits…" /></L>
         </div>
-        {canManage && (
+        {canManage && !syncActive && nexusStatus !== undefined && (
+          <div className="flex flex-shrink-0 items-start gap-[9px] border-t border-border px-[18px] py-3 text-[12px]" style={{ background: "color-mix(in srgb, var(--warning) 9%, transparent)", color: "var(--warning)" }}>
+            <Link2Off className="mt-[1px] h-[15px] w-[15px] flex-shrink-0" />
+            <span>Les plaintes sont synchronisées avec le NexusMDT. Lie ton compte Nexus dans <b>Mon profil</b> pour pouvoir en créer, modifier ou supprimer.</span>
+          </div>
+        )}
+        {canManage && syncActive && (
           <div className="flex flex-shrink-0 items-center gap-2 border-t border-border px-[18px] py-4">
             {!isCreate && (confirm ? (
               <>
                 <span className="flex-1 text-[12.5px] text-muted">Supprimer ?</span>
                 <button onClick={() => setConfirm(false)} className="rounded-sm border border-border bg-surface-2 px-3 py-[9px] text-[12.5px] font-semibold">Annuler</button>
-                <button onClick={async () => { const r = await toast.guard(remove({ id: complaintId! }), "Suppression impossible"); if (r !== undefined) { toast.success("Supprimée."); onClose(); } }} className="rounded-sm px-3 py-[9px] text-[12.5px] font-semibold text-white" style={{ background: "var(--danger)" }}>Confirmer</button>
+                <button onClick={async () => { const r = await toast.guard(delSynced({ kind: "plainte", localId: complaintId! }), "Suppression impossible"); if (r !== undefined) { toast.success("Supprimée."); onClose(); } }} className="rounded-sm px-3 py-[9px] text-[12.5px] font-semibold text-white" style={{ background: "var(--danger)" }}>Confirmer</button>
               </>
             ) : <button onClick={() => setConfirm(true)} className="rounded-sm border border-border bg-surface-2 px-3 py-[9px] text-[12.5px] font-semibold" style={{ color: "var(--danger)" }}>Supprimer</button>)}
             {!confirm && (

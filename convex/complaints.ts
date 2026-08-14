@@ -18,13 +18,21 @@ async function shape(ctx: QueryCtx, c: import("./_generated/dataModel").Doc<"com
   return {
     _id: c._id,
     at: c.at,
-    plaignantId: c.plaignantId,
-    plaignant: await citizenName(ctx, c.plaignantId),
+    plaignantId: c.plaignantId ?? null,
+    plaignant: (c.plaignantId ? await citizenName(ctx, c.plaignantId) : null) ?? c.plaignantName ?? "Non recensé",
     defendantCitizenId: c.defendantCitizenId ?? null,
-    defendant: c.defendantCitizenId ? await citizenName(ctx, c.defendantCitizenId) : c.defendantName ?? "Non recensé",
+    // Défendeur : citoyen recensé, sinon texte libre Nexus (« contre »), sinon nom legacy.
+    defendant: c.defendantCitizenId
+      ? await citizenName(ctx, c.defendantCitizenId)
+      : c.contre || c.defendantName || "Non recensé",
     motif: c.motif,
     status: c.status,
+    raisonStatut: c.raisonStatut ?? null,
     avocat: c.avocat ?? null,
+    avocats: c.avocats ?? (c.avocat ? [c.avocat] : []),
+    photos: c.photos ?? [],
+    officiers: c.officiers ?? [],
+    numero: c.numero ?? null,
     body: c.body,
     agents,
     agentIds: c.agentIds,
