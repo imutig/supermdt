@@ -23,6 +23,9 @@ function fmtTime(ts: number) {
 }
 function relTime(ts: number) {
   const s = Math.floor((Date.now() - ts) / 1000);
+  // Date dans le futur (souvent une date d'arrestation saisie de travers côté
+  // Nexus) : on affiche la date réelle plutôt qu'un trompeur « à l'instant ».
+  if (s < 0) return `le ${new Date(ts).toLocaleDateString("fr-FR")}`;
   if (s < 60) return "à l'instant";
   if (s < 3600) return `il y a ${Math.floor(s / 60)} min`;
   if (s < 86400) return `il y a ${Math.floor(s / 3600)} h`;

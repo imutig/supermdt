@@ -2,6 +2,7 @@ import { type Client, type TextChannel } from "discord.js";
 import { mdt } from "./convex.js";
 import { presenceEmbed, dailyEmbed, absencePublishEmbed, sanctionEmbed, convocationEmbed } from "./embeds.js";
 import { openRollcall, closeRollcall, remindNonVoters, LSPD_ROLE } from "./rollcall.js";
+import { startPushServer } from "./pushServer.js";
 import { reconcilePromoCategories, reconcilePromoDeletions, deprogramInterview, parisWallToEpoch } from "./tickets.js";
 import { baseEmbed, BRAND } from "./theme.js";
 
@@ -52,7 +53,26 @@ export function startTasks(client: Client) {
   let lastRollcallOpened = "";
   let lastMemberSync = 0; // horodatage de la dernière synchro des membres LSPD
 
+  // Verrou anti-chevauchement : le tick est déclenché par l'intervalle de sécurité
+  // ET par les « push » de Convex. On empêche deux passages simultanés (sinon un
+  // même item de file pourrait être traité deux fois avant d'être marqué envoyé).
+  // Si un push arrive PENDANT un tick, on rejoue une passe à la fin (aucun événement
+  // perdu).
+  let ticking = false;
+  let pending = false;
   const tick = async () => {
+    if (ticking) { pending = true; return; }
+    ticking = true;
+    try {
+      do {
+        pending = false;
+        await runTick();
+      } while (pending);
+    } finally {
+      ticking = false;
+    }
+  };
+  const runTick = async () => {
     let cfg;
     try {
       cfg = await mdt.config();
@@ -302,6 +322,12 @@ export function startTasks(client: Client) {
   };
 
   void tick();
-  setInterval(() => void tick(), 60_000);
-  console.log("[tasks] boucle active (présence + récap, config lue depuis le MDT).");
+  // Poll de SÉCURITÉ ralenti : le push Convex assure l'immédiateté ; ce filet
+  // rattrape les push manqués (bot redémarré) et gère le temporel (roll call,
+  // rappels, fermetures) qui tolère 5 min. La logique horaire est déjà « à
+  // fenêtre » (pas d'égalité stricte à la minute), donc 5 min est sûr.
+  setInterval(() => void tick(), 5 * 60_000);
+  // Push : Convex déclenche un tick immédiat dès qu'il y a du travail à faire.
+  startPushServer(() => tick());
+  console.log("[tasks] boucle active (poll de sécurité 5 min + push Convex).");
 }

@@ -88,6 +88,7 @@ export const _log = internalMutation({
           targetDiscordId: process.env.NEXUS_ALERT_DISCORD_ID || "263679048712978432",
           sent: false,
         });
+        await ctx.scheduler.runAfter(0, internal.push.notify, {}); // prévient le bot (alerte synchro)
       }
     }
   },
@@ -143,6 +144,7 @@ export const _alert = internalMutation({
       targetDiscordId: process.env.NEXUS_ALERT_DISCORD_ID || "263679048712978432",
       sent: false,
     });
+    await ctx.scheduler.runAfter(0, internal.push.notify, {}); // prévient le bot (alerte MP)
   },
 });
 

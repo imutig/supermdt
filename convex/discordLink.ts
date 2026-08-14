@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { requireAgent, requirePermission } from "./rbac";
 
@@ -103,6 +104,7 @@ export const sendAccount = mutation({
       prefillNom: prefill.nom, prefillMatricule: prefill.matricule, prefillPrenomInitial: prefill.prenomInitial,
       prefillGradeId, autoActivate: true,
     });
+    await ctx.scheduler.runAfter(0, internal.push.notify, {}); // prévient le bot (MP d'invitation)
     return code;
   },
 });

@@ -1,5 +1,6 @@
 import { mutation, query } from "./_generated/server";
 import type { MutationCtx } from "./_generated/server";
+import { internal } from "./_generated/api";
 import { v } from "convex/values";
 import { requireAgent, requirePermission } from "./rbac";
 import { writeAudit } from "./lib/audit";
@@ -94,6 +95,7 @@ export const create = mutation({
       discordAnnounced: false, // le bot dépilera via convocationsToAnnounce
     });
     await writeAudit(ctx, actor, { action: "convocation.create", resourceType: "convocation", resourceId: id });
+    await ctx.scheduler.runAfter(0, internal.push.notify, {}); // prévient le bot (embed + ping agent)
     return id;
   },
 });

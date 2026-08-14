@@ -1,4 +1,5 @@
 import { mutation, query } from "./_generated/server";
+import { internal } from "./_generated/api";
 import { v } from "convex/values";
 import { requireAgent, requirePermission, can } from "./rbac";
 import { writeAudit } from "./lib/audit";
@@ -60,6 +61,7 @@ export const request = mutation({
         { name: "Motif", value: args.reason },
       ],
     });
+    await ctx.scheduler.runAfter(0, internal.push.notify, {}); // prévient le bot (annonce absence)
     return id;
   },
 });
@@ -95,6 +97,7 @@ export const createFor = mutation({
       ],
       footer: `Déclarée par ${actor.prenomRP} ${actor.nomRP}`,
     });
+    await ctx.scheduler.runAfter(0, internal.push.notify, {}); // prévient le bot (annonce absence)
     return id;
   },
 });

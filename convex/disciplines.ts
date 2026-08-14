@@ -1,5 +1,6 @@
 import { mutation, query, internalMutation } from "./_generated/server";
 import type { MutationCtx } from "./_generated/server";
+import { internal } from "./_generated/api";
 import { v } from "convex/values";
 import { assertOutranks, requireAgent, requirePermission } from "./rbac";
 import { writeAudit } from "./lib/audit";
@@ -174,6 +175,7 @@ export const create = mutation({
       url: await deepLink(ctx, "/discipline"),
       footer: `Ouverte par ${actor.prenomRP} ${actor.nomRP}`,
     });
+    await ctx.scheduler.runAfter(0, internal.push.notify, {}); // prévient le bot (embed + ping)
     return id;
   },
 });
