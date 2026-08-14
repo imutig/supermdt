@@ -26,6 +26,7 @@ import {
   Award,
   RefreshCw,
   ChevronDown,
+  CircleUser,
   type LucideIcon,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -61,10 +62,10 @@ const HOME_ITEM: NavItem = { key: "dossiers", label: "Accueil", icon: FolderSear
 
 const GROUPS: NavGroup[] = [
   {
-    label: "Opérations",
+    label: "Général",
     items: [
+      { key: "profil", label: "Mon profil", icon: CircleUser, to: "/profil" },
       { key: "dispatch", label: "Dispatch", icon: Radio, to: "/dispatch", perm: "dispatch.view" },
-      { key: "mandats", label: "Mandats", icon: Gavel, to: "/mandats", perm: "mandats.view" },
       { key: "carte", label: "Carte", icon: MapIcon, to: "/carte" },
       { key: "calendrier", label: "Calendrier", icon: CalendarDays, to: "/calendrier", perm: "calendrier.view" },
     ],
@@ -73,6 +74,7 @@ const GROUPS: NavGroup[] = [
     label: "Judiciaire",
     items: [
       { key: "plaintes", label: "Plaintes", icon: FileWarning, to: "/plaintes", perm: "plaintes.view" },
+      { key: "mandats", label: "Mandats", icon: Gavel, to: "/mandats", perm: "mandats.view" },
       { key: "contraventions", label: "Historique judiciaire", icon: ReceiptText, to: "/contraventions", perm: "contraventions.view" },
       { key: "rapports", label: "Rapports", icon: FileText, to: "/rapports", perm: "rapports.view" },
     ],
@@ -94,7 +96,7 @@ const GROUPS: NavGroup[] = [
     ],
   },
   {
-    label: "Personnel",
+    label: "Administratif",
     items: [
       { key: "effectif", label: "Effectif", icon: Users, to: "/effectif", perm: "effectif.view" },
       { key: "organigramme", label: "Organigramme", icon: Network, to: "/organigramme", perm: "effectif.view" },
@@ -105,14 +107,14 @@ const GROUPS: NavGroup[] = [
     ],
   },
   {
-    label: "Administration",
+    label: "Gestion",
     commandOnly: true,
     items: [
-      { key: "statistiques", label: "Statistiques", icon: BarChart3, admin: true, to: "/statistiques", perm: "stats.view" },
-      { key: "config", label: "Configuration", icon: SlidersHorizontal, admin: true, to: "/config", perm: "rbac.manage" },
-      { key: "synchronisation", label: "Synchronisation", icon: RefreshCw, admin: true, to: "/synchronisation", perm: "rbac.manage" },
-      { key: "archive", label: "Archive", icon: ArchiveIcon, admin: true, to: "/archive", perm: "archive.view" },
-      { key: "admin", label: "Administration", icon: Settings, admin: true, to: "/admin", perm: "effectif.validate" },
+      { key: "statistiques", label: "Statistiques", icon: BarChart3, to: "/statistiques", perm: "stats.view" },
+      { key: "config", label: "Configuration", icon: SlidersHorizontal, to: "/config", perm: "rbac.manage" },
+      { key: "synchronisation", label: "Synchronisation", icon: RefreshCw, to: "/synchronisation", perm: "rbac.manage" },
+      { key: "archive", label: "Archive", icon: ArchiveIcon, to: "/archive", perm: "archive.view" },
+      { key: "admin", label: "Administration", icon: Settings, to: "/admin", perm: "effectif.validate" },
     ],
   },
 ];
@@ -174,7 +176,7 @@ export function NavRail() {
   // s'ouvre à la demande, et l'état est mémorisé.
   const [expanded, setExpanded] = useState<Set<string>>(() => {
     try { const raw = localStorage.getItem("mdt.nav.expanded"); if (raw) return new Set<string>(JSON.parse(raw)); } catch { /* */ }
-    return new Set(["Opérations"]);
+    return new Set(["Général"]);
   });
   useEffect(() => { try { localStorage.setItem("mdt.nav.expanded", JSON.stringify([...expanded])); } catch { /* */ } }, [expanded]);
   const toggleGroup = (label: string) => setExpanded((prev) => { const n = new Set(prev); if (n.has(label)) n.delete(label); else n.add(label); return n; });

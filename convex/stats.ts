@@ -213,3 +213,74 @@ export const rangeStats = query({
     };
   },
 });
+
+// ===========================================================================
+// Statistiques PERSONNELLES de l'agent courant (dashboard « Mon profil »).
+// Mêmes plages que rangeStats, mais restreint aux fiches dont l'agent est
+// l'officier/créateur. Aucune permission stats.view requise : ce sont ses
+// propres chiffres. On n'inclut PAS les heures de service (fonction off).
+// ===========================================================================
+export const myRangeStats = query({
+  args: { from: v.optional(v.number()), to: v.optional(v.number()) },
+  handler: async (ctx, { from, to }) => {
+    const agent = await requireAgent(ctx);
+    const now = Date.now();
+    const hi = to ?? now;
+    const lo = from ?? null;
+
+    const inRange = async (table: "casierEntries" | "citations") => {
+      const rows = lo == null
+        ? await ctx.db.query(table).withIndex("by_at", (q) => q.lte("at", hi)).collect()
+        : await ctx.db.query(table).withIndex("by_at", (q) => q.gte("at", lo).lte("at", hi)).collect();
+      return (rows as any[]).filter((r) => !r.deletedAt && r.status !== "ANNULEE");
+    };
+    const casiers = (await inRange("casierEntries")).filter(
+      (e: any) => (e.officerIds ?? []).includes(agent._id) || e.createdBy === agent._id,
+    );
+    const citations = (await inRange("citations")).filter((c: any) => c.officerId === agent._id);
+
+    // Rapports d'intervention rédigés (lead) sur la plage.
+    const myReports = (await ctx.db.query("reports").withIndex("by_lead", (q) => q.eq("leadId", agent._id)).collect())
+      .filter((r) => !r.deletedAt && (lo == null || r._creationTime >= lo) && r._creationTime <= hi);
+
+    const dossiers = casiers.filter((e: any) => (e.arrestType ?? "DOSSIER") === "DOSSIER").length;
+    const rapports = casiers.filter((e: any) => e.arrestType === "RAPPORT").length;
+    const totalFine = casiers.reduce((s: number, e: any) => s + (e.totalFine ?? 0), 0)
+      + citations.reduce((s: number, c: any) => s + (c.totalFine ?? 0), 0);
+
+    // Top infractions (charges de mes casiers + contraventions).
+    const casIds = new Set(casiers.map((e: any) => e._id as string));
+    const citIds = new Set(citations.map((c: any) => c._id as string));
+    const chargeTally = new Map<string, number>();
+    const bump = (m: Map<string, number>, k: string) => m.set(k, (m.get(k) ?? 0) + 1);
+    if (casIds.size) for (const ch of await ctx.db.query("casierCharges").take(20000)) if (casIds.has(ch.entryId as string)) bump(chargeTally, ch.snapshot.name);
+    if (citIds.size) for (const ch of await ctx.db.query("citationCharges").take(20000)) if (citIds.has(ch.citationId as string)) bump(chargeTally, ch.snapshot.name);
+    const topCharges = [...chargeTally.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([name, count]) => ({ name, count }));
+
+    // Série temporelle (même pas adaptatif que rangeStats).
+    let minAt = hi;
+    for (const e of casiers) if (e.at < minAt) minAt = e.at;
+    for (const c of citations) if (c.at < minAt) minAt = c.at;
+    const effLo = lo == null ? (casiers.length || citations.length ? minAt : hi - DAY) : lo;
+    const span = Math.max(0, hi - effLo);
+    const unit: Unit = span <= 2 * DAY ? "hour" : span <= 92 * DAY ? "day" : "month";
+    const counts = new Map<string, { arr: number; cit: number }>();
+    const acc = (ts: number, field: "arr" | "cit") => { const k = bucketKey(ts, unit); const b = counts.get(k) ?? { arr: 0, cit: 0 }; b[field]++; counts.set(k, b); };
+    for (const e of casiers) acc(e.at, "arr");
+    for (const c of citations) acc(c.at, "cit");
+    const allKeys = [...new Set([...gridKeys(effLo, hi, unit), ...counts.keys()])].sort();
+    const series = allKeys.map((k) => ({ label: bucketLabel(k, unit), arr: counts.get(k)?.arr ?? 0, cit: counts.get(k)?.cit ?? 0 }));
+
+    return {
+      arrests: casiers.length,
+      dossiers,
+      rapports,
+      citations: citations.length,
+      reports: myReports.length,
+      totalFine,
+      unit,
+      series,
+      topCharges,
+    };
+  },
+});

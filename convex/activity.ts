@@ -1,6 +1,45 @@
 import { query } from "./_generated/server";
 import { v } from "convex/values";
+import type { Id } from "./_generated/dataModel";
 import { requireAgent, requirePermission, agentLabel, can } from "./rbac";
+
+// Historique d'activité PERSONNEL de l'agent courant (page « Mon profil »).
+// S'appuie sur le journal d'audit (by_actor) : toute action tracée du MDT
+// (casiers, contraventions, rapports, citoyens, armes, véhicules, plaintes…).
+export const myActivity = query({
+  args: { limit: v.optional(v.number()) },
+  handler: async (ctx, { limit }) => {
+    const agent = await requireAgent(ctx);
+    const cap = Math.min(Math.max(limit ?? 100, 10), 400);
+    const rows = await ctx.db
+      .query("auditLog")
+      .withIndex("by_actor", (q) => q.eq("actorId", agent._id))
+      .order("desc")
+      .take(cap);
+    const out = [];
+    for (const r of rows) {
+      // Citoyen concerné (nom cliquable) selon le type de ressource.
+      let citizenId: string | null = null;
+      if (r.resourceId) {
+        try {
+          if (r.resourceType === "citizen") citizenId = r.resourceId;
+          else if (r.resourceType === "casierEntry") citizenId = (await ctx.db.get(r.resourceId as Id<"casierEntries">))?.citizenId ?? null;
+          else if (r.resourceType === "citation") citizenId = (await ctx.db.get(r.resourceId as Id<"citations">))?.citizenId ?? null;
+          else if (r.resourceType === "mandat") citizenId = (await ctx.db.get(r.resourceId as Id<"mandats">))?.citizenId ?? null;
+        } catch { citizenId = null; }
+      }
+      out.push({
+        _id: r._id,
+        at: r.at,
+        action: r.action,
+        resourceType: r.resourceType,
+        resourceLabel: r.resourceLabel ?? null,
+        citizenId,
+      });
+    }
+    return out;
+  },
+});
 
 // Historique combiné des entrées de casier ET des contraventions (§4),
 // cliquable vers les dossiers. Sert la page "Historique".
