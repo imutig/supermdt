@@ -154,6 +154,17 @@ export function ComplaintModal({
             {existing && existing.agents.length > 0 && agentIds.length === 0 && (
               <div className="mt-2 text-[11.5px] text-muted">Actuels : {existing.agents.map((ag, i) => <AgentTag key={i} agent={ag} className="mr-2" />)}</div>
             )}
+            {/* Officier Nexus non rattaché à un compte local : on affiche quand
+                même son matricule + nom (issus du Nexus). */}
+            {existing && existing.agents.length === 0 && (existing.officiers?.length ?? 0) > 0 && agentIds.length === 0 && (
+              <div className="mt-2 flex flex-wrap gap-[6px]">
+                {existing.officiers!.map((o, i) => (
+                  <span key={i} className="rounded-[6px] border border-border bg-surface-2 px-[9px] py-[4px] text-[11.5px] font-semibold text-muted">
+                    {o.matricule ? <span className="font-data text-accent">#{o.matricule} </span> : null}{o.nom}
+                  </span>
+                ))}
+              </div>
+            )}
           </L>
           <L label="Corps de la plainte *"><RichTextEditor value={body} onChange={setBody} editable={!readonly} minHeight={150} placeholder="Exposé des faits…" /></L>
         </div>

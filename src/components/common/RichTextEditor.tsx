@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useState, useEffect, type ReactNode } from "react";
 import { useDialogs } from "@/components/detective/dialogs";
 import { useEditor, EditorContent, type Editor, type Extensions } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
@@ -102,6 +102,18 @@ export function RichTextEditor({
       },
     },
   });
+
+  // Tiptap ne prend `content` qu'à l'initialisation : sans ça, un contenu qui
+  // arrive APRÈS le montage (fiche chargée en asynchrone) resterait vide à
+  // l'écran. On resynchronise quand `value` change et que l'utilisateur ne tape
+  // pas (setContent sans émettre d'update -> pas de boucle avec onChange).
+  useEffect(() => {
+    if (!editor) return;
+    const incoming = normalizeRichText(value);
+    if (incoming !== editor.getHTML() && !editor.isFocused) {
+      editor.commands.setContent(incoming, false);
+    }
+  }, [value, editor]);
 
   if (!editor) return null;
 

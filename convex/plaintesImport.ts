@@ -45,8 +45,9 @@ async function resolveRefs(ctx: any) {
     byName.set(norm(`${c.nom} ${c.prenom}`), c._id);
   }
   const agents = await ctx.db.query("agents").collect();
+  // Clé matricule normalisée en chiffres : le Nexus préfixe parfois (« LSPD-53876 »).
   const byMat = new Map<string, Id<"agents">>();
-  for (const a of agents) if (a.matricule != null) byMat.set(String(a.matricule), a._id);
+  for (const a of agents) if (a.matricule != null) byMat.set(String(a.matricule).replace(/\D/g, ""), a._id);
   const lastCount = new Map<string, number>();
   for (const a of agents) lastCount.set(norm(a.nomRP), (lastCount.get(norm(a.nomRP)) ?? 0) + 1);
   const byLastName = new Map<string, Id<"agents">>();
@@ -69,10 +70,12 @@ function buildOfficers(rawOfficiers: any[], refs: any) {
   const seen = new Set<string>();
   for (const o of rawOfficiers || []) {
     const nom = (o?.nom || "").trim();
-    const mat = o?.matricule != null ? String(o.matricule) : undefined;
+    const mat = o?.matricule != null ? String(o.matricule) : undefined; // valeur brute (affichage)
+    const matDigits = mat ? mat.replace(/\D/g, "") : ""; // pour le rattachement
     if (!nom && !mat) continue;
     officiers.push({ matricule: mat, nom: nom || `#${mat}` });
-    const aid = (mat && refs.byMat.get(mat)) || (nom ? refs.byLastName.get(norm(nom)) : undefined);
+    // Matricule d'abord (fiable, sans ambiguïté), sinon nom de famille unique.
+    const aid = (matDigits && refs.byMat.get(matDigits)) || (nom ? refs.byLastName.get(norm(nom)) : undefined);
     if (aid && !seen.has(aid)) { seen.add(aid); agentIds.push(aid); }
   }
   return { officiers, agentIds };

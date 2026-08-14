@@ -44,6 +44,12 @@ function num(x: any): number | undefined {
   const n = Number(x);
   return Number.isFinite(n) ? n : undefined;
 }
+// Matricule : le Nexus préfixe parfois (« LSPD-53876 ») -> on ne garde que les
+// chiffres pour le rattachement par matricule (fiable, sans ambiguïté).
+function matNum(x: any): number | undefined {
+  const d = String(x ?? "").replace(/\D/g, "");
+  return d ? Number(d) : undefined;
+}
 // "HH:MM:SS" (ou "MM:SS") -> secondes ; "PERPÉTUITÉ" toléré (renvoie 0 + perp).
 function parseJail(t: string): number {
   const s = (t || "").trim().toUpperCase();
@@ -125,9 +131,9 @@ export function mapDossier(d: any) {
     prenom: String(pick(d, "citoyen.prenom", "citizen.prenom", "prenom") ?? "").trim(),
     nom: String(pick(d, "citoyen.nom", "citizen.nom", "nom") ?? "").trim(),
     at: parseArrestDate(String(pick(d, "dateArrestation", "date_arrestation", "arrestDate") ?? ""), String(pick(d, "createdAt", "created_at") ?? "")),
-    createdByMatricule: num(pick(d, "createdBy.matricule", "createdBy.badge")),
+    createdByMatricule: matNum(pick(d, "createdBy.matricule", "createdBy.badge")),
     createdByNom: String(pick(d, "createdBy.nom", "createdBy.name") ?? "").trim(),
-    officers: (Array.isArray(agents) ? agents : []).map((a: any) => ({ matricule: num(pick(a, "matricule", "badge")), nom: String(pick(a, "nom", "name") ?? "").trim() })).filter((o: any) => o.matricule != null || o.nom),
+    officers: (Array.isArray(agents) ? agents : []).map((a: any) => ({ matricule: matNum(pick(a, "matricule", "badge")), nom: String(pick(a, "nom", "name") ?? "").trim() })).filter((o: any) => o.matricule != null || o.nom),
     statut: (String(pick(d, "statut", "status") ?? "").trim()) || undefined,
     lieu: (String(pick(d, "postePolice", "lieu", "poste") ?? "").trim()) || undefined,
     forceUsed: !!pick(d, "forceUtilisee", "force"),
@@ -168,7 +174,7 @@ export function mapAmende(a: any) {
     prenom: String(pick(a, "citoyen.prenom", "citizen.prenom", "prenom") ?? "").trim(),
     nom: String(pick(a, "citoyen.nom", "citizen.nom", "nom") ?? "").trim(),
     at: parseAmendeDate(String(pick(a, "dateInfraction", "date") ?? ""), String(pick(a, "heureInfraction", "heure") ?? ""), String(pick(a, "createdAt", "created_at") ?? "")),
-    createdByMatricule: num(pick(a, "createdBy.matricule", "matriculeAgent", "createdBy.badge")),
+    createdByMatricule: matNum(pick(a, "createdBy.matricule", "matriculeAgent", "createdBy.badge")),
     createdByNom: String(pick(a, "createdBy.nom", "verbalisateurNom", "createdBy.name") ?? "").trim(),
     montant,
     montantMajore: num(pick(a, "montantMajore", "montant_majore")),
@@ -212,9 +218,9 @@ export function mapRapport(r: any) {
     prenom: String(pick(r, "citoyen.prenom", "citizen.prenom", "prenom") ?? "").trim(),
     nom: String(pick(r, "citoyen.nom", "citizen.nom", "nom") ?? "").trim(),
     at: parseArrestDate(String(pick(r, "date", "dateArrestation") ?? ""), String(pick(r, "createdAt", "created_at") ?? "")),
-    createdByMatricule: num(pick(r, "createdBy.matricule", "createdBy.badge")),
+    createdByMatricule: matNum(pick(r, "createdBy.matricule", "createdBy.badge")),
     createdByNom: String(pick(r, "createdBy.nom", "createdBy.name") ?? "").trim(),
-    officers: (Array.isArray(agents) ? agents : []).map((a: any) => ({ matricule: num(pick(a, "matricule", "badge")), nom: String(pick(a, "nom", "name") ?? "").trim() })).filter((o: any) => o.matricule != null || o.nom),
+    officers: (Array.isArray(agents) ? agents : []).map((a: any) => ({ matricule: matNum(pick(a, "matricule", "badge")), nom: String(pick(a, "nom", "name") ?? "").trim() })).filter((o: any) => o.matricule != null || o.nom),
     statut: undefined as string | undefined,
     lieu: (String(pick(r, "postePolice", "lieu", "poste") ?? "").trim()) || undefined,
     forceUsed: false,
