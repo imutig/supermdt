@@ -310,6 +310,18 @@ export function startTasks(client: Client) {
       } catch (err) { console.error("[convocation] publication :", err); }
     }
 
+    // --- Publication des annonces de CÉRÉMONIE (annonce + résultat) ---
+    try {
+      const { channel: ceremonyChannel, posts } = await mdt.ceremonyPostsToSend();
+      if (posts.length && ceremonyChannel) {
+        const chan = await channel(client, ceremonyChannel);
+        for (const p of posts) {
+          if (chan) await chan.send({ content: p.content, allowedMentions: { parse: ["users", "roles"] } }).catch(() => {});
+          await mdt.markCeremonyPostSent(p.id);
+        }
+      }
+    } catch (err) { console.error("[ceremonie] publication :", err); }
+
     // --- Récapitulatif quotidien ---
     if (cfg.dailyChannel && cfg.dailyAt === hhmm && lastDailySent !== today) {
       lastDailySent = today;

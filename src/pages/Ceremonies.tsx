@@ -156,13 +156,21 @@ function CeremonyDrawer({ ceremonyId, onClose }: { ceremonyId: Id<"ceremonies">;
   const removeReminder = useMutation(api.ceremonies.removeReminder);
   const addPromotion = useMutation(api.ceremonies.addPromotion);
   const removePromotion = useMutation(api.ceremonies.removePromotion);
+  const addDismissal = useMutation(api.ceremonies.addDismissal);
+  const removeDismissal = useMutation(api.ceremonies.removeDismissal);
   const executeDiscord = useMutation(api.ceremonies.executeDiscordPromotions);
   const applyGrades = useMutation(api.ceremonies.applyGrades);
+  const announce = useMutation(api.ceremonies.announce);
+  const announceResult = useMutation(api.ceremonies.announceResult);
   const remove = useMutation(api.ceremonies.remove);
 
   const [reminderText, setReminderText] = useState("");
   const [promoAgent, setPromoAgent] = useState<string[]>([]);
   const [promoGrade, setPromoGrade] = useState("");
+  const [dismissAgent, setDismissAgent] = useState<string[]>([]);
+  const [dismissName, setDismissName] = useState("");
+  const [dismissGrade, setDismissGrade] = useState("");
+  const [posting, setPosting] = useState<"announce" | "result" | null>(null);
   const [docOpen, setDocOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [busy, setBusy] = useState<"discord" | "mdt" | null>(null);
@@ -201,6 +209,26 @@ function CeremonyDrawer({ ceremonyId, onClose }: { ceremonyId: Id<"ceremonies">;
     if (done > 0) toast.success(`${label} : ${done} ${verb}.`);
     if (skipped.length > 0) toast.warning(`${label} - ignorée(s) : ${skipped.join(" · ")}`);
     if (done === 0 && skipped.length === 0) toast.warning(`${label} : aucune montée en grade à traiter.`);
+  }
+
+  async function onAddDismissal() {
+    const agentId = dismissAgent[0];
+    if (agentId) {
+      const r = await toast.guard(addDismissal({ ceremonyId, agentId: agentId as Id<"agents"> }), "Ajout impossible");
+      if (r) setDismissAgent([]);
+    } else if (dismissName.trim()) {
+      const r = await toast.guard(addDismissal({ ceremonyId, name: dismissName.trim(), fromGradeName: dismissGrade.trim() || undefined }), "Ajout impossible");
+      if (r) { setDismissName(""); setDismissGrade(""); }
+    }
+  }
+
+  async function onAnnounce(kind: "announce" | "result") {
+    setPosting(kind);
+    const r = kind === "announce"
+      ? await toast.guard(announce({ ceremonyId }), "Envoi impossible")
+      : await toast.guard(announceResult({ ceremonyId }), "Envoi impossible");
+    setPosting(null);
+    if (r !== undefined) toast.success(kind === "announce" ? "Annonce de cérémonie envoyée sur Discord." : "Résultat de cérémonie envoyé sur Discord.");
   }
 
   return (
@@ -261,6 +289,56 @@ function CeremonyDrawer({ ceremonyId, onClose }: { ceremonyId: Id<"ceremonies">;
                     ))}
                   </div>
                 )}
+              </section>
+
+              {/* Licenciements */}
+              <section>
+                <div className="mb-[8px] text-[10.5px] font-bold uppercase tracking-[0.09em] text-faint">Licenciements</div>
+                <div className="rounded-sm border border-border bg-surface-2 p-[12px]">
+                  <AgentPicker
+                    roster={roster}
+                    selected={dismissAgent}
+                    onChange={(ids) => setDismissAgent(ids.slice(-1))}
+                    placeholder="Rechercher l'agent licencié…"
+                  />
+                  <div className="my-[8px] text-center text-[10.5px] uppercase tracking-[0.08em] text-faint">ou saisie manuelle</div>
+                  <div className="flex gap-2">
+                    <input value={dismissName} onChange={(e) => setDismissName(e.target.value)} placeholder="Nom (non recensé)" className="h-9 flex-1 rounded-sm border border-border bg-surface px-2 text-[13px] outline-none focus:border-accent" />
+                    <input value={dismissGrade} onChange={(e) => setDismissGrade(e.target.value)} placeholder="Grade quitté" className="h-9 w-[130px] rounded-sm border border-border bg-surface px-2 text-[13px] outline-none focus:border-accent" />
+                    <button onClick={onAddDismissal} disabled={!dismissAgent[0] && !dismissName.trim()} className="flex items-center gap-[6px] rounded-sm bg-accent px-3 text-[12px] font-semibold text-accent-contrast hover:brightness-[1.06] disabled:opacity-50">
+                      <Plus className="h-[14px] w-[14px]" /> Ajouter
+                    </button>
+                  </div>
+                </div>
+                {c.dismissals.length > 0 && (
+                  <div className="mt-[10px] flex flex-col gap-[7px]">
+                    {c.dismissals.map((d) => (
+                      <div key={d._id} className="flex items-center gap-2 rounded-sm border border-border bg-surface-2 px-[12px] py-[9px]">
+                        <span className="flex-1 truncate text-[13px] font-semibold">{d.name}</span>
+                        <span className="text-[12px] text-muted">{d.fromGradeName ?? "-"}</span>
+                        <span className="text-faint">→</span>
+                        <span className="text-[12px] font-semibold">civil</span>
+                        <button onClick={() => toast.guard(removeDismissal({ dismissalId: d._id as Id<"ceremonyDismissals"> }), "Suppression impossible")} className="text-faint hover:text-danger"><Trash2 className="h-[14px] w-[14px]" /></button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+
+              {/* Annonces Discord */}
+              <section>
+                <div className="mb-[8px] text-[10.5px] font-bold uppercase tracking-[0.09em] text-faint">Annonces Discord</div>
+                <div className="flex flex-col gap-2">
+                  <button onClick={() => onAnnounce("announce")} disabled={posting !== null} className="flex items-center gap-[8px] rounded-sm border border-border bg-surface-2 px-[13px] py-[10px] text-[12.5px] font-semibold text-muted hover:border-border-strong disabled:opacity-50">
+                    <Send className="h-[15px] w-[15px]" /> {posting === "announce" ? "Envoi…" : c.announceSent ? "Renvoyer l'annonce de cérémonie" : "Envoyer l'annonce de cérémonie"}
+                    {c.announceSent && <span className="h-[7px] w-[7px] rounded-full" style={{ background: "var(--success)" }} />}
+                  </button>
+                  <button onClick={() => onAnnounce("result")} disabled={posting !== null || (c.promotions.length === 0 && c.dismissals.length === 0)} className="flex items-center gap-[8px] rounded-sm border border-border bg-surface-2 px-[13px] py-[10px] text-[12.5px] font-semibold text-muted hover:border-border-strong disabled:opacity-50">
+                    <Send className="h-[15px] w-[15px]" /> {posting === "result" ? "Envoi…" : c.resultSent ? "Renvoyer le résultat de cérémonie" : "Envoyer le résultat de cérémonie"}
+                    {c.resultSent && <span className="h-[7px] w-[7px] rounded-full" style={{ background: "var(--success)" }} />}
+                  </button>
+                  <div className="text-[11px] text-faint">Publié dans le salon des cérémonies (Configuration &gt; Bot Discord). L'annonce indique date, heure et présence obligatoire ; le résultat liste les montées en grade et les licenciements.</div>
+                </div>
               </section>
 
               {/* Rappels */}

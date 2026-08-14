@@ -101,6 +101,8 @@ export const mdt = {
   markSanctionAnnounced: (id: string) => client.mutation(anyApi.bot.markSanctionAnnounced, { secret: env.botSecret, id }) as Promise<void>,
   convocationsToAnnounce: () => client.query(anyApi.bot.convocationsToAnnounce, { secret: env.botSecret }) as Promise<ConvocationAnnounce[]>,
   markConvocationAnnounced: (id: string) => client.mutation(anyApi.bot.markConvocationAnnounced, { secret: env.botSecret, id }) as Promise<void>,
+  ceremonyPostsToSend: () => client.query(anyApi.bot.ceremonyPostsToSend, { secret: env.botSecret }) as Promise<{ channel: string | null; posts: { id: string; content: string }[] }>,
+  markCeremonyPostSent: (id: string) => client.mutation(anyApi.bot.markCeremonyPostSent, { secret: env.botSecret, id }) as Promise<void>,
   roleJobsPending: () => client.query(anyApi.bot.roleJobsPending, { secret: env.botSecret }) as Promise<{ _id: string; discordId: string; addRoleId: string | null; removeRoleIds: string[]; reason: string | null }[]>,
   markRoleJob: (jobId: string, status: "DONE" | "ERROR", error?: string) => client.mutation(anyApi.bot.markRoleJob, { secret: env.botSecret, jobId, status, error }) as Promise<void>,
 

@@ -655,6 +655,24 @@ export const markSanctionAnnounced = mutation({
   },
 });
 
+// ---- File d'annonces de CÉRÉMONIE (annonce + résultat, message texte brut) ----
+export const ceremonyPostsToSend = query({
+  args: { secret: v.string() },
+  handler: async (ctx, { secret }) => {
+    assertBot(secret);
+    const cfg = await ctx.db.query("integrationConfig").first();
+    const rows = (await ctx.db.query("ceremonyPosts").withIndex("by_sent", (q) => q.eq("sent", false)).collect()).slice(0, 10);
+    return { channel: cfg?.botCeremonyChannel ?? null, posts: rows.map((p) => ({ id: p._id, content: p.content })) };
+  },
+});
+export const markCeremonyPostSent = mutation({
+  args: { secret: v.string(), id: v.id("ceremonyPosts") },
+  handler: async (ctx, { secret, id }) => {
+    assertBot(secret);
+    await ctx.db.patch(id, { sent: true });
+  },
+});
+
 // ---- File d'annonce des CONVOCATIONS (embed + ping de l'agent) ----
 export const convocationsToAnnounce = query({
   args: { secret: v.string() },

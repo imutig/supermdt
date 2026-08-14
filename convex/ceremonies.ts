@@ -1,5 +1,7 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import type { MutationCtx } from "./_generated/server";
+import { internal } from "./_generated/api";
 import { requireAgent, requirePermission, agentLabel } from "./rbac";
 import { writeAudit } from "./lib/audit";
 import { notify, NOTIFY_COLOR } from "./lib/notify";
@@ -80,6 +82,13 @@ export const get = query({
       });
     }
 
+    const dismissals = (await ctx.db.query("ceremonyDismissals").withIndex("by_ceremony", (q) => q.eq("ceremonyId", ceremonyId)).collect())
+      .sort((a, b) => a.createdAt - b.createdAt)
+      .map((d) => ({ _id: d._id, name: d.name, fromGradeName: d.fromGradeName ?? null }));
+
+    const posts = (await ctx.db.query("ceremonyPosts").withIndex("by_sent").collect())
+      .filter((p) => p.ceremonyId === ceremonyId);
+
     return {
       _id: c._id,
       title: c.title,
@@ -91,6 +100,9 @@ export const get = query({
       by: await agentLabel(ctx, c.createdBy),
       reminders,
       promotions,
+      dismissals,
+      announceSent: posts.some((p) => p.kind === "ANNOUNCE" && p.sent),
+      resultSent: posts.some((p) => p.kind === "RESULT" && p.sent),
     };
   },
 });
@@ -331,5 +343,117 @@ export const applyGrades = mutation({
     }
     await writeAudit(ctx, actor, { action: "ceremony.apply_grades", resourceType: "ceremony", resourceId: ceremonyId, resourceLabel: c.title, metadata: { applied, skipped: skipped.length } });
     return { applied, skipped };
+  },
+});
+
+// --- Licenciements (annoncés dans le résultat de cérémonie) ---
+export const addDismissal = mutation({
+  args: { ceremonyId: v.id("ceremonies"), agentId: v.optional(v.id("agents")), name: v.optional(v.string()), fromGradeName: v.optional(v.string()) },
+  handler: async (ctx, { ceremonyId, agentId, name, fromGradeName }) => {
+    const agent = await requireAgent(ctx);
+    await requirePermission(ctx, agent, PERM);
+    const c = await ctx.db.get(ceremonyId);
+    if (!c || c.deletedAt) throw new Error("Cérémonie introuvable.");
+    let finalName = name?.trim() || "";
+    let finalGrade = fromGradeName?.trim() || undefined;
+    if (agentId) {
+      const target = await ctx.db.get(agentId);
+      if (!target) throw new Error("Agent introuvable.");
+      finalName = `${target.prenomRP} ${target.nomRP}`;
+      if (!finalGrade && target.gradeId) finalGrade = (await ctx.db.get(target.gradeId))?.name ?? undefined;
+    }
+    if (!finalName) throw new Error("Nom requis.");
+    return await ctx.db.insert("ceremonyDismissals", { ceremonyId, agentId, name: finalName, fromGradeName: finalGrade, createdAt: Date.now() });
+  },
+});
+
+export const removeDismissal = mutation({
+  args: { dismissalId: v.id("ceremonyDismissals") },
+  handler: async (ctx, { dismissalId }) => {
+    const agent = await requireAgent(ctx);
+    await requirePermission(ctx, agent, PERM);
+    await ctx.db.delete(dismissalId);
+  },
+});
+
+// Date murale "dimanche 2 août 2026" à partir du jour + heure de la cérémonie.
+function ceremonyDateStr(at: number): string {
+  return new Date(at).toLocaleDateString("fr-FR", { timeZone: "Europe/Paris", weekday: "long", day: "numeric", month: "long", year: "numeric" });
+}
+
+// Mention Discord d'un agent promu (nickname si relié, sinon "matricule | Nom").
+function promoMention(discordId: string | null, matricule: number | null, name: string): string {
+  if (discordId) return `<@${discordId}>`;
+  return `${matricule != null ? `${matricule} | ` : ""}${name}`;
+}
+
+async function ceremonyChannelOrThrow(ctx: MutationCtx): Promise<string> {
+  const cfg = await ctx.db.query("integrationConfig").first();
+  const channel = cfg?.botCeremonyChannel;
+  if (!channel) throw new Error("Aucun salon de cérémonie configuré (Configuration > Bot Discord).");
+  return channel;
+}
+
+// Poste (via le bot) l'ANNONCE de cérémonie : date, heure, présence obligatoire.
+export const announce = mutation({
+  args: { ceremonyId: v.id("ceremonies") },
+  handler: async (ctx, { ceremonyId }) => {
+    const agent = await requireAgent(ctx);
+    await requirePermission(ctx, agent, PERM);
+    const c = await ctx.db.get(ceremonyId);
+    if (!c || c.deletedAt) throw new Error("Cérémonie introuvable.");
+    await ceremonyChannelOrThrow(ctx);
+    const lines = [
+      "📌 **ANNONCE DE CÉRÉMONIE**",
+      "",
+      `Une cérémonie${c.title ? ` (**${c.title}**)` : ""} se tiendra le **${ceremonyDateStr(c.at)}** à **${c.startTime}**${c.lieu ? ` — ${c.lieu}` : ""}.`,
+      "",
+      "La présence est **obligatoire**, sauf empêchement. En cas d'empêchement, merci de l'indiquer dans le roll call du jour.",
+    ];
+    if (c.notes) { lines.push("", c.notes); }
+    await ctx.db.insert("ceremonyPosts", { ceremonyId, kind: "ANNOUNCE", content: lines.join("\n"), sent: false, at: Date.now() });
+    await ctx.scheduler.runAfter(0, internal.push.notify, {});
+    await writeAudit(ctx, agent, { action: "ceremony.announce", resourceType: "ceremony", resourceId: ceremonyId, resourceLabel: c.title });
+  },
+});
+
+// Poste (via le bot) le RÉSULTAT de cérémonie : montées en grade + licenciements.
+export const announceResult = mutation({
+  args: { ceremonyId: v.id("ceremonies") },
+  handler: async (ctx, { ceremonyId }) => {
+    const agent = await requireAgent(ctx);
+    await requirePermission(ctx, agent, PERM);
+    const c = await ctx.db.get(ceremonyId);
+    if (!c || c.deletedAt) throw new Error("Cérémonie introuvable.");
+    await ceremonyChannelOrThrow(ctx);
+
+    const promoRows = (await ctx.db.query("ceremonyPromotions").withIndex("by_ceremony", (q) => q.eq("ceremonyId", ceremonyId)).collect())
+      .sort((a, b) => a.createdAt - b.createdAt);
+    const dismissals = (await ctx.db.query("ceremonyDismissals").withIndex("by_ceremony", (q) => q.eq("ceremonyId", ceremonyId)).collect())
+      .sort((a, b) => a.createdAt - b.createdAt);
+    if (promoRows.length === 0 && dismissals.length === 0) throw new Error("Aucune montée en grade ni licenciement à annoncer.");
+
+    const lines: string[] = ["📌 **ANNONCE CÉRÉMONIE**", ""];
+    if (promoRows.length) {
+      lines.push(`__Voici les montées en grade à la cérémonie du ${ceremonyDateStr(c.at)} :__`, "");
+      for (const p of promoRows) {
+        const ag = await ctx.db.get(p.agentId);
+        const from = p.fromGradeId ? await ctx.db.get(p.fromGradeId) : null;
+        const to = await ctx.db.get(p.toGradeId);
+        const name = ag ? `${ag.prenomRP} ${ag.nomRP}` : "Agent";
+        lines.push(`${from?.name ?? "?"} à ${to?.name ?? "-"} ➡️ ${promoMention(ag?.discordId ?? null, ag?.matricule ?? null, name)}`);
+      }
+      lines.push("");
+    }
+    if (dismissals.length) {
+      lines.push("__Voici les licenciements de cette semaine :__", "");
+      for (const d of dismissals) lines.push(`${d.fromGradeName ?? "?"} à civil ➡️ ${d.name}`);
+      lines.push("");
+    }
+    lines.push("Félicitations à chacun pour cette évolution. Ces promotions récompensent leur investissement, leur sérieux et leur engagement au sein de la Station 13.");
+
+    await ctx.db.insert("ceremonyPosts", { ceremonyId, kind: "RESULT", content: lines.join("\n"), sent: false, at: Date.now() });
+    await ctx.scheduler.runAfter(0, internal.push.notify, {});
+    await writeAudit(ctx, agent, { action: "ceremony.announce_result", resourceType: "ceremony", resourceId: ceremonyId, resourceLabel: c.title });
   },
 });

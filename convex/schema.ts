@@ -1594,6 +1594,8 @@ export default defineSchema({
     // à ping pour les sanctions (les convocations pinguent l'agent concerné).
     botSanctionsChannel: v.optional(v.string()),
     botSanctionsPingRole: v.optional(v.string()),
+    // Cérémonies : salon où poster l'annonce ET le résultat de cérémonie.
+    botCeremonyChannel: v.optional(v.string()),
     updatedBy: v.optional(v.id("agents")),
     updatedAt: v.number(),
   }),
@@ -1814,6 +1816,26 @@ export default defineSchema({
     discordAppliedAt: v.optional(v.number()), // rôle Discord mis en file
     createdAt: v.number(),
   }).index("by_ceremony", ["ceremonyId"]),
+
+  // Licenciements annoncés lors d'une cérémonie (agent recensé ou simple nom).
+  ceremonyDismissals: defineTable({
+    ceremonyId: v.id("ceremonies"),
+    agentId: v.optional(v.id("agents")),
+    name: v.string(), // snapshot du nom (obligatoire, même si agent relié)
+    fromGradeName: v.optional(v.string()), // grade quitté (snapshot texte)
+    createdAt: v.number(),
+  }).index("by_ceremony", ["ceremonyId"]),
+
+  // File d'annonces de cérémonie postées par le bot dans le salon configuré :
+  // ANNONCE (avant) ou RESULT (montées en grade + licenciements). Le contenu est
+  // pré-rendu côté MDT (mentions Discord incluses).
+  ceremonyPosts: defineTable({
+    ceremonyId: v.id("ceremonies"),
+    kind: v.union(v.literal("ANNOUNCE"), v.literal("RESULT")),
+    content: v.string(),
+    sent: v.boolean(),
+    at: v.number(),
+  }).index("by_sent", ["sent"]),
 
   // ============ PLAINTES (item 2) ============
   complaints: defineTable({
