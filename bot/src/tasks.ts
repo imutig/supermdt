@@ -50,7 +50,12 @@ export function startTasks(client: Client) {
   // Date (YYYY-MM-DD) du dernier récap envoyé, pour n'en envoyer qu'un par jour.
   let lastDailySent = "";
   let lastRollcallOpened = "";
-  let lastMemberSync = 0; // horodatage de la dernière synchro des membres LSPD
+  // Horodatage de la dernière synchro des membres LSPD. Initialisé de façon à ce
+  // que la 1re synchro n'ait lieu que ~2 min après le démarrage : on évite un
+  // guild.members.fetch() (opcode 8) juste au moment où la gateway s'identifie,
+  // et surtout une rafale d'opcode 8 quand le bot est redéployé plusieurs fois
+  // de suite (Discord throttle alors l'opcode 8 -> GatewayRateLimitError).
+  let lastMemberSync = Date.now() - 8 * 60_000;
 
   // Verrou anti-chevauchement : le tick est déclenché par l'intervalle de sécurité
   // ET par les « push » de Convex. On empêche deux passages simultanés (sinon un
