@@ -25,7 +25,7 @@ import { can } from "./rbac";
 const BASE = "https://mdt.vizu-world.com";
 
 type CitRep = { source: number; presents: number; ajoutes: number; permisAjoutes: number; enrichis: number };
-type WpnRep = { source: number; presents: number; ajoutes: number; proprietairesNonTrouves: number; originesAjoutees: number; enrichis?: number };
+type WpnRep = { source: number; presents: number; ajoutes: number; proprietairesNonTrouves: number; originesAjoutees: number; enrichis?: number; supprimes?: number };
 type ChRep = { source: number; presents: number; ajoutes: number; enrichis: number; mode: string };
 
 // ---------------------------- helpers de mapping ----------------------------
@@ -200,7 +200,7 @@ export const sync = internalAction({
     const chRows = chargesRaw.map(mapCharge);
 
     const citoyensRep: CitRep = await ctx.runMutation(internal.migration._upsertCitizens, { rows: citRows, dryRun });
-    const armesRep: WpnRep = await ctx.runMutation(internal.migration._upsertWeapons, { rows: wRows, dryRun });
+    const armesRep: WpnRep = await ctx.runMutation(internal.migration._upsertWeapons, { rows: wRows, dryRun, reconcile: true });
     const codePenalRep: ChRep = await ctx.runMutation(internal.migration._upsertCharges, { rows: chRows, dryRun, reset: resetPenal });
 
     // Véhicules : uniquement si l'endpoint est configuré (VIZU_VEHICLES_PATH,
@@ -209,7 +209,7 @@ export const sync = internalAction({
     const vehPath = process.env.VIZU_VEHICLES_PATH;
     if (vehPath) {
       const vehsRaw = await fetchAllPaged(vehPath, "vehicules", tk);
-      vehiculesRep = await ctx.runMutation(internal.migration._upsertVehicles, { rows: vehsRaw.map(mapVehicle), dryRun });
+      vehiculesRep = await ctx.runMutation(internal.migration._upsertVehicles, { rows: vehsRaw.map(mapVehicle), dryRun, reconcile: true });
     }
 
     // Casiers (dossiers d'arrestation) : après les citoyens/code pénal, pour un
@@ -226,12 +226,12 @@ export const sync = internalAction({
       const cit = citoyensRep as CitRep;
       const cas = casiersRep as { ajoutes?: number; supprimes?: number };
       const con = contraventionsRep as { ajoutes?: number; supprimes?: number };
-      const pla = plaintesRep as { ajoutes?: number; maj?: number };
-      const dep = depositionsRep as { ajoutes?: number; maj?: number };
+      const pla = plaintesRep as { ajoutes?: number; maj?: number; supprimes?: number };
+      const dep = depositionsRep as { ajoutes?: number; maj?: number; supprimes?: number };
       await ctx.runMutation(internal.nexusSync._log, {
         direction: "IMPORT", entity: "import-complet", op: "SYNC", ok: true,
         durationMs: Date.now() - t0,
-        detail: `citoyens +${cit.ajoutes}/enr ${cit.enrichis} · casiers +${cas.ajoutes ?? 0}/-${cas.supprimes ?? 0} · contraventions +${con.ajoutes ?? 0}/-${con.supprimes ?? 0} · plaintes +${pla.ajoutes ?? 0}/~${pla.maj ?? 0} · dépositions +${dep.ajoutes ?? 0}/~${dep.maj ?? 0}`,
+        detail: `citoyens +${cit.ajoutes}/enr ${cit.enrichis} · casiers +${cas.ajoutes ?? 0}/-${cas.supprimes ?? 0} · contraventions +${con.ajoutes ?? 0}/-${con.supprimes ?? 0} · plaintes +${pla.ajoutes ?? 0}/~${pla.maj ?? 0}/-${pla.supprimes ?? 0} · dépositions +${dep.ajoutes ?? 0}/~${dep.maj ?? 0}/-${dep.supprimes ?? 0}`,
       });
     }
 
@@ -393,10 +393,12 @@ export const _upsertCitizens = internalMutation({
 });
 
 export const _upsertWeapons = internalMutation({
-  args: { rows: v.array(v.any()), dryRun: v.optional(v.boolean()) },
-  handler: async (ctx, { rows, dryRun }): Promise<WpnRep> => {
+  args: { rows: v.array(v.any()), dryRun: v.optional(v.boolean()), reconcile: v.optional(v.boolean()) },
+  handler: async (ctx, { rows, dryRun, reconcile }): Promise<WpnRep> => {
     const existing = await ctx.db.query("weapons").collect();
     const bySerial = new Map(existing.map((w) => [norm(w.serial), w]));
+    const seenNexus = new Set<string>();
+    for (const w of rows) if (w.nexusId) seenNexus.add(String(w.nexusId));
 
     // table prénom+nom -> citizen (pour rattacher le propriétaire par nom)
     const citizens = await ctx.db.query("citizens").collect();
@@ -446,15 +448,27 @@ export const _upsertWeapons = internalMutation({
         searchText: norm(`${w.serial} ${w.modele} ${w.ownerName ?? ""}`),
       });
     }
-    return { source: rows.length, presents: existing.length, ajoutes, proprietairesNonTrouves: sansProprietaire, originesAjoutees, enrichis };
+    // Réconciliation : arme importée (nexusId) absente du Nexus -> supprimée là-bas.
+    let supprimes = 0;
+    if (reconcile && !dryRun) {
+      for (const w of existing) {
+        if (w.nexusId && !w.deletedAt && !seenNexus.has(w.nexusId)) {
+          await ctx.db.patch(w._id, { deletedAt: Date.now() });
+          supprimes++;
+        }
+      }
+    }
+    return { source: rows.length, presents: existing.length, ajoutes, proprietairesNonTrouves: sansProprietaire, originesAjoutees, enrichis, supprimes };
   },
 });
 
 export const _upsertVehicles = internalMutation({
-  args: { rows: v.array(v.any()), dryRun: v.optional(v.boolean()) },
-  handler: async (ctx, { rows, dryRun }) => {
+  args: { rows: v.array(v.any()), dryRun: v.optional(v.boolean()), reconcile: v.optional(v.boolean()) },
+  handler: async (ctx, { rows, dryRun, reconcile }) => {
     const existing = await ctx.db.query("vehicles").collect();
     const byPlate = new Map(existing.map((x) => [norm(x.plaque), x]));
+    const seenNexus = new Set<string>();
+    for (const v0 of rows) if (v0.nexusId) seenNexus.add(String(v0.nexusId));
     const citizens = await ctx.db.query("citizens").collect();
     const byName = new Map<string, Id<"citizens">>();
     for (const c of citizens) {
@@ -488,7 +502,16 @@ export const _upsertVehicles = internalMutation({
         searchText: norm(`${v0.plaque} ${v0.modele ?? ""} ${v0.couleur ?? ""} ${v0.type ?? ""}`),
       });
     }
-    return { source: rows.length, presents: existing.length, ajoutes, proprietairesNonTrouves: sansProprietaire, enrichis };
+    let supprimes = 0;
+    if (reconcile && !dryRun) {
+      for (const x of existing) {
+        if (x.nexusId && !x.deletedAt && !seenNexus.has(x.nexusId)) {
+          await ctx.db.patch(x._id, { deletedAt: Date.now() });
+          supprimes++;
+        }
+      }
+    }
+    return { source: rows.length, presents: existing.length, ajoutes, proprietairesNonTrouves: sansProprietaire, enrichis, supprimes };
   },
 });
 

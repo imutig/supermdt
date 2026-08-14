@@ -610,6 +610,53 @@ export const createCasier = action({
   },
 });
 
+// Édition d'un casier / rapport d'arrestation : PATCH partiel (fusion) des seuls
+// champs modifiables côté Nexus (corps du rapport, statut du dossier) ; le reste
+// (charges, date d'arrestation) est préservé. Puis application locale.
+export const updateArrest = action({
+  args: {
+    entryId: v.id("casierEntries"),
+    arrestType: v.union(v.literal("RAPPORT"), v.literal("DOSSIER")),
+    reportBody: v.optional(v.string()),
+    imageUrls: v.optional(v.array(v.string())),
+    avocat: v.optional(v.string()),
+    linkedReportId: v.optional(v.id("reports")),
+    vehicleIds: v.optional(v.array(v.id("vehicles"))),
+    weaponIds: v.optional(v.array(v.id("weapons"))),
+    dossierStatus: v.optional(v.string()),
+    forceUsed: v.optional(v.boolean()),
+    finePaid: v.optional(v.boolean()),
+  },
+  handler: async (ctx, a): Promise<void> => {
+    const agentId = await ctx.runQuery(api.nexusSync.myAgentId, {});
+    if (!agentId) throw new Error("Non authentifié.");
+    const cred = await ctx.runQuery(internal.nexusSync._credFor, { agentId });
+    const rec = await ctx.runQuery(internal.nexusSync._recordNexusInfo, { kind: "casier", localId: a.entryId });
+    const { entryId, ...fields } = a;
+
+    // Non synchronisé (aucun compte lié ou casier non lié) : édition locale simple.
+    if (!cred || !rec?.nexusId) { await ctx.runMutation(api.casier.updateArrest, { entryId, ...fields }); return; }
+
+    const isRapport = rec.arrestType === "RAPPORT";
+    const path = isRapport ? "/api/rapports" : "/api/dossiers";
+    const entity = isRapport ? "rapport" : "dossier";
+    const payload: Record<string, unknown> = { entity: "lspd" };
+    if (a.reportBody !== undefined) payload.rapport = a.reportBody;
+    if (!isRapport && a.dossierStatus !== undefined) payload.statut = a.dossierStatus;
+
+    const t0 = Date.now();
+    const token = await getToken(ctx, agentId, cred);
+    const res = await fetch(`${BASE}${path}/${rec.nexusId}`, { method: "PATCH", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+    if (!res.ok) {
+      const txt = await res.text().catch(() => "");
+      await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity, op: "PATCH", ok: false, httpStatus: res.status, durationMs: Date.now() - t0, agentId, error: txt.slice(0, 160) });
+      throw new Error(`Édition côté NexusMDT échouée (HTTP ${res.status}). Modification non enregistrée.`);
+    }
+    await ctx.runMutation(api.casier.updateArrest, { entryId, ...fields });
+    await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity, op: "PATCH", ok: true, httpStatus: res.status, durationMs: Date.now() - t0, agentId });
+  },
+});
+
 // ---------------------- Suppression / édition write-through ----------------------
 export const _citizenNexus = internalQuery({
   args: { citizenId: v.id("citizens") },

@@ -109,8 +109,8 @@ function mapDeposition(raw: any) {
 
 // ------------------------------- upsert -----------------------------------
 export const _upsertPlaintes = internalMutation({
-  args: { raws: v.array(v.string()), dryRun: v.optional(v.boolean()) },
-  handler: async (ctx, { raws, dryRun }) => {
+  args: { raws: v.array(v.string()), dryRun: v.optional(v.boolean()), reconcile: v.optional(v.boolean()) },
+  handler: async (ctx, { raws, dryRun, reconcile }) => {
     const refs = await resolveRefs(ctx);
     if (!refs.owner) throw new Error("Aucun compte owner pour rattacher les plaintes importées.");
     const all = await ctx.db.query("complaints").collect();
@@ -120,9 +120,11 @@ export const _upsertPlaintes = internalMutation({
       if (c.importRef) byRef.set(c.importRef, c);
       if (c.nexusId) byNexus.set(c.nexusId, c);
     }
+    const seenNexus = new Set<string>();
     let ajoutes = 0, maj = 0, ignores = 0;
     for (const rawStr of raws) {
       const p = mapPlainte(JSON.parse(rawStr));
+      seenNexus.add(p.nexusId);
       const plaignantId = resolveCitizen(refs, p.citoyen);
       // Plaignant non recensé (citoyen.id null côté Nexus) : on garde le nom pour
       // ne rien perdre — la fiche existe même sans citoyen local rattaché.
@@ -157,13 +159,24 @@ export const _upsertPlaintes = internalMutation({
         ajoutes++;
       }
     }
-    return { ajoutes, maj, ignores };
+    // Réconciliation : une plainte importée (nexusId) absente du Nexus a été
+    // supprimée là-bas -> soft-delete local. Seulement en synchro complète.
+    let supprimes = 0;
+    if (reconcile && !dryRun) {
+      for (const c of all) {
+        if (c.nexusId && !c.deletedAt && !seenNexus.has(c.nexusId)) {
+          await ctx.db.patch(c._id, { deletedAt: Date.now() });
+          supprimes++;
+        }
+      }
+    }
+    return { ajoutes, maj, ignores, supprimes };
   },
 });
 
 export const _upsertDepositions = internalMutation({
-  args: { raws: v.array(v.string()), dryRun: v.optional(v.boolean()) },
-  handler: async (ctx, { raws, dryRun }) => {
+  args: { raws: v.array(v.string()), dryRun: v.optional(v.boolean()), reconcile: v.optional(v.boolean()) },
+  handler: async (ctx, { raws, dryRun, reconcile }) => {
     const refs = await resolveRefs(ctx);
     if (!refs.owner) throw new Error("Aucun compte owner pour rattacher les dépositions importées.");
     const all = await ctx.db.query("depositions").collect();
@@ -173,9 +186,11 @@ export const _upsertDepositions = internalMutation({
       if (d.importRef) byRef.set(d.importRef, d);
       if (d.nexusId) byNexus.set(d.nexusId, d);
     }
+    const seenNexus = new Set<string>();
     let ajoutes = 0, maj = 0, ignores = 0;
     for (const rawStr of raws) {
       const d = mapDeposition(JSON.parse(rawStr));
+      seenNexus.add(d.nexusId);
       const citizenId = resolveCitizen(refs, d.citoyen);
       if (!citizenId) { ignores++; continue; }
       const { officiers, agentIds } = buildOfficers(d.officiers, refs);
@@ -201,7 +216,16 @@ export const _upsertDepositions = internalMutation({
         ajoutes++;
       }
     }
-    return { ajoutes, maj, ignores };
+    let supprimes = 0;
+    if (reconcile && !dryRun) {
+      for (const d of all) {
+        if (d.nexusId && !d.deletedAt && !seenNexus.has(d.nexusId)) {
+          await ctx.db.patch(d._id, { deletedAt: Date.now() });
+          supprimes++;
+        }
+      }
+    }
+    return { ajoutes, maj, ignores, supprimes };
   },
 });
 
@@ -213,7 +237,8 @@ export const plaintesSync = internalAction({
     if (!tk) throw new Error("Aucun token (plaintes).");
     let raw = await fetchAllPaged("/api/plaintes", "plaintes", tk);
     if (limit) raw = raw.slice(0, limit);
-    return await ctx.runMutation(internal.plaintesImport._upsertPlaintes, { raws: raw.map((r) => JSON.stringify(r)), dryRun });
+    // Réconciliation des suppressions seulement en synchro complète (non tronquée).
+    return await ctx.runMutation(internal.plaintesImport._upsertPlaintes, { raws: raw.map((r) => JSON.stringify(r)), dryRun, reconcile: !limit });
   },
 });
 export const depositionsSync = internalAction({
@@ -223,6 +248,6 @@ export const depositionsSync = internalAction({
     if (!tk) throw new Error("Aucun token (dépositions).");
     let raw = await fetchAllPaged("/api/depositions", "depositions", tk);
     if (limit) raw = raw.slice(0, limit);
-    return await ctx.runMutation(internal.plaintesImport._upsertDepositions, { raws: raw.map((r) => JSON.stringify(r)), dryRun });
+    return await ctx.runMutation(internal.plaintesImport._upsertDepositions, { raws: raw.map((r) => JSON.stringify(r)), dryRun, reconcile: !limit });
   },
 });

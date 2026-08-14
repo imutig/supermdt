@@ -33,7 +33,8 @@ export function CasierEntryModal({ entryId, canDelete: canDeleteAny, onClose }: 
   const deleteSynced = useAction(api.nexusSync.deleteRecord);
   const nexusStatus = useQuery(api.nexusSync.myStatus);
   const syncActive = !!nexusStatus?.configured && nexusStatus.status === "OK";
-  const updateArrest = useMutation(api.casier.updateArrest);
+  // Édition write-through : pousse vers le Nexus si le casier y est lié, sinon local.
+  const updateArrest = useAction(api.nexusSync.updateArrest);
   const closeDossier = useMutation(api.casier.closeDossier);
   const reopenDossier = useMutation(api.casier.reopenDossier);
   const { can } = useCan();
