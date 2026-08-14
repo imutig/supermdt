@@ -137,7 +137,7 @@ function GradesTab() {
             >
               {g.external ? "Extérieur" : "Interne"}
             </button>
-            <button onClick={() => { if (g.holders === 0) remove({ gradeId: g._id as Id<"grades"> }); }} disabled={g.holders > 0} className="text-[12px] text-faint hover:text-danger disabled:opacity-30" title={g.holders > 0 ? "Grade attribué" : "Supprimer"}>Supprimer</button>
+            <button onClick={() => { if (g.holders === 0) void remove({ gradeId: g._id as Id<"grades"> }); }} disabled={g.holders > 0} className="text-[12px] text-faint hover:text-danger disabled:opacity-30" title={g.holders > 0 ? "Grade attribué" : "Supprimer"}>Supprimer</button>
           </div>
         ))}
       </div>

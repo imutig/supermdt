@@ -305,7 +305,7 @@ function PersonalNotes({ reportId, editable }: { reportId: Id<"reports">; editab
         minHeight={110}
         placeholder="Vos observations de terrain…"
         onChange={(html) => setText(html.slice(0, 6000))}
-        onBlur={(html) => { const v = html.slice(0, 6000); if (v !== note) setNote({ reportId, text: v }); }}
+        onBlur={(html) => { const v = html.slice(0, 6000); if (v !== note) void setNote({ reportId, text: v }); }}
       />
     </div>
   );

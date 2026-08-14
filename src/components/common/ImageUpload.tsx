@@ -35,7 +35,7 @@ export function ImageUpload({
     [toast, onChange],
   );
 
-  usePasteImage(hover && !disabled, (f) => handleFile(f));
+  usePasteImage(hover && !disabled, (f) => void handleFile(f));
 
   return (
     <div

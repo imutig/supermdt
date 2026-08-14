@@ -57,9 +57,9 @@ export function DispatchStatus() {
   const st = myPatrol.status;
   const pick = (s: WidgetStatus) => {
     if (s.requires.length > 0) { setPendingStatus(s); setOpen(false); return; }
-    toast.guard(setStatus({ patrolId: myPatrol._id as Id<"patrols">, statusId: s._id as Id<"dispatchStatuses"> }), "Changement impossible");
+    void toast.guard(setStatus({ patrolId: myPatrol._id as Id<"patrols">, statusId: s._id as Id<"dispatchStatuses"> }), "Changement impossible");
   };
-  const saveDetail = () => { if (detail !== (myPatrol.detail ?? "")) toast.guard(setDetail({ patrolId: myPatrol._id as Id<"patrols">, detail }), "Modification impossible"); };
+  const saveDetail = () => { if (detail !== (myPatrol.detail ?? "")) void toast.guard(setDetail({ patrolId: myPatrol._id as Id<"patrols">, detail }), "Modification impossible"); };
 
   return (
     <div className="relative" ref={ref}>
@@ -100,7 +100,7 @@ export function DispatchStatus() {
           initial={myPatrol.status?._id === pendingStatus._id ? myPatrol.fields : null}
           onCancel={() => setPendingStatus(null)}
           onConfirm={(fields) => {
-            toast.guard(setStatus({ patrolId: myPatrol._id as Id<"patrols">, statusId: pendingStatus._id as Id<"dispatchStatuses">, fields }), "Changement impossible");
+            void toast.guard(setStatus({ patrolId: myPatrol._id as Id<"patrols">, statusId: pendingStatus._id as Id<"dispatchStatuses">, fields }), "Changement impossible");
             setPendingStatus(null);
           }}
         />

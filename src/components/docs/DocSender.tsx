@@ -49,7 +49,7 @@ function useAutoSend(ready: boolean, event: string, filename: string, embed: Doc
     if (!ready || !embed || done.current || !nodeRef.current) return;
     done.current = true;
     const node = nodeRef.current;
-    (async () => {
+    void (async () => {
       try {
         const dataUrl = await snapshotDoc(node);
         await postDocument({ event, filename, base64: dataUrl.split(",")[1], embed, path });

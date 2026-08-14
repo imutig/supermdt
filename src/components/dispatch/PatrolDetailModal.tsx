@@ -78,7 +78,7 @@ export function PatrolDetailModal({ patrol, statuses, sectors, canEdit, isMember
                 const s = statuses.find((x) => x._id === e.target.value);
                 if (!s) return;
                 if (s.requires.length > 0) { setPendingStatus(s); return; }
-                toast.guard(setStatus({ patrolId: patrol._id as Id<"patrols">, statusId: s._id as Id<"dispatchStatuses"> }), "Changement impossible");
+                void toast.guard(setStatus({ patrolId: patrol._id as Id<"patrols">, statusId: s._id as Id<"dispatchStatuses"> }), "Changement impossible");
               }}
               className="h-10 w-full rounded-sm border border-border bg-surface-2 px-2 text-[13px] outline-none focus:border-accent disabled:opacity-60"
             >
@@ -133,7 +133,7 @@ export function PatrolDetailModal({ patrol, statuses, sectors, canEdit, isMember
                 {matches.length > 0 && (
                   <div className="mt-1 max-h-[150px] overflow-y-auto rounded-sm border border-border bg-surface">
                     {matches.slice(0, 8).map((a) => (
-                      <button key={a._id} onClick={() => { toast.guard(addMember({ patrolId: patrol._id as Id<"patrols">, agentId: a._id as Id<"agents"> }), "Ajout impossible"); setQ(""); }} className="flex w-full items-center gap-2 border-b border-border px-3 py-2 text-left hover:bg-surface-2">
+                      <button key={a._id} onClick={() => { void toast.guard(addMember({ patrolId: patrol._id as Id<"patrols">, agentId: a._id as Id<"agents"> }), "Ajout impossible"); setQ(""); }} className="flex w-full items-center gap-2 border-b border-border px-3 py-2 text-left hover:bg-surface-2">
                         <Plus className="h-[13px] w-[13px] text-accent" />
                         <span className="font-data text-[11px] text-accent">{fmtMatricule(a.matricule)}</span>
                         <span className="flex-1 text-[12.5px] font-semibold">{a.prenomRP} {a.nomRP}</span>
@@ -192,7 +192,7 @@ export function PatrolDetailModal({ patrol, statuses, sectors, canEdit, isMember
           initial={patrol.status?._id === pendingStatus._id ? patrol.fields : null}
           onCancel={() => setPendingStatus(null)}
           onConfirm={(fields) => {
-            toast.guard(setStatus({ patrolId: patrol._id as Id<"patrols">, statusId: pendingStatus._id as Id<"dispatchStatuses">, fields }), "Changement impossible");
+            void toast.guard(setStatus({ patrolId: patrol._id as Id<"patrols">, statusId: pendingStatus._id as Id<"dispatchStatuses">, fields }), "Changement impossible");
             setPendingStatus(null);
           }}
         />

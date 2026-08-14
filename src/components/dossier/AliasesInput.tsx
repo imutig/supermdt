@@ -1,8 +1,6 @@
 import { useState } from "react";
 import { X } from "lucide-react";
-
-const FIELD =
-  "h-[46px] w-full rounded-[10px] border border-border bg-surface-2 px-[14px] text-[13px] text-text outline-none focus:border-accent";
+import { FIELD_CLASS as FIELD } from "@/components/common/Field";
 
 // Éditeur d'alias / AKA sous forme de puces. Entrée ou virgule pour ajouter.
 export function AliasesInput({ value, onChange }: { value: string[]; onChange: (v: string[]) => void }) {

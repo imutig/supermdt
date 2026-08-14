@@ -6,11 +6,9 @@ import { api } from "@/lib/api";
 import { ImageUpload } from "@/components/common/ImageUpload";
 import { DateField } from "@/components/common/DateField";
 import { AliasesInput } from "@/components/dossier/AliasesInput";
+import { FIELD_CLASS as FIELD, Field as L } from "@/components/common/Field";
 import { FEATURES } from "@/lib/features";
 import { useToast } from "@/providers/toast";
-
-const FIELD =
-  "h-[46px] w-full rounded-[10px] border border-border bg-surface-2 px-[14px] text-[13px] text-text outline-none focus:border-accent";
 
 type Form = {
   prenom: string; nom: string; dateNaissance: string; sexe: string; nationalite: string;
@@ -155,14 +153,6 @@ function Group({ title, children }: { title: string; children: React.ReactNode }
     <div>
       <div className="mb-2 text-[10.5px] font-bold uppercase tracking-[0.09em] text-accent">{title}</div>
       <div className="grid grid-cols-2 gap-3">{children}</div>
-    </div>
-  );
-}
-function L({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <div className="mb-[6px] text-[10.5px] font-bold uppercase tracking-[0.09em] text-faint">{label}</div>
-      {children}
     </div>
   );
 }

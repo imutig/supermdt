@@ -38,7 +38,7 @@ export function ImageGallery({
     [onChange, toast, urls],
   );
 
-  usePasteImage(hover && editable, (f) => uploadFiles([f]));
+  usePasteImage(hover && editable, (f) => void uploadFiles([f]));
 
   return (
     <div onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}>

@@ -159,15 +159,17 @@ function FicheModal({ id, canOperate, onClose }: { id?: Id<"calls911">; canOpera
     if (!f.info.trim()) return; // on n'écrase pas avec des infos vides
     setSaveState("saving");
     const payload = buildPayload();
-    const t = setTimeout(async () => {
-      try { await update({ id: id!, ...payload }); dirty.current = false; setSaveState("saved"); }
-      catch (e) {
-        // Ne PAS avaler l'erreur : sur un appel en direct, l'opérateur doit
-        // savoir que sa fiche n'est pas enregistrée. On garde `dirty` pour
-        // retenter à la prochaine frappe.
-        setSaveState("error");
-        toast.error(readableError(e, "Sauvegarde de la fiche impossible."));
-      }
+    const t = setTimeout(() => {
+      void (async () => {
+        try { await update({ id: id!, ...payload }); dirty.current = false; setSaveState("saved"); }
+        catch (e) {
+          // Ne PAS avaler l'erreur : sur un appel en direct, l'opérateur doit
+          // savoir que sa fiche n'est pas enregistrée. On garde `dirty` pour
+          // retenter à la prochaine frappe.
+          setSaveState("error");
+          toast.error(readableError(e, "Sauvegarde de la fiche impossible."));
+        }
+      })();
     }, 700);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps

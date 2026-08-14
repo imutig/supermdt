@@ -95,7 +95,7 @@ export function JoinPage() {
   useEffect(() => {
     if (!awaitingAuth || !isAuthenticated || finishing.current || !pending.current) return;
     finishing.current = true;
-    (async () => {
+    void (async () => {
       try {
         await completeRegistration({ code, ...pending.current! });
         choose("mdt");

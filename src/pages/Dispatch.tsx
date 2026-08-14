@@ -79,7 +79,7 @@ export function Dispatch() {
 
   const applyStatus = (patrol: Patrol, status: Status) => {
     if (status.requires.length > 0) { setPrompt({ mode: "status", patrolId: patrol._id, status, initial: patrol.fields }); return; }
-    toast.guard(setStatus({ patrolId: patrol._id as Id<"patrols">, statusId: status._id as Id<"dispatchStatuses"> }), "Changement impossible");
+    void toast.guard(setStatus({ patrolId: patrol._id as Id<"patrols">, statusId: status._id as Id<"dispatchStatuses"> }), "Changement impossible");
   };
 
   // Dépôt : la cible est celle qui se trouve sous le pointeur au relâchement.
@@ -96,8 +96,8 @@ export function Dispatch() {
         return;
       }
       if (payload.type !== "agent") return;
-      if (payload.id === meId) toast.guard(join({ patrolId: target.key as Id<"patrols"> }), "Impossible de rejoindre");
-      else toast.guard(addMember({ patrolId: target.key as Id<"patrols">, agentId: payload.id as Id<"agents"> }), "Ajout impossible");
+      if (payload.id === meId) void toast.guard(join({ patrolId: target.key as Id<"patrols"> }), "Impossible de rejoindre");
+      else void toast.guard(addMember({ patrolId: target.key as Id<"patrols">, agentId: payload.id as Id<"agents"> }), "Ajout impossible");
       return;
     }
 
@@ -110,7 +110,7 @@ export function Dispatch() {
       if (!patrol || !canEditPatrol(patrol)) return;
       if (zone.operation) {
         if (patrol.operationId === zone.operation._id) return;
-        toast.guard(assignToOperation({ patrolId: patrol._id as Id<"patrols">, operationId: zone.operation._id as Id<"operations"> }), "Affectation impossible");
+        void toast.guard(assignToOperation({ patrolId: patrol._id as Id<"patrols">, operationId: zone.operation._id as Id<"operations"> }), "Affectation impossible");
         return;
       }
       if (zone.status) {
@@ -123,7 +123,7 @@ export function Dispatch() {
     // Un agent lâché sur une zone crée une patrouille dans ce statut.
     if (zone.status) {
       if (zone.status.requires.length > 0) { setPrompt({ mode: "createAgent", agentId: payload.id, status: zone.status }); return; }
-      toast.guard(createForAgent({ agentId: payload.id as Id<"agents">, statusId: zone.status._id as Id<"dispatchStatuses"> }), "Création impossible");
+      void toast.guard(createForAgent({ agentId: payload.id as Id<"agents">, statusId: zone.status._id as Id<"dispatchStatuses"> }), "Création impossible");
     }
   };
 
@@ -347,7 +347,7 @@ export function Dispatch() {
       {newOp !== null && (
         <OperationModal
           onCancel={() => setNewOp(null)}
-          onConfirm={(name) => { toast.guard(operationCreate({ name }), "Création impossible"); setNewOp(null); }}
+          onConfirm={(name) => { void toast.guard(operationCreate({ name }), "Création impossible"); setNewOp(null); }}
         />
       )}
       {detailPatrol && (
@@ -370,9 +370,9 @@ export function Dispatch() {
           onCancel={() => setPrompt(null)}
           onConfirm={(fields) => {
             if (prompt.mode === "status") {
-              toast.guard(setStatus({ patrolId: prompt.patrolId as Id<"patrols">, statusId: prompt.status._id as Id<"dispatchStatuses">, fields }), "Changement impossible");
+              void toast.guard(setStatus({ patrolId: prompt.patrolId as Id<"patrols">, statusId: prompt.status._id as Id<"dispatchStatuses">, fields }), "Changement impossible");
             } else {
-              toast.guard(createForAgent({ agentId: prompt.agentId as Id<"agents">, statusId: prompt.status._id as Id<"dispatchStatuses">, fields }), "Création impossible");
+              void toast.guard(createForAgent({ agentId: prompt.agentId as Id<"agents">, statusId: prompt.status._id as Id<"dispatchStatuses">, fields }), "Création impossible");
             }
             setPrompt(null);
           }}
