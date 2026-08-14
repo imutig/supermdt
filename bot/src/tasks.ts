@@ -2,7 +2,6 @@ import { type Client, type TextChannel } from "discord.js";
 import { mdt } from "./convex.js";
 import { presenceEmbed, dailyEmbed, absencePublishEmbed, sanctionEmbed, convocationEmbed } from "./embeds.js";
 import { openRollcall, closeRollcall, remindNonVoters, LSPD_ROLE } from "./rollcall.js";
-import { startPushServer } from "./pushServer.js";
 import { reconcilePromoCategories, reconcilePromoDeletions, deprogramInterview, parisWallToEpoch } from "./tickets.js";
 import { baseEmbed, BRAND } from "./theme.js";
 
@@ -327,7 +326,8 @@ export function startTasks(client: Client) {
   // rappels, fermetures) qui tolère 5 min. La logique horaire est déjà « à
   // fenêtre » (pas d'égalité stricte à la minute), donc 5 min est sûr.
   setInterval(() => void tick(), 5 * 60_000);
-  // Push : Convex déclenche un tick immédiat dès qu'il y a du travail à faire.
-  startPushServer(() => tick());
   console.log("[tasks] boucle active (poll de sécurité 5 min + push Convex).");
+  // Le serveur HTTP (index.ts) déclenche ce tick immédiatement quand Convex
+  // « pousse » du travail (POST /push). On renvoie donc le déclencheur.
+  return tick;
 }

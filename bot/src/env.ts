@@ -24,9 +24,4 @@ export const env = {
   // Salons et heures ne sont PAS ici : ils se règlent sur le site (page
   // Configuration > Intégrations) et sont lus en direct via Convex.
   brandIconUrl: optional("BRAND_ICON_URL"),
-
-  // Port HTTP du serveur de « push » (Convex prévient le bot au lieu de le
-  // sonder). Railway fournit PORT automatiquement ; 0/absent = serveur désactivé
-  // (on retombe alors sur le poll de sécurité).
-  pushPort: Number(process.env.PORT ?? 0) || 0,
 };

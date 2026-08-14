@@ -6,6 +6,11 @@ import { registerCommands, handleCommand } from "./commands.js";
 import { startTasks } from "./tasks.js";
 import { handleRollcallButton } from "./rollcall.js";
 import { handleTicketInteraction, templateAutocomplete, handleDirectMessage, handleTicketChannelMessage } from "./tickets.js";
+import { handleHttp } from "./pushServer.js";
+
+// Déclencheur du tick, renseigné une fois les tâches démarrées (voir ClientReady).
+// Avant ça, un push éventuel est un no-op inoffensif (le poll de sécurité rattrape).
+let onPush: () => Promise<void> | void = () => {};
 
 // La candidature se fait par MP (le candidat écrit au bot) et les recruteurs
 // répondent avec !r / !a dans le ticket : il faut donc lire le contenu des
@@ -31,7 +36,7 @@ client.once(Events.ClientReady, async (c) => {
   } catch (err) {
     console.error("[bot] enregistrement des commandes impossible :", err);
   }
-  startTasks(client);
+  onPush = startTasks(client);
 });
 
 client.on(Events.InteractionCreate, async (interaction) => {
@@ -57,11 +62,12 @@ client.on(Events.MessageCreate, async (msg) => {
 
 client.on(Events.Error, (err) => console.error("[bot] erreur client :", err));
 
-// Petit serveur HTTP : Railway attend qu'un service écoute un port pour le
-// considérer sain. Le bot n'a pas d'API, ce point ne sert qu'au healthcheck.
+// Serveur HTTP unique : healthcheck Railway + endpoint /push (Convex prévient le
+// bot qu'il y a du travail, au lieu qu'il sonde en boucle). Un seul port exposé
+// par Railway, donc un seul serveur — voir handleHttp.
 const port = Number(process.env.PORT ?? 8080);
-createServer((_req, res) => { res.writeHead(200); res.end("Station 13 bot OK"); }).listen(port, () => {
-  console.log(`[health] écoute sur le port ${port}`);
+createServer((req, res) => handleHttp(req, res, () => onPush())).listen(port, () => {
+  console.log(`[http] healthcheck + push à l'écoute sur le port ${port}`);
 });
 
 void client.login(env.discordToken);
