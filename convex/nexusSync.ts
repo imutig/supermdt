@@ -346,6 +346,27 @@ export const removeCredential = mutation({
 // insère localement la fiche renvoyée. Si le POST échoue, RIEN n'est créé.
 // ============================================================================
 
+// Un citoyen déjà importé localement (par son importRef nexus-citoyen:<numero>) ?
+// Sert à la récupération d'un POST 5xx : on ne « récupère » que des fiches
+// nouvelles pour nous, jamais un homonyme déjà présent.
+export const _citizenIdByImportRef = internalQuery({
+  args: { importRef: v.string() },
+  handler: async (ctx, { importRef }) => {
+    const row = await ctx.db.query("citizens").withIndex("by_import", (q) => q.eq("importRef", importRef)).first();
+    return row?._id ?? null;
+  },
+});
+
+// Recherche de citoyens sur Nexus par nom (récupération après un POST en échec).
+async function fetchNexusCitizensByName(token: string, nom: string): Promise<any[]> {
+  try {
+    const res = await fetch(`${BASE}/api/citoyens?entity=lspd&search=${encodeURIComponent(nom)}&page=1&limit=100`, { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) return [];
+    const j: any = await res.json();
+    return j.citoyens ?? j.data ?? [];
+  } catch { return []; }
+}
+
 export const _insertCitizenFromNexus = internalMutation({
   args: { raw: v.string(), createdBy: v.id("agents"), mugshotUrl: v.optional(v.string()) },
   handler: async (ctx, { raw, createdBy, mugshotUrl }): Promise<Id<"citizens">> => {
@@ -411,6 +432,25 @@ export const createCitizen = action({
     if (!res.ok) {
       const txt = await res.text().catch(() => "");
       await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: "citoyen", op: "POST", ok: false, httpStatus: res.status, durationMs: Date.now() - t0, agentId, error: txt.slice(0, 160) });
+      // Récupération : NexusMDT renvoie parfois un 5xx TOUT EN ayant créé la fiche.
+      // Plutôt que d'attendre la synchro, on la recherche par nom : si elle existe
+      // sur Nexus sans équivalent local, on l'importe aussitôt (write-through
+      // récupéré). Sûr : si Nexus n'a rien créé, on ne trouve rien et on lève
+      // l'erreur comme avant (aucun effet de bord).
+      if (res.status >= 500) {
+        const wantP = norm(a.prenom.trim()); const wantN = norm(a.nom.trim());
+        const matches = (await fetchNexusCitizensByName(token, a.nom.trim()))
+          .filter((c) => norm(String(c.prenom ?? "")) === wantP && norm(String(c.nom ?? "")) === wantN)
+          .sort((x, y) => Number(y.numero ?? 0) - Number(x.numero ?? 0));
+        for (const m of matches) {
+          const numero = m.numero ?? m._id;
+          const importRef = numero != null ? `nexus-citoyen:${numero}` : undefined;
+          if (importRef && await ctx.runQuery(internal.nexusSync._citizenIdByImportRef, { importRef })) continue; // déjà local : homonyme, pas notre fiche
+          const citizenId = await ctx.runMutation(internal.nexusSync._insertCitizenFromNexus, { raw: JSON.stringify(m), createdBy: agentId, mugshotUrl: a.mugshotUrl });
+          await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: "citoyen", op: "POST", ok: true, httpStatus: res.status, durationMs: Date.now() - t0, agentId, detail: `RECUP apres ${res.status} · ${a.prenom} ${a.nom} · Nexus n°${numero ?? "?"} · local ${citizenId}` });
+          return citizenId;
+        }
+      }
       throw new Error(`Création côté NexusMDT échouée (HTTP ${res.status}). ${txt.slice(0, 120)}`);
     }
     const j: any = await res.json();
