@@ -2,7 +2,9 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { env } from "./env.js";
 
 // Traite les requêtes du serveur HTTP unique du bot (créé dans index.ts) :
-//   - healthcheck Railway (toute requête non /push) -> 200
+//   - healthcheck Railway (toute requête non /push) -> 200 si la gateway Discord
+//     est prête, 503 sinon (isReady) : un bot déconnecté doit échouer le
+//     healthcheck pour que Railway redémarre le zombie au lieu de le laisser vivre.
 //   - POST /push { secret } -> déclenche un traitement immédiat (onPush)
 // On NE crée PAS de second serveur : Railway n'expose qu'un port, déjà occupé
 // par le healthcheck. Sécurisé par le secret partagé (même BOT_SECRET que les
@@ -11,6 +13,7 @@ export function handleHttp(
   req: IncomingMessage,
   res: ServerResponse,
   onPush: () => Promise<void> | void,
+  isReady: () => boolean,
 ): void {
   if (req.method === "POST" && req.url === "/push") {
     let body = "";
@@ -26,7 +29,13 @@ export function handleHttp(
     });
     return;
   }
-  // Tout le reste = healthcheck Railway.
-  res.writeHead(200, { "content-type": "text/plain" });
-  res.end("Station 13 bot OK");
+  // Tout le reste = healthcheck Railway : lié à l'état de la gateway Discord.
+  // 503 tant que le client n'est pas connecté (Railway redémarre alors le bot).
+  if (isReady()) {
+    res.writeHead(200, { "content-type": "text/plain" });
+    res.end("Station 13 bot OK");
+  } else {
+    res.writeHead(503, { "content-type": "text/plain" });
+    res.end("Station 13 bot indisponible (gateway non prête)");
+  }
 }

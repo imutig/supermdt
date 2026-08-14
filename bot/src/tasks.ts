@@ -265,8 +265,12 @@ export function startTasks(client: Client) {
         if (pending.length) {
           const chan = await channel(client, cfg.absenceChannel);
           for (const ab of pending) {
-            if (chan) await chan.send({ embeds: [absencePublishEmbed(ab)] }).catch(() => {});
-            await mdt.markAbsenceAnnounced(ab.id);
+            // On ne marque « publié » qu'après un envoi CONFIRMÉ : un échec
+            // (salon absent, rate-limit) sera réessayé au prochain tick plutôt
+            // que perdu silencieusement.
+            let ok = false;
+            if (chan) { try { await chan.send({ embeds: [absencePublishEmbed(ab)] }); ok = true; } catch (e) { console.error("[absence] envoi échoué :", e); } }
+            if (ok) await mdt.markAbsenceAnnounced(ab.id);
           }
         }
       } catch (err) { console.error("[absence] publication :", err); }
@@ -279,13 +283,14 @@ export function startTasks(client: Client) {
         if (pending.length) {
           const chan = await channel(client, cfg.sanctionsChannel);
           for (const s of pending) {
+            let ok = false;
             if (chan) {
               const ping = cfg.sanctionsPingRole
                 ? { content: `<@&${cfg.sanctionsPingRole}>`, allowedMentions: { roles: [cfg.sanctionsPingRole] } }
                 : {};
-              await chan.send({ ...ping, embeds: [sanctionEmbed(s)] }).catch(() => {});
+              try { await chan.send({ ...ping, embeds: [sanctionEmbed(s)] }); ok = true; } catch (e) { console.error("[sanction] envoi échoué :", e); }
             }
-            await mdt.markSanctionAnnounced(s.id);
+            if (ok) await mdt.markSanctionAnnounced(s.id); // publié seulement si confirmé
           }
         }
       } catch (err) { console.error("[sanction] publication :", err); }
@@ -298,13 +303,14 @@ export function startTasks(client: Client) {
         if (pending.length) {
           const chan = await channel(client, cfg.sanctionsChannel);
           for (const c of pending) {
+            let ok = false;
             if (chan) {
               const ping = c.pingDiscordId
                 ? { content: `<@${c.pingDiscordId}>`, allowedMentions: { users: [c.pingDiscordId] } }
                 : {};
-              await chan.send({ ...ping, embeds: [convocationEmbed(c)] }).catch(() => {});
+              try { await chan.send({ ...ping, embeds: [convocationEmbed(c)] }); ok = true; } catch (e) { console.error("[convocation] envoi échoué :", e); }
             }
-            await mdt.markConvocationAnnounced(c.id);
+            if (ok) await mdt.markConvocationAnnounced(c.id); // publié seulement si confirmé
           }
         }
       } catch (err) { console.error("[convocation] publication :", err); }
@@ -316,8 +322,9 @@ export function startTasks(client: Client) {
       if (posts.length && ceremonyChannel) {
         const chan = await channel(client, ceremonyChannel);
         for (const p of posts) {
-          if (chan) await chan.send({ content: p.content, allowedMentions: { parse: ["users", "roles"] } }).catch(() => {});
-          await mdt.markCeremonyPostSent(p.id);
+          let ok = false;
+          if (chan) { try { await chan.send({ content: p.content, allowedMentions: { parse: ["users", "roles"] } }); ok = true; } catch (e) { console.error("[ceremonie] envoi échoué :", e); } }
+          if (ok) await mdt.markCeremonyPostSent(p.id); // publié seulement si confirmé
         }
       }
     } catch (err) { console.error("[ceremonie] publication :", err); }

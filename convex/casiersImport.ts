@@ -496,18 +496,27 @@ export const _upsertCasiers = internalMutation({
     }
 
     // Réconciliation : les casiers IMPORTÉS (importRef) absents du flux Nexus
-    // actuel = supprimés côté Nexus -> on les supprime aussi. Jamais les casiers
-    // natifs du MDT. Sécurité : rien si le flux est vide (ex. erreur API).
-    let supprimes = 0, chargesSupprimees = 0;
-    const orphelins = raws.length > 0 ? allEntries.filter((e) => e.importRef && !e.deletedAt && !incomingRefs.has(e.importRef)) : [];
-    for (const e of orphelins) {
-      supprimes++;
-      if (dryRun) continue;
-      for (const c of await ctx.db.query("casierCharges").withIndex("by_entry", (q) => q.eq("entryId", e._id)).collect()) { await ctx.db.delete(c._id); chargesSupprimees++; }
-      await ctx.db.delete(e._id);
+    // actuel = supprimés côté Nexus -> on les archive (SOFT-delete, restaurable),
+    // jamais un hard-delete. Jamais les casiers natifs du MDT. Sécurité : rien si
+    // le flux est vide (ex. erreur API).
+    let supprimes = 0;
+    let reconciliationSkipped = false;
+    const importedActive = allEntries.filter((e) => e.importRef && !e.deletedAt);
+    const orphelins = raws.length > 0 ? importedActive.filter((e) => !incomingRefs.has(e.importRef!)) : [];
+    // Garde-fou proportionnel : archiver une part anormalement grande des casiers
+    // importés (> 40%) trahit presque toujours un flux Nexus tronqué (pagination
+    // cassée), pas de vraies suppressions -> on s'abstient et on signale.
+    if (!dryRun && importedActive.length >= 10 && orphelins.length > importedActive.length * 0.4) {
+      reconciliationSkipped = true;
+    } else {
+      for (const e of orphelins) {
+        supprimes++;
+        if (dryRun) continue;
+        await ctx.db.patch(e._id, { deletedAt: Date.now() }); // archive (charges conservées)
+      }
     }
 
-    return { source: raws.length, ajoutes, dejaImporte, casiersRelies, officiersRelies, sansCitoyen, citoyensCrees, exemplesSansCitoyen, chargesLiees, chargesLibres, officiersLies, parseErr, supprimes, chargesSupprimees };
+    return { source: raws.length, ajoutes, dejaImporte, casiersRelies, officiersRelies, sansCitoyen, citoyensCrees, exemplesSansCitoyen, chargesLiees, chargesLibres, officiersLies, parseErr, supprimes, chargesSupprimees: 0, orphelinsDetectes: orphelins.length, reconciliationSkipped };
   },
 });
 
@@ -609,17 +618,23 @@ export const _upsertContraventions = internalMutation({
       });
     }
 
-    // Réconciliation : contraventions IMPORTÉES absentes du flux Nexus -> supprimées.
-    let supprimes = 0, chargesSupprimees = 0;
-    const orphelins = raws.length > 0 ? all.filter((c) => c.importRef && !c.deletedAt && !incomingRefs.has(c.importRef)) : [];
-    for (const c of orphelins) {
-      supprimes++;
-      if (dryRun) continue;
-      for (const ch of await ctx.db.query("citationCharges").withIndex("by_citation", (q) => q.eq("citationId", c._id)).collect()) { await ctx.db.delete(ch._id); chargesSupprimees++; }
-      await ctx.db.delete(c._id);
+    // Réconciliation : contraventions IMPORTÉES absentes du flux Nexus -> archivées
+    // (SOFT-delete, restaurable), avec le même garde-fou proportionnel que les casiers.
+    let supprimes = 0;
+    let reconciliationSkipped = false;
+    const importedActive = all.filter((c) => c.importRef && !c.deletedAt);
+    const orphelins = raws.length > 0 ? importedActive.filter((c) => !incomingRefs.has(c.importRef!)) : [];
+    if (!dryRun && importedActive.length >= 10 && orphelins.length > importedActive.length * 0.4) {
+      reconciliationSkipped = true;
+    } else {
+      for (const c of orphelins) {
+        supprimes++;
+        if (dryRun) continue;
+        await ctx.db.patch(c._id, { deletedAt: Date.now() });
+      }
     }
 
-    return { source: raws.length, ajoutes, dejaImporte, contravRelies, sansCitoyen, citoyensCrees, exemplesSansCitoyen, chargesLiees, chargesLibres, officiersLies, parseErr, supprimes, chargesSupprimees };
+    return { source: raws.length, ajoutes, dejaImporte, contravRelies, sansCitoyen, citoyensCrees, exemplesSansCitoyen, chargesLiees, chargesLibres, officiersLies, parseErr, supprimes, chargesSupprimees: 0, orphelinsDetectes: orphelins.length, reconciliationSkipped };
   },
 });
 

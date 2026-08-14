@@ -103,7 +103,12 @@ export function LosSantosMap({
       draft.forEach((p, i) => g.addLayer(L.circleMarker(toLatLng(p.x, p.y), { radius: 4, color: draftColor, fillColor: i === 0 ? draftColor : "#fff", fillOpacity: 1, weight: 2 })));
     }
 
-    if (pin) g.addLayer(L.circleMarker(toLatLng(pin.x, pin.y), { radius: 7, color: "#fff", weight: 3, fillColor: "var(--accent)", fillOpacity: 1 }));
+    if (pin) {
+      // Leaflet écrit fillColor dans l'attribut SVG `fill`, qui ne résout PAS les
+      // variables CSS : on lit donc la valeur calculée de --accent (fallback trèfle).
+      const accent = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || "#2f7d55";
+      g.addLayer(L.circleMarker(toLatLng(pin.x, pin.y), { radius: 7, color: "#fff", weight: 3, fillColor: accent, fillOpacity: 1 }));
+    }
   }, [markers, draft, draftColor, pin]);
 
   return (

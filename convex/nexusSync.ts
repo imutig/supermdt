@@ -41,8 +41,8 @@ function jwtExp(token: string): number | null {
 type Cred = { email: string; secretEnc: string; tokenCache: string | null; tokenExpiry: number | null };
 // Token Nexus de l'agent : réutilise le cache tant qu'il est valide, sinon login
 // (et met en cache). Évite un login à chaque écriture.
-async function getToken(ctx: ActionCtx, agentId: Id<"agents">, cred: Cred): Promise<string> {
-  if (cred.tokenCache && cred.tokenExpiry && cred.tokenExpiry > Date.now() + 60_000) return cred.tokenCache;
+async function getToken(ctx: ActionCtx, agentId: Id<"agents">, cred: Cred, force = false): Promise<string> {
+  if (!force && cred.tokenCache && cred.tokenExpiry && cred.tokenExpiry > Date.now() + 60_000) return cred.tokenCache;
   const password = await decryptSecret(cred.secretEnc);
   const token = await nexusLogin(cred.email, password);
   const exp = jwtExp(token) ?? Date.now() + 50 * 60_000;
@@ -51,6 +51,33 @@ async function getToken(ctx: ActionCtx, agentId: Id<"agents">, cred: Cred): Prom
 }
 
 const BASE = "https://mdt.vizu-world.com";
+
+const NEXUS_TIMEOUT_MS = 20_000;
+// Appel HTTP unique vers NexusMDT : Authorization + timeout + auto-relogin sur 401.
+async function nexusFetch(
+  ctx: ActionCtx, agentId: Id<"agents">, cred: Cred, path: string,
+  opts: { method?: string; body?: string; headers?: Record<string, string> } = {},
+): Promise<Response> {
+  const run = async (token: string): Promise<Response> => {
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), NEXUS_TIMEOUT_MS);
+    try {
+      return await fetch(`${BASE}${path}`, {
+        method: opts.method ?? "GET",
+        body: opts.body,
+        signal: ac.signal,
+        headers: { ...(opts.headers ?? {}), Authorization: `Bearer ${token}` },
+      });
+    } finally { clearTimeout(timer); }
+  };
+  let res = await run(await getToken(ctx, agentId, cred));
+  if (res.status === 401) {
+    // Session Nexus révoquée avant l'expiration du JWT : invalider + relogin + 1 retry.
+    await ctx.runMutation(internal.nexusSync._invalidateToken, { agentId });
+    res = await run(await getToken(ctx, agentId, { ...cred, tokenCache: null, tokenExpiry: null }, true));
+  }
+  return res;
+}
 
 function norm(s: string) {
   return (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
@@ -283,6 +310,14 @@ export const _cacheToken = internalMutation({
     if (row) await ctx.db.patch(row._id, { tokenCache: token, tokenExpiry: expiry });
   },
 });
+// Invalide le token en cache (session Nexus révoquée) : force un relogin au prochain appel.
+export const _invalidateToken = internalMutation({
+  args: { agentId: v.id("agents") },
+  handler: async (ctx, { agentId }) => {
+    const row = await ctx.db.query("nexusCredentials").withIndex("by_agent", (q) => q.eq("agentId", agentId)).unique();
+    if (row) await ctx.db.patch(row._id, { tokenCache: undefined, tokenExpiry: undefined });
+  },
+});
 
 // Enregistre (ou met à jour) les identifiants Nexus de l'agent courant :
 // teste le login, chiffre le mot de passe, stocke. Ne renvoie jamais le secret.
@@ -358,9 +393,9 @@ export const _citizenIdByNexusId = internalQuery({
 });
 
 // Recherche de citoyens sur Nexus par nom (récupération après un POST en échec).
-async function fetchNexusCitizensByName(token: string, nom: string): Promise<any[]> {
+async function fetchNexusCitizensByName(ctx: ActionCtx, agentId: Id<"agents">, cred: Cred, nom: string): Promise<any[]> {
   try {
-    const res = await fetch(`${BASE}/api/citoyens?entity=lspd&search=${encodeURIComponent(nom)}&page=1&limit=100`, { headers: { Authorization: `Bearer ${token}` } });
+    const res = await nexusFetch(ctx, agentId, cred, `/api/citoyens?entity=lspd&search=${encodeURIComponent(nom)}&page=1&limit=100`);
     if (!res.ok) return [];
     const j: any = await res.json();
     return j.citoyens ?? j.data ?? [];
@@ -411,7 +446,6 @@ export const createCitizen = action({
     const cred = await ctx.runQuery(internal.nexusSync._credFor, { agentId });
     if (!cred) throw new Error("Synchronisation Nexus non configurée (voir Mon profil).");
 
-    const token = await getToken(ctx, agentId, cred);
     const payload: Record<string, unknown> = {
       entity: "lspd",
       prenom: a.prenom.trim(), nom: a.nom.trim(),
@@ -427,9 +461,9 @@ export const createCitizen = action({
     const t0 = Date.now();
     let res: Response;
     try {
-      res = await fetch(`${BASE}/api/citoyens`, {
+      res = await nexusFetch(ctx, agentId, cred, `/api/citoyens`, {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
     } catch (e) {
@@ -446,7 +480,7 @@ export const createCitizen = action({
       // l'erreur comme avant (aucun effet de bord).
       if (res.status >= 500) {
         const wantP = norm(a.prenom.trim()); const wantN = norm(a.nom.trim());
-        const matches = (await fetchNexusCitizensByName(token, a.nom.trim()))
+        const matches = (await fetchNexusCitizensByName(ctx, agentId, cred, a.nom.trim()))
           .filter((c) => norm(String(c.prenom ?? "")) === wantP && norm(String(c.nom ?? "")) === wantN)
           .sort((x, y) => Number(y.numero ?? 0) - Number(x.numero ?? 0));
         for (const m of matches) {
@@ -523,7 +557,6 @@ export const createContravention = action({
     // 2) Push vers Nexus (rollback local si échec).
     const t0 = Date.now();
     try {
-      const token = await getToken(ctx, agentId, cred);
       const { date, heure } = nowParis();
       const payload = {
         entity: "lspd", citoyen: { id: info.nexusId, nom: info.nom, prenom: info.prenom },
@@ -532,7 +565,7 @@ export const createContravention = action({
         dateInfraction: date, heureInfraction: heure,
         typeAmende: "Amende de police", categorieAmende: "Montant personnalisé",
       };
-      const res = await fetch(`${BASE}/api/amendes`, { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      const res = await nexusFetch(ctx, agentId, cred, `/api/amendes`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       if (!res.ok) {
         const txt = await res.text().catch(() => "");
         await ctx.runMutation(internal.nexusSync._rollbackCitation, { citationId });
@@ -618,7 +651,6 @@ export const createCasier = action({
 
     const t0 = Date.now();
     try {
-      const token = await getToken(ctx, agentId, cred);
       const citoyen = { id: info.nexusId, nom: info.nom, prenom: info.prenom };
       const officer = { matricule: info.agentMatricule != null ? String(info.agentMatricule) : "", nom: info.agentNom };
       const isDossier = info.arrestType === "DOSSIER";
@@ -637,7 +669,7 @@ export const createCasier = action({
             rapport: info.reportBody || "", amende: info.totalFine, peine: fmtHMS(info.totalJail),
             date: nowArrest(),
           };
-      const res = await fetch(`${BASE}${path}`, { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      const res = await nexusFetch(ctx, agentId, cred, path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       if (!res.ok) {
         const txt = await res.text().catch(() => "");
         await ctx.runMutation(internal.nexusSync._rollbackCasier, { entryId });
@@ -694,8 +726,7 @@ export const updateArrest = action({
     if (!isRapport && a.dossierStatus !== undefined) payload.statut = a.dossierStatus;
 
     const t0 = Date.now();
-    const token = await getToken(ctx, agentId, cred);
-    const res = await fetch(`${BASE}${path}/${rec.nexusId}`, { method: "PATCH", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+    const res = await nexusFetch(ctx, agentId, cred, `${path}/${rec.nexusId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
     if (!res.ok) {
       const txt = await res.text().catch(() => "");
       await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity, op: "PATCH", ok: false, httpStatus: res.status, durationMs: Date.now() - t0, agentId, error: txt.slice(0, 160) });
@@ -766,7 +797,6 @@ export const deleteRecord = action({
     if (!cred || !info?.nexusId) { await localRemove(); return { synced: false }; }
 
     const t0 = Date.now();
-    const token = await getToken(ctx, agentId, cred);
     const path = kind === "amende" ? "/api/amendes"
       : kind === "plainte" ? "/api/plaintes"
       : kind === "deposition" ? "/api/depositions"
@@ -775,7 +805,7 @@ export const deleteRecord = action({
       : info.arrestType === "RAPPORT" ? "/api/rapports" : "/api/dossiers";
     let res: Response;
     try {
-      res = await fetch(`${BASE}${path}/${info.nexusId}`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
+      res = await nexusFetch(ctx, agentId, cred, `${path}/${info.nexusId}`, { method: "DELETE" });
     } catch (e) {
       await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: kind, op: "DELETE", ok: false, durationMs: Date.now() - t0, agentId, error: e instanceof Error ? e.message : String(e) });
       throw new Error("NexusMDT injoignable, suppression annulée.");
@@ -814,7 +844,6 @@ export const updateCitizen = action({
     if (!cred || !citizen?.nexusId) { await ctx.runMutation(api.citizens.update, { id: citizenId, ...fields }); return; }
 
     const t0 = Date.now();
-    const token = await getToken(ctx, agentId, cred);
     const payload = {
       entity: "lspd", prenom: a.prenom.trim(), nom: a.nom.trim(),
       dateNaissance: a.dateNaissance ?? "", lieuNaissance: a.lieuNaissance ?? "",
@@ -823,7 +852,7 @@ export const updateCitizen = action({
       ethnie: a.ethnie ?? "", couleurCheveux: a.cheveux ?? "", couleurYeux: a.yeux ?? "",
       taille: toNexusNum(a.taille), poids: toNexusNum(a.poids), appartenance: a.groupe ?? "", emploi: a.metier ?? "",
     };
-    const res = await fetch(`${BASE}/api/citoyens/${citizen.nexusId}`, { method: "PUT", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+    const res = await nexusFetch(ctx, agentId, cred, `/api/citoyens/${citizen.nexusId}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
     if (!res.ok) {
       const txt = await res.text().catch(() => "");
       await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: "citoyen", op: "PUT", ok: false, httpStatus: res.status, durationMs: Date.now() - t0, agentId, error: txt.slice(0, 160) });
@@ -934,7 +963,6 @@ export const createComplaint = action({
     const avocats = a.avocat?.trim() ? [a.avocat.trim()] : [];
     const statut = a.status || "En cours";
     const t0 = Date.now();
-    const token = await getToken(ctx, agentId, cred);
     const { date } = nowParis();
     const payload = {
       entity: "lspd",
@@ -944,7 +972,7 @@ export const createComplaint = action({
     };
     let res: Response;
     try {
-      res = await fetch(`${BASE}/api/plaintes`, { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      res = await nexusFetch(ctx, agentId, cred, `/api/plaintes`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
     } catch (e) {
       await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: "plainte", op: "POST", ok: false, durationMs: Date.now() - t0, agentId, error: e instanceof Error ? e.message : String(e) });
       throw new Error("NexusMDT injoignable, plainte non créée.");
@@ -987,9 +1015,8 @@ export const updateComplaint = action({
     if (!cred || !info?.nexusId) { await ctx.runMutation(internal.nexusSync._applyComplaintLocal, local); return; }
 
     const t0 = Date.now();
-    const token = await getToken(ctx, agentId, cred);
     const payload = { entity: "lspd", raison: a.motif, statut, contre: cx.contre, corps: a.body, avocats, officiers: nexusOfficiers(cx.officiers) };
-    const res = await fetch(`${BASE}/api/plaintes/${info.nexusId}`, { method: "PATCH", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+    const res = await nexusFetch(ctx, agentId, cred, `/api/plaintes/${info.nexusId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
     if (!res.ok) {
       const txt = await res.text().catch(() => "");
       await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: "plainte", op: "PATCH", ok: false, httpStatus: res.status, durationMs: Date.now() - t0, agentId, error: txt.slice(0, 160) });
@@ -1048,7 +1075,6 @@ export const createDeposition = action({
     if (!cx?.citoyen?.nexusId) throw new Error("Ce citoyen n'existe pas encore côté NexusMDT (resync nécessaire).");
 
     const t0 = Date.now();
-    const token = await getToken(ctx, agentId, cred);
     const { date } = nowParis();
     const payload = {
       entity: "lspd",
@@ -1057,7 +1083,7 @@ export const createDeposition = action({
     };
     let res: Response;
     try {
-      res = await fetch(`${BASE}/api/depositions`, { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      res = await nexusFetch(ctx, agentId, cred, `/api/depositions`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
     } catch (e) {
       await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: "deposition", op: "POST", ok: false, durationMs: Date.now() - t0, agentId, error: e instanceof Error ? e.message : String(e) });
       throw new Error("NexusMDT injoignable, déposition non créée.");
@@ -1093,9 +1119,8 @@ export const updateDeposition = action({
     if (!cred || !info?.nexusId) { await ctx.runMutation(internal.nexusSync._applyDepositionLocal, local); return; }
 
     const t0 = Date.now();
-    const token = await getToken(ctx, agentId, cred);
     const payload = { entity: "lspd", objet: a.title.trim(), corps: a.body, officiers: nexusOfficiers(cx.officiers) };
-    const res = await fetch(`${BASE}/api/depositions/${info.nexusId}`, { method: "PATCH", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+    const res = await nexusFetch(ctx, agentId, cred, `/api/depositions/${info.nexusId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
     if (!res.ok) {
       const txt = await res.text().catch(() => "");
       await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: "deposition", op: "PATCH", ok: false, httpStatus: res.status, durationMs: Date.now() - t0, agentId, error: txt.slice(0, 160) });
@@ -1183,10 +1208,9 @@ export const createWeapon = action({
     const owner = await ctx.runQuery(internal.nexusSync._citizenNexusRef, { citizenId: a.ownerId });
     const typeName = await ctx.runQuery(internal.nexusSync._weaponTypeName, { typeId: a.typeId });
     const t0 = Date.now();
-    const token = await getToken(ctx, agentId, cred);
     let res: Response;
     try {
-      res = await fetch(`${BASE}/api/armes`, { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify(weaponPayload(a, owner)) });
+      res = await nexusFetch(ctx, agentId, cred, `/api/armes`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(weaponPayload(a, owner)) });
     } catch (e) {
       await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: "arme", op: "POST", ok: false, durationMs: Date.now() - t0, agentId, error: e instanceof Error ? e.message : String(e) });
       throw new Error("NexusMDT injoignable, arme non créée.");
@@ -1223,8 +1247,7 @@ export const updateWeapon = action({
     if (!cred || !info?.nexusId) { await ctx.runMutation(api.weapons.update, { id, ...fields }); return; }
 
     const t0 = Date.now();
-    const token = await getToken(ctx, agentId, cred);
-    const res = await fetch(`${BASE}/api/armes/${info.nexusId}`, { method: "PUT", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify(weaponPayload(a, owner)) });
+    const res = await nexusFetch(ctx, agentId, cred, `/api/armes/${info.nexusId}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(weaponPayload(a, owner)) });
     if (!res.ok) {
       const txt = await res.text().catch(() => "");
       await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: "arme", op: "PUT", ok: false, httpStatus: res.status, durationMs: Date.now() - t0, agentId, error: txt.slice(0, 160) });
@@ -1265,10 +1288,9 @@ export const createVehicle = action({
     if (!cred) throw new Error("Synchronisation Nexus non configurée (voir Mon profil).");
     const owner = await ctx.runQuery(internal.nexusSync._citizenNexusRef, { citizenId: a.ownerId });
     const t0 = Date.now();
-    const token = await getToken(ctx, agentId, cred);
     let res: Response;
     try {
-      res = await fetch(`${BASE}/api/vehicules`, { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify(vehiclePayload(a, undefined, owner)) });
+      res = await nexusFetch(ctx, agentId, cred, `/api/vehicules`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(vehiclePayload(a, undefined, owner)) });
     } catch (e) {
       await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: "vehicule", op: "POST", ok: false, durationMs: Date.now() - t0, agentId, error: e instanceof Error ? e.message : String(e) });
       throw new Error("NexusMDT injoignable, véhicule non créé.");
@@ -1304,8 +1326,7 @@ export const updateVehicle = action({
     if (!cred || !info?.nexusId) { await ctx.runMutation(api.vehicles.update, { id, ...fields }); return; }
 
     const t0 = Date.now();
-    const token = await getToken(ctx, agentId, cred);
-    const res = await fetch(`${BASE}/api/vehicules/${info.nexusId}`, { method: "PUT", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify(vehiclePayload(a, undefined, owner)) });
+    const res = await nexusFetch(ctx, agentId, cred, `/api/vehicules/${info.nexusId}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(vehiclePayload(a, undefined, owner)) });
     if (!res.ok) {
       const txt = await res.text().catch(() => "");
       await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: "vehicule", op: "PUT", ok: false, httpStatus: res.status, durationMs: Date.now() - t0, agentId, error: txt.slice(0, 160) });

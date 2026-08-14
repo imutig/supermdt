@@ -549,6 +549,7 @@ export default defineSchema({
     removeRoleIds: v.array(v.string()),
     reason: v.optional(v.string()),
     status: v.union(v.literal("PENDING"), v.literal("DONE"), v.literal("ERROR")),
+    attempts: v.optional(v.number()), // nombre d'échecs (retry jusqu'à un plafond avant ERROR définitif)
     error: v.optional(v.string()),
     createdAt: v.number(),
   }).index("by_status", ["status"]),

@@ -154,12 +154,22 @@ export const ownerExists = query({
 
 // Bootstrap unique de l'owner : le 1er compte peut se déclarer owner s'il n'en existe aucun.
 export const bootstrapOwner = mutation({
-  args: { nomRP: v.string(), prenomRP: v.string() },
+  args: { nomRP: v.string(), prenomRP: v.string(), secret: v.optional(v.string()) },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (!userId) throw new Error("Non authentifié.");
     const all = await ctx.db.query("agents").collect();
     if (all.some((a) => a.isOwner)) throw new Error("Un owner existe déjà.");
+    // Anti « land-grab » : sur une base VIERGE (aucun agent) le bootstrap reste
+    // libre. Mais si des agents existent déjà sans owner (owner supprimé), on
+    // exige le secret d'amorçage (env BOOTSTRAP_SECRET) pour empêcher n'importe
+    // quel compte de s'emparer de l'owner.
+    if (all.length > 0) {
+      const expected = process.env.BOOTSTRAP_SECRET;
+      if (!expected || args.secret !== expected) {
+        throw new Error("Amorçage verrouillé : un secret d'amorçage est requis (des comptes existent déjà).");
+      }
+    }
 
     let agent = all.find((a) => a.userId === userId) ?? null;
     if (agent) {
@@ -749,13 +759,21 @@ export const setDivisions = mutation({
     await requirePermission(ctx, actor, "effectif.division");
     const target = await ctx.db.get(agentId);
     if (!target) throw new Error("Agent introuvable.");
-    // Affecter des divisions à soi-même est légitime (on a déjà la permission) :
-    // on ne vérifie la hiérarchie que pour un autre agent.
-    if (actor._id !== agentId) await assertOutranks(ctx, actor, target);
     const existing = await ctx.db
       .query("agentDivisions")
       .withIndex("by_agent", (q) => q.eq("agentId", agentId))
       .collect();
+    if (actor._id !== agentId) {
+      // Modifier un AUTRE agent : contrôle hiérarchique.
+      await assertOutranks(ctx, actor, target);
+    } else if (!actor.isOwner) {
+      // Auto-modification : on peut se RETIRER d'une division, mais pas s'AJOUTER
+      // à une nouvelle. Les permissions de division étant globales, un auto-ajout
+      // permettrait de s'octroyer les droits de cette division (escalade).
+      const existingIds = new Set(existing.map((l) => l.divisionId as string));
+      const adding = divisionIds.filter((d) => !existingIds.has(d as string));
+      if (adding.length) throw new Error("Vous ne pouvez pas vous ajouter vous-même à une division : demandez à un supérieur (vous pouvez en revanche vous en retirer).");
+    }
     for (const l of existing) await ctx.db.delete(l._id);
     for (const divId of divisionIds) {
       await ctx.db.insert("agentDivisions", { agentId, divisionId: divId });

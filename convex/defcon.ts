@@ -5,9 +5,13 @@ import { writeAudit } from "./lib/audit";
 import { notify, NOTIFY_COLOR } from "./lib/notify";
 
 // DEFCON courant = calculé (dernier changement encore valide, sinon défaut). Pas de cron.
+// Lisible par tout agent authentifié (posture opérationnelle affichée dans le
+// shell) ; on exige au minimum une session agent pour ne pas l'exposer à un
+// appelant non authentifié.
 export const current = query({
   args: {},
   handler: async (ctx) => {
+    await requireAgent(ctx);
     const levels = await ctx.db.query("defconLevels").withIndex("by_position").collect();
     if (levels.length === 0) return null;
     const def = levels.find((l) => l.isDefault) ?? levels[0];
@@ -20,7 +24,10 @@ export const current = query({
 
 export const listLevels = query({
   args: {},
-  handler: async (ctx) => ctx.db.query("defconLevels").withIndex("by_position").collect(),
+  handler: async (ctx) => {
+    await requireAgent(ctx);
+    return await ctx.db.query("defconLevels").withIndex("by_position").collect();
+  },
 });
 
 export const setDefcon = mutation({

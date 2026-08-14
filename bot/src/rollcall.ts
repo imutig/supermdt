@@ -171,20 +171,31 @@ export async function closeRollcall(client: Client, rollcallId: string, channelI
   console.log("[rollcall] appel clos.");
 }
 
-// Gestion d'un clic sur un bouton de vote.
+// Gestion d'un clic sur un bouton de vote. Tout le corps est protégé : un throw
+// (mutation Convex, edit du message…) ne doit pas remonter en rejection non
+// gérée mais informer l'utilisateur via un message éphémère.
 export async function handleRollcallButton(interaction: ButtonInteraction) {
-  const [, status, rollcallId] = interaction.customId.split("|");
-  if (rollcallId === "pending") {
-    await interaction.reply({ content: "L'appel s'initialise, réessayez dans un instant.", flags: 64 });
-    return;
+  try {
+    const [, status, rollcallId] = interaction.customId.split("|");
+    if (rollcallId === "pending") {
+      await interaction.reply({ content: "L'appel s'initialise, réessayez dans un instant.", flags: 64 });
+      return;
+    }
+    const member = interaction.member;
+    const name = (member && "displayName" in member ? member.displayName : null) ?? interaction.user.username;
+    const res = await mdt.rollcallVote(rollcallId, interaction.user.id, name, status as RollStatus);
+    if (!res.ok) {
+      await interaction.reply({ content: res.reason === "clos" ? "L'appel est clos, le vote n'est plus possible." : "Vote impossible.", flags: 64 });
+      return;
+    }
+    await interaction.reply({ content: `Présence enregistrée : **${LABELS[status as RollStatus]}**.`, flags: 64 });
+    if (interaction.message) await refresh(interaction.client, rollcallId, interaction.channelId, interaction.message.id);
+  } catch (err) {
+    console.error("[rollcall] traitement du vote impossible :", err);
+    // Ne répond que si l'interaction n'a pas déjà été acquittée (sinon Discord
+    // rejette une seconde réponse, ce qui masquerait l'erreur d'origine).
+    if (!interaction.replied && !interaction.deferred) {
+      await interaction.reply({ content: "Une erreur est survenue, réessayez dans un instant.", flags: 64 }).catch(() => {});
+    }
   }
-  const member = interaction.member;
-  const name = (member && "displayName" in member ? member.displayName : null) ?? interaction.user.username;
-  const res = await mdt.rollcallVote(rollcallId, interaction.user.id, name, status as RollStatus);
-  if (!res.ok) {
-    await interaction.reply({ content: res.reason === "clos" ? "L'appel est clos, le vote n'est plus possible." : "Vote impossible.", flags: 64 });
-    return;
-  }
-  await interaction.reply({ content: `Présence enregistrée : **${LABELS[status as RollStatus]}**.`, flags: 64 });
-  if (interaction.message) await refresh(interaction.client, rollcallId, interaction.channelId, interaction.message.id);
 }

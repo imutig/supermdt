@@ -318,7 +318,15 @@ export const markRoleJob = mutation({
   args: { secret: v.string(), jobId: v.id("discordRoleJobs"), status: v.union(v.literal("DONE"), v.literal("ERROR")), error: v.optional(v.string()) },
   handler: async (ctx, { secret, jobId, status, error }) => {
     assertBot(secret);
-    await ctx.db.patch(jobId, { status, error });
+    if (status === "DONE") { await ctx.db.patch(jobId, { status: "DONE", error: undefined }); return; }
+    // Échec : souvent transitoire (membre pas encore en cache, rate-limit, hoquet
+    // gateway). On garde le job PENDING (rejoué au prochain tick) jusqu'à un
+    // plafond de tentatives, puis ERROR définitif — au lieu d'abandonner au 1er échec.
+    const job = await ctx.db.get(jobId);
+    if (!job) return;
+    const attempts = (job.attempts ?? 0) + 1;
+    const MAX_ATTEMPTS = 5;
+    await ctx.db.patch(jobId, { status: attempts >= MAX_ATTEMPTS ? "ERROR" : "PENDING", attempts, error });
   },
 });
 
@@ -545,6 +553,10 @@ export const requestAbsence = mutation({
 });
 
 // Contrôle d'accès d'une commande Discord. Ouvert par défaut (aucune config).
+// Commandes exposant des données personnelles ou créant des enregistrements :
+// fail-closed « agents liés uniquement » par défaut (voir commandAllowed).
+const SENSITIVE_COMMANDS = new Set(["plaque", "casier", "absence"]);
+
 // Sinon autorisé si : owner ; OU un des rôles du membre est listé ; OU l'agent
 // lié a un grade >= au grade minimum configuré.
 export const commandAllowed = query({
@@ -554,7 +566,15 @@ export const commandAllowed = query({
     const cfg = await ctx.db.query("discordCommandAccess").withIndex("by_command", (q) => q.eq("command", command)).first();
     const hasRoleRule = !!cfg && cfg.roleIds.length > 0;
     const hasGradeRule = !!cfg && !!cfg.minGradeId;
-    if (!hasRoleRule && !hasGradeRule) return true; // non configurée = ouverte
+    if (!hasRoleRule && !hasGradeRule) {
+      // Non configurée : ouverte pour les commandes anodines. Mais les commandes
+      // SENSIBLES (PII citoyen/véhicule, ou création d'absence) ne sont, par
+      // défaut, accessibles qu'à un agent LIÉ et ACTIF — jamais à un membre
+      // Discord quelconque. Pour restreindre davantage, configurer rôle/grade.
+      if (!SENSITIVE_COMMANDS.has(command)) return true;
+      const a = await ctx.db.query("agents").withIndex("by_discord", (q) => q.eq("discordId", discordId)).first();
+      return !!a && a.status === "ACTIVE";
+    }
     const agent = await ctx.db.query("agents").withIndex("by_discord", (q) => q.eq("discordId", discordId)).first();
     if (agent?.isOwner) return true;
     if (hasRoleRule && roleIds.some((r) => cfg!.roleIds.includes(r))) return true;

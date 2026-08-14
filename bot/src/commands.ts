@@ -77,9 +77,12 @@ export async function handleCommand(interaction: ChatInputCommandInteraction) {
   try {
     // Contrôle d'accès configuré sur le site (grade minimum et/ou rôles Discord).
     // Ouvert par défaut ; refus explicite sinon (les gardes internes des tickets
-    // restent en plus).
+    // restent en plus). Si le MDT est injoignable, on échoue OUVERT pour les
+    // commandes anodines mais FERMÉ pour les commandes sensibles (PII / création).
+    const SENSITIVE = new Set(["plaque", "casier", "absence"]);
     const roleIds = interaction.inCachedGuild() ? [...interaction.member.roles.cache.keys()] : [];
-    const allowed = await mdt.commandAllowed(interaction.commandName, interaction.user.id, roleIds).catch(() => true);
+    const allowed = await mdt.commandAllowed(interaction.commandName, interaction.user.id, roleIds)
+      .catch(() => !SENSITIVE.has(interaction.commandName));
     if (!allowed) {
       await interaction.reply({ content: "⛔ Tu n'as pas la permission d'utiliser cette commande.", flags: 64 });
       return;

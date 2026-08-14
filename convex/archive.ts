@@ -2,7 +2,7 @@ import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import type { QueryCtx, MutationCtx } from "./_generated/server";
 import type { Id, TableNames } from "./_generated/dataModel";
-import { requireAgent, requirePermission, agentLabel } from "./rbac";
+import { requireAgent, requirePermission, agentLabel, assertOutranks } from "./rbac";
 import { writeAudit } from "./lib/audit";
 
 // Archives = tout ce qui a été supprimé (soft-delete via `deletedAt`) plus les
@@ -177,24 +177,34 @@ export const restore = mutation({
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "archive.restore");
     if (kind === "agent") {
-      const a = await ctx.db.get(id as Id<"agents">);
+      const aid = ctx.db.normalizeId("agents", id);
+      const a = aid ? await ctx.db.get(aid) : null;
       if (!a) throw new Error("Compte introuvable.");
+      // Une mise à pied disciplinaire (SUSPENDED) NE se lève PAS depuis les
+      // archives : elle passe par la Discipline (séparation des pouvoirs).
+      if (a.status === "SUSPENDED") throw new Error("Cet agent est sous mise à pied : levez-la depuis la Discipline.");
+      // Réactiver un agent est une action hiérarchique : on ne réactive qu'un
+      // subordonné (l'owner est intouchable, cf. assertOutranks).
+      await assertOutranks(ctx, agent, a);
       await ctx.db.patch(a._id, { status: "ACTIVE" });
       await writeAudit(ctx, agent, { action: "agent.reactivate", resourceType: "agent", resourceId: id, resourceLabel: `${a.prenomRP} ${a.nomRP}` });
       return;
     }
     if (kind === "citizen") {
-      const c = await ctx.db.get(id as Id<"citizens">);
+      const cid = ctx.db.normalizeId("citizens", id);
+      const c = cid ? await ctx.db.get(cid) : null;
       if (!c) throw new Error("Dossier introuvable.");
       await ctx.db.patch(c._id, { status: "ACTIVE" });
       await writeAudit(ctx, agent, { action: "citizen.restore", resourceType: "citizen", resourceId: id, resourceLabel: `${c.prenom} ${c.nom}` });
       return;
     }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const doc = await ctx.db.get(id as Id<any>);
+    // On valide que l'id appartient bien à la table du `kind` (pas de
+    // type-confusion / écriture sur une table arbitraire) et qu'il était supprimé.
+    const nid = ctx.db.normalizeId(SOFT[kind].table, id);
+    const doc = nid ? await ctx.db.get(nid) : null;
     if (!doc) throw new Error("Élément introuvable.");
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await ctx.db.patch(doc._id as any, { deletedAt: undefined, deletedBy: undefined });
+    if (!(doc as Doc).deletedAt) throw new Error("Seul un élément archivé peut être restauré.");
+    await ctx.db.patch(nid!, { deletedAt: undefined, deletedBy: undefined } as Partial<Doc>);
     await writeAudit(ctx, agent, { action: "archive.restore", resourceType: kind, resourceId: id, metadata: { kind } });
   },
 });
@@ -207,12 +217,13 @@ export const purge = mutation({
     if (!agent.isOwner) throw new Error("Seul le compte propriétaire peut supprimer définitivement un élément.");
     if (kind === "agent" || kind === "citizen") throw new Error("Ce type ne peut pas être purgé depuis les archives.");
     const cfg = SOFT[kind];
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const doc = await ctx.db.get(id as Id<any>);
-    if (!doc || !doc.deletedAt) throw new Error("Seul un élément archivé peut être purgé.");
+    // On valide l'appartenance à la table du `kind` : sinon `cfg.children`
+    // nettoierait la mauvaise table (enfants orphelins).
+    const nid = ctx.db.normalizeId(cfg.table, id);
+    const doc = nid ? await ctx.db.get(nid) : null;
+    if (!doc || !(doc as Doc).deletedAt) throw new Error("Seul un élément archivé peut être purgé.");
     if (cfg.children) await cfg.children(ctx, doc);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await ctx.db.delete(doc._id as any);
+    await ctx.db.delete(nid!);
     await writeAudit(ctx, agent, { action: "archive.purge", resourceType: kind, resourceId: id, metadata: { kind } });
   },
 });

@@ -224,8 +224,8 @@ export const sync = internalAction({
     // Journalise l'import pour la page de monitoring (sauf aperçu).
     if (!dryRun) {
       const cit = citoyensRep as CitRep;
-      const cas = casiersRep as { ajoutes?: number; supprimes?: number };
-      const con = contraventionsRep as { ajoutes?: number; supprimes?: number };
+      const cas = casiersRep as { ajoutes?: number; supprimes?: number; orphelinsDetectes?: number; reconciliationSkipped?: boolean };
+      const con = contraventionsRep as { ajoutes?: number; supprimes?: number; orphelinsDetectes?: number; reconciliationSkipped?: boolean };
       const pla = plaintesRep as { ajoutes?: number; maj?: number; supprimes?: number };
       const dep = depositionsRep as { ajoutes?: number; maj?: number; supprimes?: number };
       await ctx.runMutation(internal.nexusSync._log, {
@@ -233,6 +233,13 @@ export const sync = internalAction({
         durationMs: Date.now() - t0,
         detail: `citoyens +${cit.ajoutes}/enr ${cit.enrichis} · casiers +${cas.ajoutes ?? 0}/-${cas.supprimes ?? 0} · contraventions +${con.ajoutes ?? 0}/-${con.supprimes ?? 0} · plaintes +${pla.ajoutes ?? 0}/~${pla.maj ?? 0}/-${pla.supprimes ?? 0} · dépositions +${dep.ajoutes ?? 0}/~${dep.maj ?? 0}/-${dep.supprimes ?? 0}`,
       });
+      // Garde-fou : la réconciliation des suppressions a été suspendue (flux Nexus
+      // anormalement tronqué). On alerte plutôt que d'archiver des fiches à tort.
+      if (cas.reconciliationSkipped || con.reconciliationSkipped) {
+        await ctx.runMutation(internal.nexusSync._alert, {
+          message: `⚠️ **Synchro NexusMDT** — réconciliation des suppressions **suspendue** ce cycle : trop de fiches importées disparaîtraient d'un coup (casiers : ${cas.orphelinsDetectes ?? 0}, contraventions : ${con.orphelinsDetectes ?? 0}). Flux Nexus probablement tronqué (pagination). **Aucune suppression effectuée.**`,
+        });
+      }
     }
 
     return {

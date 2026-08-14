@@ -237,7 +237,18 @@ export const addPromotion = mutation({
     if (!c || c.deletedAt) throw new Error("Cérémonie introuvable.");
     const target = await ctx.db.get(agentId);
     if (!target) throw new Error("Agent introuvable.");
-    if (!(await ctx.db.get(toGradeId))) throw new Error("Grade introuvable.");
+    const toGrade = await ctx.db.get(toGradeId);
+    if (!toGrade) throw new Error("Grade introuvable.");
+    // Contrôle hiérarchique dès l'ajout (comme applyGrades) : sauf owner, on ne
+    // promeut que vers un grade STRICTEMENT inférieur au sien, sur une cible
+    // qu'on surclasse. Empêche d'octroyer un rôle Discord élevé via la cérémonie.
+    if (!agent.isOwner) {
+      const actorGrade = agent.gradeId ? await ctx.db.get(agent.gradeId) : null;
+      const targetGrade = target.gradeId ? await ctx.db.get(target.gradeId) : null;
+      if (!actorGrade || toGrade.position >= actorGrade.position || (targetGrade && targetGrade.position >= actorGrade.position)) {
+        throw new Error("Cette promotion est hors de votre portée hiérarchique.");
+      }
+    }
     // Un même agent n'apparaît qu'une fois dans une cérémonie.
     const existing = (await ctx.db.query("ceremonyPromotions").withIndex("by_ceremony", (q) => q.eq("ceremonyId", ceremonyId)).collect())
       .find((p) => p.agentId === agentId);
