@@ -217,8 +217,11 @@ export const sync = internalAction({
     const casiersRep: unknown = await ctx.runAction(internal.casiersImport.casiersSync, { token: tk, dryRun, createMissing: createMissingCitizens });
     // Contraventions (amendes Nexus) : même modèle que les casiers.
     const contraventionsRep: unknown = await ctx.runAction(internal.casiersImport.contraventionsSync, { token: tk, dryRun, createMissing: createMissingCitizens });
-    // Plaintes & dépositions : après les citoyens (rattachement du plaignant).
-    const plaintesRep: unknown = await ctx.runAction(internal.plaintesImport.plaintesSync, { token: tk, dryRun });
+    // Dépositions : après les citoyens (rattachement du citoyen). Import des
+    // PLAINTES suspendu (voir FEATURES.plaintes côté front) : la synchro des
+    // plaintes est mise en pause. Réactiver la ligne ci-dessous pour la relancer.
+    const plaintesRep: unknown = { ajoutes: 0, maj: 0, supprimes: 0 };
+    // const plaintesRep = await ctx.runAction(internal.plaintesImport.plaintesSync, { token: tk, dryRun });
     const depositionsRep: unknown = await ctx.runAction(internal.plaintesImport.depositionsSync, { token: tk, dryRun });
 
     // Journalise l'import pour la page de monitoring (sauf aperçu).

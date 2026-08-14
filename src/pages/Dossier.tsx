@@ -294,7 +294,7 @@ export function Dossier() {
       <div className="grid grid-cols-[1fr_300px] items-start gap-[18px]">
         <div className="min-w-0">
           <div className="mb-[14px] flex flex-wrap gap-[2px] rounded-card border border-border bg-surface p-[5px]">
-            {TABS.map((t) => (
+            {TABS.filter((t) => t.key !== "plaintes" || FEATURES.plaintes).map((t) => (
               <button
                 key={t.key}
                 onClick={() => setTab(t.key)}

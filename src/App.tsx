@@ -204,7 +204,7 @@ function Gated() {
         <Route path="/carte" element={<Carte />} />
         <Route path="/calendrier" element={<RequirePerm perm="calendrier.view"><Calendrier /></RequirePerm>} />
         <Route path="/ceremonies" element={<RequirePerm perm="ceremonies.manage"><Ceremonies /></RequirePerm>} />
-        <Route path="/plaintes" element={<RequirePerm perm="plaintes.view"><Plaintes /></RequirePerm>} />
+        {FEATURES.plaintes && <Route path="/plaintes" element={<RequirePerm perm="plaintes.view"><Plaintes /></RequirePerm>} />}
         <Route path="/armes" element={<RequirePerm perm="armes.view"><Armes /></RequirePerm>} />
         <Route path="/vehicules" element={<RequirePerm perm={["vehicules.view", "flotte.view"]}><Vehicules /></RequirePerm>} />
         <Route path="/saisies" element={<RequirePerm perm="saisies.view"><Saisies /></RequirePerm>} />

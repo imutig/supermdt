@@ -133,6 +133,7 @@ export function NavRail() {
   const disabledKeys = new Set<string>();
   if (!FEATURES.dispatch) disabledKeys.add("dispatch");
   if (!FEATURES.service) disabledKeys.add("services");
+  if (!FEATURES.plaintes) disabledKeys.add("plaintes");
   // Historique judiciaire (casiers/contraventions) : consultable dans le MDT
   // (les casiers et amendes sont importés depuis le Nexus). L'écriture reste
   // gérée par le flag judicialWrite au niveau des actions.

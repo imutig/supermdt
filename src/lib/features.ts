@@ -25,6 +25,9 @@ export const FEATURES = {
   citizenWrite: false,
   judicialWrite: false,
   ficheRenseignement: false,
+  // Plaintes désactivées : la synchro Nexus des plaintes est mise en pause
+  // (repasser à true pour réafficher la page, l'onglet et relancer l'import).
+  plaintes: false,
 } as const;
 
 // Message affiché quand une action d'écriture citoyenne/judiciaire est tentée.
