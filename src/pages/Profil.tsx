@@ -211,7 +211,11 @@ function ActivityTab() {
         <EmptyState title="Aucune activité" message="Vos créations et modifications apparaîtront ici." />
       ) : (
         rows.map((l) => (
-          <div key={l._id} className="flex items-center gap-3 border-b border-border px-4 py-[10px] last:border-0">
+          <div
+            key={l._id}
+            onClick={() => l.link && navigate(l.link)}
+            className={`flex items-center gap-3 border-b border-border px-4 py-[10px] last:border-0 ${l.link ? "cursor-pointer hover:bg-surface-2" : ""}`}
+          >
             <span className="rounded-[4px] border border-border bg-surface-2 px-[7px] py-[2px] text-[10px] font-semibold text-muted">{resourceLabel(l.resourceType)}</span>
             <div className="min-w-0 flex-1">
               <div className="text-[12.5px]">
@@ -219,9 +223,7 @@ function ActivityTab() {
                 {l.resourceLabel && <span className="text-muted"> — {l.resourceLabel}</span>}
               </div>
             </div>
-            {l.citizenId && (
-              <button onClick={() => navigate(`/citoyen/${l.citizenId}`)} className="text-[11.5px] font-semibold text-accent hover:underline">Voir</button>
-            )}
+            {l.link && <span className="text-[11.5px] font-semibold text-accent">Ouvrir →</span>}
             <span className="font-data text-[11px] text-faint">{new Date(l.at).toLocaleString("fr-FR", { timeZone: "Europe/Paris", dateStyle: "short", timeStyle: "short" })}</span>
           </div>
         ))

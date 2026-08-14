@@ -28,6 +28,13 @@ export const myActivity = query({
           else if (r.resourceType === "mandat") citizenId = (await ctx.db.get(r.resourceId as Id<"mandats">))?.citizenId ?? null;
         } catch { citizenId = null; }
       }
+      // Lien d'accès direct à la ressource concernée (rapport, dossier citoyen…).
+      let link: string | null = null;
+      if (r.resourceType === "report" && r.resourceId) link = `/rapport/${r.resourceId}`;
+      else if (citizenId) link = `/citoyen/${citizenId}`; // casier, contravention, mandat, citoyen, plainte, déposition…
+      else if (r.resourceType === "weapon") link = "/armes";
+      else if (r.resourceType === "vehicle" || r.resourceType === "fleetVehicle") link = "/vehicules";
+      else if (r.resourceType === "saisie") link = "/saisies";
       out.push({
         _id: r._id,
         at: r.at,
@@ -35,6 +42,7 @@ export const myActivity = query({
         resourceType: r.resourceType,
         resourceLabel: r.resourceLabel ?? null,
         citizenId,
+        link,
       });
     }
     return out;

@@ -40,17 +40,19 @@ export const request = mutation({
   handler: async (ctx, args) => {
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "absences.request");
+    // Plus d'approbation nécessaire : une absence déclarée est active d'emblée
+    // (elle exclut aussitôt l'agent du ping du roll call).
     const id = await ctx.db.insert("absences", {
       agentId: agent._id,
       reason: args.reason,
       from: args.from,
       to: args.to,
-      status: "EN_ATTENTE",
+      status: "APPROUVEE",
       at: Date.now(),
     });
     await writeAudit(ctx, agent, { action: "absence.request", resourceType: "absence", resourceId: id });
     await notify(ctx, "absence.request", {
-      title: "Demande d'absence",
+      title: "Absence déclarée",
       description: `**${agent.prenomRP} ${agent.nomRP}**`,
       color: NOTIFY_COLOR.info,
       fields: [
