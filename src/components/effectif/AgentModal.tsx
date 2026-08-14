@@ -12,9 +12,11 @@ import { actionLabel, resourceLabel } from "@/lib/auditLabels";
 import { SanctionModal } from "@/components/effectif/SanctionModal";
 import { ConvocationModal } from "@/components/effectif/ConvocationModal";
 import { FicheDocument } from "@/components/effectif/FicheDocument";
+import { useDialogs } from "@/components/detective/dialogs";
 
 export function AgentModal({ agentId, onClose }: { agentId: Id<"agents">; onClose: () => void }) {
   const toast = useToast();
+  const { confirm } = useDialogs();
   const { can } = useCan();
   const [ficheOpen, setFicheOpen] = useState(false);
   const navigate = useNavigate();
@@ -556,13 +558,20 @@ export function AgentModal({ agentId, onClose }: { agentId: Id<"agents">; onClos
             {a.status === "ACTIVE" ? (
               <>
                 <button
-                  onClick={() => toast.guard(setStatus({ agentId, status: "SUSPENDED" }), "Action impossible")}
+                  onClick={async () => {
+                    if (!(await confirm({ title: "Suspendre cet agent ?", message: "Il apparaîtra en suspendu et ne pourra plus se connecter, jusqu'à réactivation.", confirmLabel: "Suspendre", danger: true }))) return;
+                    void toast.guard(setStatus({ agentId, status: "SUSPENDED" }), "Action impossible");
+                  }}
                   className="rounded-sm border border-border bg-surface-2 px-4 py-[10px] text-[13px] font-semibold text-warning hover:border-border-strong"
                 >
                   Suspendre
                 </button>
                 <button
-                  onClick={() => toast.guard(setStatus({ agentId, status: "INACTIVE" }), "Action impossible").then((r) => r !== undefined && toast.success("Agent viré."))}
+                  onClick={async () => {
+                    if (!(await confirm({ title: "Virer de l'effectif ?", message: "Le compte sera désactivé (connexion bloquée). Il reste réactivable depuis les Archives.", confirmLabel: "Virer", danger: true }))) return;
+                    const r = await toast.guard(setStatus({ agentId, status: "INACTIVE" }), "Action impossible");
+                    if (r !== undefined) toast.success("Agent viré.");
+                  }}
                   className="flex-1 rounded-sm px-4 py-[10px] text-[13px] font-semibold text-white hover:brightness-[1.06]"
                   style={{ background: "var(--danger)" }}
                 >

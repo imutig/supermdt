@@ -1,5 +1,5 @@
 import { mutation, query } from "./_generated/server";
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import type { QueryCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { requireAgent, requirePermission } from "./rbac";
@@ -108,9 +108,9 @@ export const add = mutation({
   handler: async (ctx, { citizenId, otherId, role }) => {
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "citoyens.edit");
-    if (citizenId === otherId) throw new Error("Un citoyen ne peut pas être en relation avec lui-même.");
+    if (citizenId === otherId) throw new ConvexError("Un citoyen ne peut pas être en relation avec lui-même.");
     const other = await ctx.db.get(otherId);
-    if (!other) throw new Error("Citoyen introuvable.");
+    if (!other) throw new ConvexError("Citoyen introuvable.");
 
     // Détermine l'arête à insérer.
     let fromId: Id<"citizens">, toId: Id<"citizens">, kind: "PARENT" | "SPOUSE" | "SIBLING";

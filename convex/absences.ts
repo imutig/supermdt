@@ -1,6 +1,6 @@
 import { mutation, query } from "./_generated/server";
 import { internal } from "./_generated/api";
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import { requireAgent, requirePermission, can } from "./rbac";
 import { writeAudit } from "./lib/audit";
 import { notify, NOTIFY_COLOR } from "./lib/notify";
@@ -75,8 +75,8 @@ export const createFor = mutation({
     const actor = await requireAgent(ctx);
     await requirePermission(ctx, actor, "absences.manage");
     const target = await ctx.db.get(args.agentId);
-    if (!target) throw new Error("Agent introuvable.");
-    if (args.to < args.from) throw new Error("La date de fin précède la date de début.");
+    if (!target) throw new ConvexError("Agent introuvable.");
+    if (args.to < args.from) throw new ConvexError("La date de fin précède la date de début.");
     const id = await ctx.db.insert("absences", {
       agentId: args.agentId,
       reason: args.reason.trim() || "Absence",

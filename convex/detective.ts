@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { hasPerm } from "./lib/divisionAccess";
@@ -87,7 +87,7 @@ export const createCase = mutation({
   },
   handler: async (ctx, args) => {
     const { agent } = await requireDivPerm(ctx, args.divisionId, "db.cases");
-    if (!args.title.trim()) throw new Error("Titre requis.");
+    if (!args.title.trim()) throw new ConvexError("Titre requis.");
     const all = await ctx.db.query("dbCases").withIndex("by_division", (x) => x.eq("divisionId", args.divisionId)).collect();
     const number = all.reduce((m, c) => Math.max(m, c.number), 0) + 1;
     const caseId = await ctx.db.insert("dbCases", {
@@ -116,7 +116,7 @@ export const updateCase = mutation({
   handler: async (ctx, { caseId, ...patch }) => {
     const { agent, case: c } = await requireCaseWrite(ctx, caseId);
     const up: Record<string, unknown> = {};
-    if (patch.title !== undefined) { if (!patch.title.trim()) throw new Error("Titre requis."); up.title = patch.title.trim(); }
+    if (patch.title !== undefined) { if (!patch.title.trim()) throw new ConvexError("Titre requis."); up.title = patch.title.trim(); }
     if (patch.subDivision !== undefined) up.subDivision = patch.subDivision ?? undefined;
     if (patch.priority !== undefined) up.priority = patch.priority;
     if (patch.confidential !== undefined) up.confidential = patch.confidential;
@@ -203,7 +203,7 @@ export const addTimelineEvent = mutation({
   args: { caseId: v.id("dbCases"), label: v.string(), body: v.optional(v.string()) },
   handler: async (ctx, { caseId, label, body }) => {
     const { agent } = await requireCaseWrite(ctx, caseId);
-    if (!label.trim()) throw new Error("Intitulé requis.");
+    if (!label.trim()) throw new ConvexError("Intitulé requis.");
     await addTimeline(ctx, caseId, agent, label.trim(), "event", body);
   },
 });
@@ -239,7 +239,7 @@ export const addTodo = mutation({
   args: { caseId: v.id("dbCases"), text: v.string(), assigneeId: v.optional(v.id("agents")) },
   handler: async (ctx, { caseId, text, assigneeId }) => {
     const { agent, case: c } = await requireCaseWrite(ctx, caseId);
-    if (!text.trim()) throw new Error("Texte requis.");
+    if (!text.trim()) throw new ConvexError("Texte requis.");
     const all = await ctx.db.query("dbTodos").withIndex("by_case", (x) => x.eq("caseId", caseId)).collect();
     const order = all.reduce((m, t) => Math.max(m, t.order), -1) + 1;
     await ctx.db.insert("dbTodos", { caseId, text: text.trim(), done: false, assigneeId, order, createdBy: agent._id, at: Date.now() });
@@ -283,7 +283,7 @@ export const addFolder = mutation({
   args: { caseId: v.id("dbCases"), name: v.string() },
   handler: async (ctx, { caseId, name }) => {
     const { agent } = await requireCaseWrite(ctx, caseId);
-    if (!name.trim()) throw new Error("Nom requis.");
+    if (!name.trim()) throw new ConvexError("Nom requis.");
     const all = await ctx.db.query("dbFolders").withIndex("by_case", (x) => x.eq("caseId", caseId)).collect();
     const order = all.reduce((m, f) => Math.max(m, f.order), -1) + 1;
     return await ctx.db.insert("dbFolders", { caseId, name: name.trim(), order, createdBy: agent._id, at: Date.now() });
@@ -296,7 +296,7 @@ export const renameFolder = mutation({
     const f = await ctx.db.get(id);
     if (!f) return;
     await requireCaseWrite(ctx, f.caseId);
-    if (!name.trim()) throw new Error("Nom requis.");
+    if (!name.trim()) throw new ConvexError("Nom requis.");
     await ctx.db.patch(id, { name: name.trim() });
   },
 });
@@ -444,7 +444,7 @@ export const addEvidence = mutation({
   },
   handler: async (ctx, args) => {
     const { agent } = await requireCaseWrite(ctx, args.caseId);
-    if (!args.label.trim()) throw new Error("Libellé requis.");
+    if (!args.label.trim()) throw new ConvexError("Libellé requis.");
     const id = await ctx.db.insert("dbEvidence", {
       caseId: args.caseId, label: args.label.trim(), evidenceType: args.evidenceType,
       description: args.description, sealNumber: args.sealNumber?.trim() || undefined,
@@ -471,7 +471,7 @@ export const updateEvidence = mutation({
     if (!e || e.deletedAt) return;
     await requireCaseWrite(ctx, e.caseId);
     const up: Record<string, unknown> = {};
-    if (patch.label !== undefined) { if (!patch.label.trim()) throw new Error("Libellé requis."); up.label = patch.label.trim(); }
+    if (patch.label !== undefined) { if (!patch.label.trim()) throw new ConvexError("Libellé requis."); up.label = patch.label.trim(); }
     if (patch.evidenceType !== undefined) up.evidenceType = patch.evidenceType ?? undefined;
     if (patch.description !== undefined) up.description = patch.description;
     if (patch.sealNumber !== undefined) up.sealNumber = patch.sealNumber.trim() || undefined;
@@ -522,7 +522,7 @@ export const addCaseVehicle = mutation({
   },
   handler: async (ctx, { caseId, vehicleId, plaque, label, note }) => {
     await requireCaseWrite(ctx, caseId);
-    if (!vehicleId && !plaque?.trim()) throw new Error("Véhicule ou plaque requis.");
+    if (!vehicleId && !plaque?.trim()) throw new ConvexError("Véhicule ou plaque requis.");
     return await ctx.db.insert("dbCaseVehicles", {
       caseId, vehicleId, plaque: plaque?.trim() || undefined,
       label: label?.trim() || undefined, note: note?.trim() || undefined,

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { readableError } from "@/lib/errors";
 import { X } from "lucide-react";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "@/lib/api";
@@ -66,7 +67,7 @@ export function CreateCitizenModal({
       toast.success(syncActive ? "Citoyen créé et synchronisé sur le NexusMDT." : "Citoyen créé.");
       onCreated(id);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Création impossible.");
+      toast.error(readableError(e, "Création impossible."));
     } finally {
       setBusy(false);
     }

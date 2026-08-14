@@ -1,6 +1,6 @@
 import { mutation, query } from "./_generated/server";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import type { Doc } from "./_generated/dataModel";
 import { requireAgent, requirePermission } from "./rbac";
 import { writeAudit } from "./lib/audit";
@@ -103,7 +103,7 @@ export const qualificationCreate = mutation({
   handler: async (ctx, a) => {
     const agent = await guard(ctx);
     const code = a.code.trim().toUpperCase();
-    if (!code || !a.name.trim()) throw new Error("Sigle et intitulé requis.");
+    if (!code || !a.name.trim()) throw new ConvexError("Sigle et intitulé requis.");
     const id = await ctx.db.insert("qualifications", {
       ...a, code, name: a.name.trim(), active: true, position: await nextPos(ctx, "qualifications"),
     });
@@ -151,7 +151,7 @@ export const gradeMove = mutation({
     const agent = await guard(ctx);
     const grades = (await ctx.db.query("grades").collect()).sort((a, b) => a.position - b.position);
     const i = grades.findIndex((g) => g._id === id);
-    if (i === -1) throw new Error("Grade introuvable.");
+    if (i === -1) throw new ConvexError("Grade introuvable.");
     // « up » = monter dans la liste = position plus basse = grade moins élevé.
     const j = direction === "up" ? i - 1 : i + 1;
     if (j < 0 || j >= grades.length) return;
@@ -205,7 +205,7 @@ export const gradeRemove = mutation({
       .query("agents")
       .filter((q) => q.eq(q.field("gradeId"), id))
       .first();
-    if (used) throw new Error("Grade utilisé par un agent : réaffectez-le d'abord.");
+    if (used) throw new ConvexError("Grade utilisé par un agent : réaffectez-le d'abord.");
     const g = await ctx.db.get(id);
     await ctx.db.delete(id);
     await log(ctx, agent, "grade", "remove", g?.name ?? "");
@@ -247,7 +247,7 @@ export const divisionRemove = mutation({
       .query("agentDivisions")
       .withIndex("by_division", (q) => q.eq("divisionId", id))
       .first();
-    if (used) throw new Error("Division utilisée par un agent : retirez-la d'abord.");
+    if (used) throw new ConvexError("Division utilisée par un agent : retirez-la d'abord.");
     const d = await ctx.db.get(id);
     await ctx.db.delete(id);
     await log(ctx, agent, "division", "remove", d?.name ?? "");
@@ -298,7 +298,7 @@ export const namedCreate = mutation({
         Object.assign(base, { name });
         break;
       default:
-        throw new Error(`Table non gérée : ${table}`);
+        throw new ConvexError(`Table non gérée : ${table}`);
     }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const id = await ctx.db.insert(table as any, base as any);
@@ -347,7 +347,7 @@ export const namedUpdate = mutation({
         Object.assign(patch, { name });
         break;
       default:
-        throw new Error(`Table non gérée : ${table}`);
+        throw new ConvexError(`Table non gérée : ${table}`);
     }
     if (active !== undefined && table !== "resourceCategories") patch.active = active;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -413,7 +413,7 @@ export const defconRemove = mutation({
   handler: async (ctx, { id }) => {
     const agent = await guard(ctx);
     const l = await ctx.db.get(id);
-    if (l?.isDefault) throw new Error("Impossible de supprimer le niveau par défaut.");
+    if (l?.isDefault) throw new ConvexError("Impossible de supprimer le niveau par défaut.");
     await ctx.db.delete(id);
     await log(ctx, agent, "defcon", "remove", l?.name ?? "");
   },

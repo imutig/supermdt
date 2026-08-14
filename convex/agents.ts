@@ -1,5 +1,5 @@
 import { internalMutation, mutation, query } from "./_generated/server";
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import type { Doc } from "./_generated/dataModel";
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { assertOutranks, getCurrentAgent, requireAgent, requirePermission } from "./rbac";
@@ -157,9 +157,9 @@ export const bootstrapOwner = mutation({
   args: { nomRP: v.string(), prenomRP: v.string(), secret: v.optional(v.string()) },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
-    if (!userId) throw new Error("Non authentifié.");
+    if (!userId) throw new ConvexError("Non authentifié.");
     const all = await ctx.db.query("agents").collect();
-    if (all.some((a) => a.isOwner)) throw new Error("Un owner existe déjà.");
+    if (all.some((a) => a.isOwner)) throw new ConvexError("Un owner existe déjà.");
     // Anti « land-grab » : sur une base VIERGE (aucun agent) le bootstrap reste
     // libre. Mais si des agents existent déjà sans owner (owner supprimé), on
     // exige le secret d'amorçage (env BOOTSTRAP_SECRET) pour empêcher n'importe
@@ -167,7 +167,7 @@ export const bootstrapOwner = mutation({
     if (all.length > 0) {
       const expected = process.env.BOOTSTRAP_SECRET;
       if (!expected || args.secret !== expected) {
-        throw new Error("Amorçage verrouillé : un secret d'amorçage est requis (des comptes existent déjà).");
+        throw new ConvexError("Amorçage verrouillé : un secret d'amorçage est requis (des comptes existent déjà).");
       }
     }
 
@@ -208,7 +208,7 @@ export const completeRegistration = mutation({
   args: { code: v.string(), nomRP: v.string(), prenomRP: v.string(), matricule: v.optional(v.number()) },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
-    if (!userId) throw new Error("Non authentifié.");
+    if (!userId) throw new ConvexError("Non authentifié.");
     const existing = await ctx.db
       .query("agents")
       .withIndex("by_userId", (q) => q.eq("userId", userId))
@@ -219,9 +219,9 @@ export const completeRegistration = mutation({
       .query("invitations")
       .withIndex("by_code", (q) => q.eq("code", args.code))
       .unique();
-    if (!invite || invite.revoked) throw new Error("Code d'invitation invalide.");
-    if (invite.expiresAt && invite.expiresAt < Date.now()) throw new Error("Invitation expirée.");
-    if (invite.usesCount >= invite.maxUses) throw new Error("Invitation épuisée.");
+    if (!invite || invite.revoked) throw new ConvexError("Code d'invitation invalide.");
+    if (invite.expiresAt && invite.expiresAt < Date.now()) throw new ConvexError("Invitation expirée.");
+    if (invite.usesCount >= invite.maxUses) throw new ConvexError("Invitation épuisée.");
     // Invitation ciblée consommée : on retire la marque « MP en attente ».
     await ctx.db.patch(invite._id, { usesCount: invite.usesCount + 1, ...(invite.dmPending ? { dmPending: false } : {}) });
 
@@ -421,17 +421,17 @@ export const validate = mutation({
     const actor = await requireAgent(ctx);
     await requirePermission(ctx, actor, "effectif.validate");
     const target = await ctx.db.get(args.agentId);
-    if (!target || target.status !== "PENDING") throw new Error("Agent introuvable ou déjà validé.");
+    if (!target || target.status !== "PENDING") throw new ConvexError("Agent introuvable ou déjà validé.");
 
     const newGrade = await ctx.db.get(args.gradeId);
-    if (!newGrade) throw new Error("Grade introuvable.");
+    if (!newGrade) throw new ConvexError("Grade introuvable.");
     const isCadet = newGrade.academyOnly === true;
 
     // Hiérarchie stricte : on ne peut assigner qu'un grade inférieur au sien (owner exempté).
     if (!actor.isOwner) {
       const actorGrade = actor.gradeId ? await ctx.db.get(actor.gradeId) : null;
       if (!actorGrade || newGrade.position >= actorGrade.position) {
-        throw new Error("Vous ne pouvez assigner qu'un grade strictement inférieur au vôtre.");
+        throw new ConvexError("Vous ne pouvez assigner qu'un grade strictement inférieur au vôtre.");
       }
     }
 
@@ -440,13 +440,13 @@ export const validate = mutation({
       matricule = undefined; // le badge sera attribué à l'assermentation
     } else {
       if (!args.matricule || args.matricule < 1 || args.matricule > 99999) {
-        throw new Error("Numéro de badge (5 chiffres) requis.");
+        throw new ConvexError("Numéro de badge (5 chiffres) requis.");
       }
       const dup = await ctx.db
         .query("agents")
         .withIndex("by_matricule", (q) => q.eq("matricule", args.matricule!))
         .first();
-      if (dup) throw new Error("Numéro de badge déjà attribué.");
+      if (dup) throw new ConvexError("Numéro de badge déjà attribué.");
       matricule = args.matricule;
     }
 
@@ -625,16 +625,16 @@ export const updateGrade = mutation({
     const actor = await requireAgent(ctx);
     await requirePermission(ctx, actor, "effectif.grade");
     const target = await ctx.db.get(agentId);
-    if (!target) throw new Error("Agent introuvable.");
+    if (!target) throw new ConvexError("Agent introuvable.");
     // Contrôle sur le grade ACTUEL de la cible : sans lui, un sergent pouvait
     // rétrograder un lieutenant, le grade attribué étant bien inférieur au sien.
     await assertOutranks(ctx, actor, target);
     const newGrade = await ctx.db.get(gradeId);
-    if (!newGrade) throw new Error("Grade introuvable.");
+    if (!newGrade) throw new ConvexError("Grade introuvable.");
     if (!actor.isOwner) {
       const actorGrade = actor.gradeId ? await ctx.db.get(actor.gradeId) : null;
       if (!actorGrade || newGrade.position >= actorGrade.position) {
-        throw new Error("Vous ne pouvez assigner qu'un grade strictement inférieur au vôtre.");
+        throw new ConvexError("Vous ne pouvez assigner qu'un grade strictement inférieur au vôtre.");
       }
     }
     const before = target.gradeId ? await ctx.db.get(target.gradeId) : null;
@@ -673,13 +673,13 @@ export const setMatricule = mutation({
     const actor = await requireAgent(ctx);
     await requirePermission(ctx, actor, "effectif.edit");
     const target = await ctx.db.get(agentId);
-    if (!target) throw new Error("Agent introuvable.");
+    if (!target) throw new ConvexError("Agent introuvable.");
     await assertOutranks(ctx, actor, target);
     const dup = await ctx.db
       .query("agents")
       .withIndex("by_matricule", (q) => q.eq("matricule", matricule))
       .first();
-    if (dup && dup._id !== agentId) throw new Error("Numéro de badge déjà attribué.");
+    if (dup && dup._id !== agentId) throw new ConvexError("Numéro de badge déjà attribué.");
     await ctx.db.patch(agentId, { matricule });
     await writeAudit(ctx, actor, {
       action: "agent.matricule_change",
@@ -699,11 +699,11 @@ export const setName = mutation({
     const actor = await requireAgent(ctx);
     await requirePermission(ctx, actor, "effectif.edit");
     const target = await ctx.db.get(agentId);
-    if (!target) throw new Error("Agent introuvable.");
+    if (!target) throw new ConvexError("Agent introuvable.");
     await assertOutranks(ctx, actor, target);
     const prenom = prenomRP.trim();
     const nom = nomRP.trim();
-    if (!prenom || !nom) throw new Error("Prénom et nom requis.");
+    if (!prenom || !nom) throw new ConvexError("Prénom et nom requis.");
     await ctx.db.patch(agentId, { prenomRP: prenom, nomRP: nom });
     await writeAudit(ctx, actor, {
       action: "agent.name_change",
@@ -723,7 +723,7 @@ export const setQualifications = mutation({
     const actor = await requireAgent(ctx);
     await requirePermission(ctx, actor, "effectif.qualification");
     const target = await ctx.db.get(agentId);
-    if (!target) throw new Error("Agent introuvable.");
+    if (!target) throw new ConvexError("Agent introuvable.");
     await assertOutranks(ctx, actor, target);
     const existing = await ctx.db
       .query("agentQualifications")
@@ -758,7 +758,7 @@ export const setDivisions = mutation({
     const actor = await requireAgent(ctx);
     await requirePermission(ctx, actor, "effectif.division");
     const target = await ctx.db.get(agentId);
-    if (!target) throw new Error("Agent introuvable.");
+    if (!target) throw new ConvexError("Agent introuvable.");
     const existing = await ctx.db
       .query("agentDivisions")
       .withIndex("by_agent", (q) => q.eq("agentId", agentId))
@@ -772,7 +772,7 @@ export const setDivisions = mutation({
       // permettrait de s'octroyer les droits de cette division (escalade).
       const existingIds = new Set(existing.map((l) => l.divisionId as string));
       const adding = divisionIds.filter((d) => !existingIds.has(d as string));
-      if (adding.length) throw new Error("Vous ne pouvez pas vous ajouter vous-même à une division : demandez à un supérieur (vous pouvez en revanche vous en retirer).");
+      if (adding.length) throw new ConvexError("Vous ne pouvez pas vous ajouter vous-même à une division : demandez à un supérieur (vous pouvez en revanche vous en retirer).");
     }
     for (const l of existing) await ctx.db.delete(l._id);
     for (const divId of divisionIds) {
@@ -794,7 +794,7 @@ export const setDateEntree = mutation({
     const actor = await requireAgent(ctx);
     await requirePermission(ctx, actor, "effectif.edit");
     const target = await ctx.db.get(agentId);
-    if (!target) throw new Error("Agent introuvable.");
+    if (!target) throw new ConvexError("Agent introuvable.");
     await assertOutranks(ctx, actor, target);
     await ctx.db.patch(agentId, { dateEntree: dateEntree ?? undefined });
     await writeAudit(ctx, actor, {
@@ -816,7 +816,7 @@ export const setStatus = mutation({
     const actor = await requireAgent(ctx);
     await requirePermission(ctx, actor, "effectif.deactivate");
     const target = await ctx.db.get(agentId);
-    if (!target) throw new Error("Agent introuvable.");
+    if (!target) throw new ConvexError("Agent introuvable.");
     await assertOutranks(ctx, actor, target);
     await ctx.db.patch(agentId, { status });
     await writeAudit(ctx, actor, {
@@ -888,7 +888,7 @@ export const prepareReset = internalMutation({
     const actor = await requireAgent(ctx);
     await requirePermission(ctx, actor, "effectif.resetpw");
     const target = await ctx.db.get(agentId);
-    if (!target) throw new Error("Agent introuvable.");
+    if (!target) throw new ConvexError("Agent introuvable.");
     await assertOutranks(ctx, actor, target);
     await ctx.db.patch(agentId, { mustChangePassword: true });
     await writeAudit(ctx, actor, {
@@ -940,7 +940,7 @@ export const setLock = mutation({
     const actor = await requireAgent(ctx);
     await requirePermission(ctx, actor, "effectif.resetpw");
     const target = await ctx.db.get(agentId);
-    if (!target) throw new Error("Agent introuvable.");
+    if (!target) throw new ConvexError("Agent introuvable.");
     await assertOutranks(ctx, actor, target);
 
     const lock = minutes && minutes > 0;

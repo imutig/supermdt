@@ -1,4 +1,5 @@
 import type { QueryCtx, MutationCtx } from "../_generated/server";
+import { ConvexError } from "convex/values";
 import type { Doc, Id } from "../_generated/dataModel";
 import { requireAgent } from "../rbac";
 import { loadDivision, assertMember, hasPerm, assertPerm, hasModule } from "./divisionAccess";
@@ -14,9 +15,9 @@ export const agentName = (a: Doc<"agents">) => `${a.prenomRP} ${a.nomRP}`;
 export async function requireDivView(ctx: QueryCtx | MutationCtx, divisionId: Id<"divisions">) {
   const agent = await requireAgent(ctx);
   const division = await loadDivision(ctx, divisionId);
-  if (!hasModule(division, "detective")) throw new Error("Module Detective Bureau non activé.");
+  if (!hasModule(division, "detective")) throw new ConvexError("Module Detective Bureau non activé.");
   await assertMember(ctx, agent, division);
-  if (!(await hasPerm(ctx, agent, division, "db.view"))) throw new Error("Accès au Detective Bureau refusé.");
+  if (!(await hasPerm(ctx, agent, division, "db.view"))) throw new ConvexError("Accès au Detective Bureau refusé.");
   return { agent, division };
 }
 
@@ -29,7 +30,7 @@ export async function requireDivPerm(ctx: MutationCtx, divisionId: Id<"divisions
 
 export async function loadCase(ctx: QueryCtx | MutationCtx, caseId: Id<"dbCases">) {
   const c = await ctx.db.get(caseId);
-  if (!c || c.deletedAt) throw new Error("Enquête introuvable.");
+  if (!c || c.deletedAt) throw new ConvexError("Enquête introuvable.");
   return c;
 }
 
@@ -38,7 +39,7 @@ export async function requireCaseRead(ctx: QueryCtx | MutationCtx, caseId: Id<"d
   const c = await loadCase(ctx, caseId);
   const { agent, division } = await requireDivView(ctx, c.divisionId);
   if (c.confidential && !(await hasPerm(ctx, agent, division, "db.sensitive"))) {
-    throw new Error("Enquête confidentielle : accès restreint.");
+    throw new ConvexError("Enquête confidentielle : accès restreint.");
   }
   return { agent, division, case: c };
 }

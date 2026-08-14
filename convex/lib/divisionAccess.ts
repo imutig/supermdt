@@ -1,4 +1,5 @@
 import type { QueryCtx, MutationCtx } from "../_generated/server";
+import { ConvexError } from "convex/values";
 import type { Doc, Id } from "../_generated/dataModel";
 import { can } from "../rbac";
 
@@ -51,7 +52,7 @@ export function hasModule(division: Doc<"divisions">, slug: string): boolean {
 
 export async function loadDivision(ctx: QueryCtx | MutationCtx, divisionId: Id<"divisions">) {
   const d = await ctx.db.get(divisionId);
-  if (!d) throw new Error("Division introuvable.");
+  if (!d) throw new ConvexError("Division introuvable.");
   return d;
 }
 
@@ -77,7 +78,7 @@ export async function permsOf(ctx: QueryCtx | MutationCtx, agent: Doc<"agents">,
 // Membre de la division (ou owner) : requis pour consulter l'espace.
 export async function assertMember(ctx: QueryCtx | MutationCtx, agent: Doc<"agents">, division: Doc<"divisions">) {
   if (agent.isOwner) return;
-  if (!(await membershipOf(ctx, agent._id, division._id))) throw new Error("Vous ne faites pas partie de cette division.");
+  if (!(await membershipOf(ctx, agent._id, division._id))) throw new ConvexError("Vous ne faites pas partie de cette division.");
 }
 
 export async function hasPerm(ctx: QueryCtx | MutationCtx, agent: Doc<"agents">, division: Doc<"divisions">, slug: string): Promise<boolean> {
@@ -87,11 +88,11 @@ export async function hasPerm(ctx: QueryCtx | MutationCtx, agent: Doc<"agents">,
 
 export async function assertPerm(ctx: QueryCtx | MutationCtx, agent: Doc<"agents">, division: Doc<"divisions">, slug: string) {
   if (await hasPerm(ctx, agent, division, slug)) return;
-  throw new Error("Action non autorisée dans cette division.");
+  throw new ConvexError("Action non autorisée dans cette division.");
 }
 
 // Désigner le Lead / gérer les divisions / activer les modules : droit global.
 export async function assertGlobalManage(ctx: QueryCtx | MutationCtx, agent: Doc<"agents">) {
   if (agent.isOwner || (await can(ctx, agent, "rbac.manage"))) return;
-  throw new Error("Réservé à l'administration.");
+  throw new ConvexError("Réservé à l'administration.");
 }

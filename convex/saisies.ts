@@ -1,5 +1,5 @@
 import { mutation, query } from "./_generated/server";
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import { requireAgent, requirePermission, can } from "./rbac";
 import { writeAudit } from "./lib/audit";
 import { notify, NOTIFY_COLOR, deepLink } from "./lib/notify";
@@ -48,7 +48,7 @@ export const create = mutation({
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "saisies.create");
     if (objectType === "Autre" && !(otherLabel ?? "").trim())
-      throw new Error("Précisez l'objet saisi.");
+      throw new ConvexError("Précisez l'objet saisi.");
     const id = await ctx.db.insert("saisies", {
       at: Date.now(),
       agentId: agent._id,
@@ -80,7 +80,7 @@ export const remove = mutation({
     if (!s || s.deletedAt) return;
     // Le créateur peut supprimer sa propre saisie ; sinon il faut la permission dédiée.
     if (s.agentId !== agent._id && !(await can(ctx, agent, "saisies.delete")))
-      throw new Error("Suppression non autorisée.");
+      throw new ConvexError("Suppression non autorisée.");
     await ctx.db.patch(id, { deletedAt: Date.now(), deletedBy: agent._id });
     await writeAudit(ctx, agent, { action: "saisie.delete", resourceType: "saisie", resourceId: id });
   },

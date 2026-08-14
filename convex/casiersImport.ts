@@ -1,6 +1,6 @@
 import { internalAction, internalMutation, action, query } from "./_generated/server";
 import { internal, api } from "./_generated/api";
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import { getAuthUserId } from "@convex-dev/auth/server";
 import type { Id } from "./_generated/dataModel";
 import { can } from "./rbac";
@@ -250,8 +250,8 @@ function mapCasierRaw(rawStr: string): any {
 // ------------------------------- fetch ------------------------------------
 async function apiGet(path: string, token: string): Promise<any> {
   const res = await fetch(`${BASE}${path}`, { headers: { Authorization: `Bearer ${token}` } });
-  if (res.status === 401) throw new Error("Token invalide/expiré. npx convex env set VIZU_TOKEN \"...\"");
-  if (!res.ok) throw new Error(`Erreur API ${res.status} sur ${path}`);
+  if (res.status === 401) throw new ConvexError("Token invalide/expiré. npx convex env set VIZU_TOKEN \"...\"");
+  if (!res.ok) throw new ConvexError(`Erreur API ${res.status} sur ${path}`);
   return res.json();
 }
 async function fetchAllDossiers(token: string): Promise<any[]> {
@@ -281,7 +281,7 @@ export const casiersSync = internalAction({
   args: { token: v.optional(v.string()), dryRun: v.optional(v.boolean()), limit: v.optional(v.number()), createMissing: v.optional(v.boolean()) },
   handler: async (ctx, { token, dryRun, limit, createMissing }): Promise<unknown> => {
     const tk = token || process.env.VIZU_TOKEN;
-    if (!tk) throw new Error("Aucun token. npx convex env set VIZU_TOKEN \"...\" (ou {\"token\":\"...\"}).");
+    if (!tk) throw new ConvexError("Aucun token. npx convex env set VIZU_TOKEN \"...\" (ou {\"token\":\"...\"}).");
     // Dossiers ET rapports d'arrestation, dans un flux unique (chacun taggé) :
     // la réconciliation opère alors sur l'ensemble et ne supprime pas l'autre type.
     const dossiers = await fetchAllDossiers(tk);
@@ -300,8 +300,8 @@ export const runCasiersSync = action({
   args: { dryRun: v.optional(v.boolean()), createMissing: v.optional(v.boolean()) },
   handler: async (ctx, { dryRun, createMissing }): Promise<unknown> => {
     const ok = await ctx.runQuery(api.migration.canSync, {});
-    if (!ok) throw new Error("Non autorisé.");
-    if (!process.env.VIZU_TOKEN) throw new Error("VIZU_TOKEN non configuré côté Convex.");
+    if (!ok) throw new ConvexError("Non autorisé.");
+    if (!process.env.VIZU_TOKEN) throw new ConvexError("VIZU_TOKEN non configuré côté Convex.");
     return await ctx.runAction(internal.casiersImport.casiersSync, { dryRun, createMissing });
   },
 });
@@ -311,7 +311,7 @@ export const contraventionsSync = internalAction({
   args: { token: v.optional(v.string()), dryRun: v.optional(v.boolean()), limit: v.optional(v.number()), createMissing: v.optional(v.boolean()) },
   handler: async (ctx, { token, dryRun, limit, createMissing }): Promise<unknown> => {
     const tk = token || process.env.VIZU_TOKEN;
-    if (!tk) throw new Error("Aucun token. npx convex env set VIZU_TOKEN \"...\" (ou {\"token\":\"...\"}).");
+    if (!tk) throw new ConvexError("Aucun token. npx convex env set VIZU_TOKEN \"...\" (ou {\"token\":\"...\"}).");
     const raw = await fetchAllAmendes(tk);
     const sliced = limit ? raw.slice(0, limit) : raw;
     return await ctx.runMutation(internal.casiersImport._upsertContraventions, { raws: sliced.map((a) => JSON.stringify(a)), dryRun, createMissing });
@@ -388,7 +388,7 @@ export const _upsertCasiers = internalMutation({
   args: { raws: v.array(v.string()), dryRun: v.optional(v.boolean()), createMissing: v.optional(v.boolean()) },
   handler: async (ctx, { raws, dryRun, createMissing }) => {
     const refs = await resolveRefs(ctx);
-    if (!refs.owner) throw new Error("Aucun compte owner pour rattacher les casiers importés.");
+    if (!refs.owner) throw new ConvexError("Aucun compte owner pour rattacher les casiers importés.");
     const allEntries = await ctx.db.query("casierEntries").collect();
     const existingByRef = new Map<string, (typeof allEntries)[number]>();
     // Orphelins write-through : casiers locaux sans importRef (POST Nexus réussi
@@ -524,7 +524,7 @@ export const _upsertContraventions = internalMutation({
   args: { raws: v.array(v.string()), dryRun: v.optional(v.boolean()), createMissing: v.optional(v.boolean()) },
   handler: async (ctx, { raws, dryRun, createMissing }) => {
     const refs = await resolveRefs(ctx);
-    if (!refs.owner) throw new Error("Aucun compte owner pour rattacher les contraventions importées.");
+    if (!refs.owner) throw new ConvexError("Aucun compte owner pour rattacher les contraventions importées.");
     const all = await ctx.db.query("citations").collect();
     const existingByRef = new Map<string, (typeof all)[number]>();
     const orphansByCitizen = new Map<string, (typeof all)[number][]>();

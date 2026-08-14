@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { requireAgent } from "./rbac";
 
@@ -61,7 +61,7 @@ export const save = mutation({
   handler: async (ctx, { planId, name, shapes }) => {
     const agent = await requireAgent(ctx);
     const p = await ctx.db.get(planId);
-    if (!p || p.deletedAt || p.agentId !== agent._id) throw new Error("Plan introuvable.");
+    if (!p || p.deletedAt || p.agentId !== agent._id) throw new ConvexError("Plan introuvable.");
     await ctx.db.patch(planId, { shapes, updatedAt: Date.now(), ...(name !== undefined ? { name: name.trim() || p.name } : {}) });
   },
 });

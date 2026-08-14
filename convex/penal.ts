@@ -1,5 +1,5 @@
 import { mutation, query } from "./_generated/server";
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import { requireAgent, requirePermission } from "./rbac";
 import { writeAudit } from "./lib/audit";
 
@@ -157,7 +157,7 @@ export const categoryRemove = mutation({
       .query("penalCharges")
       .withIndex("by_category", (q) => q.eq("categoryId", id))
       .first();
-    if (used) throw new Error("Catégorie utilisée par des charges : videz-la d'abord.");
+    if (used) throw new ConvexError("Catégorie utilisée par des charges : videz-la d'abord.");
     const c = await ctx.db.get(id);
     await ctx.db.delete(id);
     await writeAudit(ctx, agent, { action: "codepenal.category_remove", resourceType: "config", resourceLabel: c?.name ?? "" });

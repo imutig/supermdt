@@ -1,5 +1,5 @@
 import { mutation, query } from "./_generated/server";
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import type { QueryCtx, MutationCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { requireAgent, requirePermission, can, agentLabel } from "./rbac";
@@ -40,7 +40,7 @@ function assertRequired(status: { name: string; requires?: string[] }, fields: P
   for (const key of status.requires ?? []) {
     const val = (fields ?? {})[key as keyof PatrolFields];
     if (!val || !val.trim()) {
-      throw new Error(`« ${FIELD_LABELS[key] ?? key} » est obligatoire pour le statut « ${status.name} ».`);
+      throw new ConvexError(`« ${FIELD_LABELS[key] ?? key} » est obligatoire pour le statut « ${status.name} ».`);
     }
   }
 }
@@ -292,7 +292,7 @@ async function assertOnDuty(ctx: MutationCtx, agentId: Id<"agents">) {
     .first();
   if (!open) {
     const a = await ctx.db.get(agentId);
-    throw new Error(`${a ? `${a.prenomRP} ${a.nomRP}` : "Cet agent"} n'est pas en service.`);
+    throw new ConvexError(`${a ? `${a.prenomRP} ${a.nomRP}` : "Cet agent"} n'est pas en service.`);
   }
 }
 
@@ -308,7 +308,7 @@ async function ensureCanEdit(ctx: MutationCtx, agentId: Id<"agents">, patrol: im
   if (patrol.createdBy === agentId) return;
   const agent = await ctx.db.get(agentId);
   if (agent && (await can(ctx, agent, "dispatch.manage"))) return;
-  throw new Error("Action réservée à la patrouille, à son créateur ou à un dispatcher.");
+  throw new ConvexError("Action réservée à la patrouille, à son créateur ou à un dispatcher.");
 }
 
 export const create = mutation({
@@ -325,24 +325,24 @@ export const create = mutation({
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "dispatch.self");
     const members = [...new Set(memberIds)];
-    if (members.length === 0) throw new Error("Sélectionnez au moins un agent présent.");
+    if (members.length === 0) throw new ConvexError("Sélectionnez au moins un agent présent.");
     // Le numéro vient du véhicule LSPD (2 derniers chiffres du toit), sinon
     // d'une saisie libre pour un véhicule non enregistré.
     let numPadded: string;
     if (fleetVehicleId) {
       const veh = await ctx.db.get(fleetVehicleId);
-      if (!veh) throw new Error("Véhicule LSPD introuvable.");
+      if (!veh) throw new ConvexError("Véhicule LSPD introuvable.");
       numPadded = roofToNumber(veh.roofNumber);
     } else {
       const num = vehicleNumber.replace(/[^0-9]/g, "").slice(0, 2);
-      if (!num) throw new Error("Numéro de véhicule requis.");
+      if (!num) throw new ConvexError("Numéro de véhicule requis.");
       numPadded = num.padStart(2, "0");
     }
 
     let indicator: string;
     if (callsignTypeId) {
       const cs = await ctx.db.get(callsignTypeId);
-      if (!cs) throw new Error("Type de patrouille introuvable.");
+      if (!cs) throw new ConvexError("Type de patrouille introuvable.");
       indicator = cs.code.charAt(0).toUpperCase();
     } else {
       indicator = indicatorForCount(members.length);
@@ -389,11 +389,11 @@ export const createForAgent = mutation({
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "dispatch.self");
     const target = await ctx.db.get(agentId);
-    if (!target) throw new Error("Agent introuvable.");
-    if (await myOpenMembership(ctx, agentId)) throw new Error("Cet agent est déjà dans une patrouille.");
+    if (!target) throw new ConvexError("Agent introuvable.");
+    if (await myOpenMembership(ctx, agentId)) throw new ConvexError("Cet agent est déjà dans une patrouille.");
     await assertOnDuty(ctx, agentId);
     const status = await ctx.db.get(statusId);
-    if (!status || !status.active) throw new Error("Statut invalide.");
+    if (!status || !status.active) throw new ConvexError("Statut invalide.");
     assertRequired(status, fields);
     const vehicleNumber = await nextFreeVehicleNumber(ctx);
     const indicator = indicatorForCount(1);
@@ -414,7 +414,7 @@ export const addMember = mutation({
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "dispatch.self");
     const patrol = await ctx.db.get(patrolId);
-    if (!patrol || patrol.endedAt) throw new Error("Patrouille introuvable.");
+    if (!patrol || patrol.endedAt) throw new ConvexError("Patrouille introuvable.");
     await ensureCanEdit(ctx, agent._id, patrol);
     const links = await ctx.db.query("patrolMembers").withIndex("by_patrol", (q) => q.eq("patrolId", patrolId)).collect();
     if (links.some((m) => m.agentId === agentId)) return;
@@ -456,7 +456,7 @@ export const update = mutation({
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "dispatch.self");
     const patrol = await ctx.db.get(patrolId);
-    if (!patrol || patrol.endedAt) throw new Error("Patrouille introuvable.");
+    if (!patrol || patrol.endedAt) throw new ConvexError("Patrouille introuvable.");
     await ensureCanEdit(ctx, agent._id, patrol);
     const patch: Record<string, unknown> = {};
 
@@ -467,7 +467,7 @@ export const update = mutation({
       await closeTrip(ctx, patrolId);
       if (fleetVehicleId) {
         const veh = await ctx.db.get(fleetVehicleId);
-        if (!veh) throw new Error("Véhicule LSPD introuvable.");
+        if (!veh) throw new ConvexError("Véhicule LSPD introuvable.");
         patch.fleetVehicleId = fleetVehicleId;
         patch.vehicleNumber = roofToNumber(veh.roofNumber);
         const members = (await ctx.db.query("patrolMembers").withIndex("by_patrol", (q) => q.eq("patrolId", patrolId)).collect()).map((m) => m.agentId);
@@ -480,7 +480,7 @@ export const update = mutation({
 
     if (vehicleNumber !== undefined && patch.vehicleNumber === undefined) {
       const num = vehicleNumber.replace(/[^0-9]/g, "").slice(0, 2);
-      if (!num) throw new Error("Numéro de véhicule requis.");
+      if (!num) throw new ConvexError("Numéro de véhicule requis.");
       patch.vehicleNumber = num.padStart(2, "0");
     }
     if (color !== undefined) patch.color = color ?? undefined;
@@ -499,7 +499,7 @@ export const setDetail = mutation({
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "dispatch.self");
     const patrol = await ctx.db.get(patrolId);
-    if (!patrol || patrol.endedAt) throw new Error("Patrouille introuvable.");
+    if (!patrol || patrol.endedAt) throw new ConvexError("Patrouille introuvable.");
     await ensureCanEdit(ctx, agent._id, patrol);
     await ctx.db.patch(patrolId, { detail: detail.trim() || undefined });
     await logPatrol(ctx, patrolId, agent._id, "detail", detail.trim() ? `Détail : ${detail.trim()}` : "Détail effacé");
@@ -525,7 +525,7 @@ export const join = mutation({
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "dispatch.self");
     const patrol = await ctx.db.get(patrolId);
-    if (!patrol || patrol.endedAt) throw new Error("Patrouille introuvable.");
+    if (!patrol || patrol.endedAt) throw new ConvexError("Patrouille introuvable.");
     await assertOnDuty(ctx, agent._id);
     const current = await myOpenMembership(ctx, agent._id);
     if (current) {
@@ -559,10 +559,10 @@ export const setStatus = mutation({
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "dispatch.self");
     const patrol = await ctx.db.get(patrolId);
-    if (!patrol || patrol.endedAt) throw new Error("Patrouille introuvable.");
+    if (!patrol || patrol.endedAt) throw new ConvexError("Patrouille introuvable.");
     await ensureCanEdit(ctx, agent._id, patrol);
     const status = await ctx.db.get(statusId);
-    if (!status || !status.active) throw new Error("Statut invalide.");
+    if (!status || !status.active) throw new ConvexError("Statut invalide.");
     // Si on reste sur le même statut sans nouveaux champs, on garde les valeurs existantes.
     const merged = fields ?? (patrol.statusId === statusId ? (patrol.fields as PatrolFields | undefined) : undefined);
     assertRequired(status, merged);
@@ -580,7 +580,7 @@ export const operationCreate = mutation({
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "dispatch.operations");
     const clean = name.trim();
-    if (!clean) throw new Error("Nom de l'opération requis.");
+    if (!clean) throw new ConvexError("Nom de l'opération requis.");
     const opId = await ctx.db.insert("operations", { name: clean, createdBy: agent._id, startedAt: Date.now() });
     await notify(ctx, "operation.start", {
       title: `Opération lancée · ${clean}`,
@@ -600,7 +600,7 @@ export const operationEnd = mutation({
     const op = await ctx.db.get(operationId);
     if (!op || op.endedAt) return;
     if (op.createdBy !== agent._id && !(await can(ctx, agent, "dispatch.manage"))) {
-      throw new Error("Seul le créateur de l'opération ou un dispatcher peut la terminer.");
+      throw new ConvexError("Seul le créateur de l'opération ou un dispatcher peut la terminer.");
     }
     const indispo = await statusByName(ctx, "Indisponible");
     const now = Date.now();
@@ -632,10 +632,10 @@ export const assignToOperation = mutation({
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "dispatch.self");
     const patrol = await ctx.db.get(patrolId);
-    if (!patrol || patrol.endedAt) throw new Error("Patrouille introuvable.");
+    if (!patrol || patrol.endedAt) throw new ConvexError("Patrouille introuvable.");
     await ensureCanEdit(ctx, agent._id, patrol);
     const op = await ctx.db.get(operationId);
-    if (!op || op.endedAt) throw new Error("Opération introuvable.");
+    if (!op || op.endedAt) throw new ConvexError("Opération introuvable.");
     const opStatus = await statusByName(ctx, "Opération");
     await ctx.db.patch(patrolId, {
       operationId,

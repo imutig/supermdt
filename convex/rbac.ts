@@ -1,4 +1,5 @@
 import { getAuthUserId } from "@convex-dev/auth/server";
+import { ConvexError } from "convex/values";
 import type { QueryCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 
@@ -170,7 +171,7 @@ export async function getCurrentAgent(ctx: QueryCtx): Promise<Doc<"agents"> | nu
 
 export async function requireAgent(ctx: QueryCtx): Promise<Doc<"agents">> {
   const agent = await getCurrentAgent(ctx);
-  if (!agent) throw new Error("Non authentifié.");
+  if (!agent) throw new ConvexError("Non authentifié.");
   return agent;
 }
 
@@ -221,7 +222,7 @@ export async function can(ctx: QueryCtx, agent: Doc<"agents">, slug: string): Pr
 
 export async function requirePermission(ctx: QueryCtx, agent: Doc<"agents">, slug: string) {
   if (!(await can(ctx, agent, slug))) {
-    throw new Error(`Permission refusée : ${slug}`);
+    throw new ConvexError(`Permission refusée : ${slug}`);
   }
 }
 
@@ -273,14 +274,14 @@ export async function assertOutranks(
   actor: Doc<"agents">,
   target: Doc<"agents">,
 ) {
-  if (target.isOwner) throw new Error("Le compte propriétaire est intouchable.");
+  if (target.isOwner) throw new ConvexError("Le compte propriétaire est intouchable.");
   if (actor.isOwner) return;
-  if (actor._id === target._id) throw new Error("Vous ne pouvez pas effectuer cette action sur vous-même.");
+  if (actor._id === target._id) throw new ConvexError("Vous ne pouvez pas effectuer cette action sur vous-même.");
 
   const actorGrade = actor.gradeId ? await ctx.db.get(actor.gradeId) : null;
-  if (!actorGrade) throw new Error("Vous n'avez pas de grade : action impossible.");
+  if (!actorGrade) throw new ConvexError("Vous n'avez pas de grade : action impossible.");
   if (actorGrade.external) {
-    throw new Error("Un grade extérieur ne peut pas agir sur l'effectif de la station.");
+    throw new ConvexError("Un grade extérieur ne peut pas agir sur l'effectif de la station.");
   }
 
   const targetGrade = target.gradeId ? await ctx.db.get(target.gradeId) : null;
@@ -288,7 +289,7 @@ export async function assertOutranks(
   if (!targetGrade) return;
 
   if (targetGrade.position >= actorGrade.position) {
-    throw new Error(
+    throw new ConvexError(
       `Hiérarchie : ${targetGrade.name} n'est pas strictement inférieur à votre grade (${actorGrade.name}).`,
     );
   }

@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { requireAgent, requirePermission } from "./rbac";
@@ -91,7 +91,7 @@ export const saveCategory = mutation({
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "lspa.quiz.edit");
     const clean = name.trim();
-    if (!clean) throw new Error("Le nom de la catégorie est obligatoire.");
+    if (!clean) throw new ConvexError("Le nom de la catégorie est obligatoire.");
     if (categoryId) {
       await ctx.db.patch(categoryId, { name: clean, color: color || undefined });
       return categoryId;
@@ -188,7 +188,7 @@ export const create = mutation({
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "lspa.quiz.create");
     const clean = title.trim();
-    if (!clean) throw new Error("Le titre est obligatoire.");
+    if (!clean) throw new ConvexError("Le titre est obligatoire.");
 
     const quizId = await ctx.db.insert("quizzes", {
       title: clean,
@@ -219,7 +219,7 @@ export const duplicate = mutation({
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "lspa.quiz.create");
     const src = await ctx.db.get(quizId);
-    if (!src) throw new Error("Quiz introuvable.");
+    if (!src) throw new ConvexError("Quiz introuvable.");
 
     const copyId = await ctx.db.insert("quizzes", {
       title: `${src.title} (copie)`,
@@ -293,7 +293,7 @@ export const update = mutation({
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "lspa.quiz.edit");
     const quiz = await ctx.db.get(quizId);
-    if (!quiz) throw new Error("Quiz introuvable.");
+    if (!quiz) throw new ConvexError("Quiz introuvable.");
 
     // Un quiz ne devient utilisable qu'avec au moins une question : sinon on
     // ouvre une session vide et la promotion attend pour rien.
@@ -302,7 +302,7 @@ export const update = mutation({
         .query("quizQuestions")
         .withIndex("by_quiz", (q) => q.eq("quizId", quizId))
         .first();
-      if (!first) throw new Error("Ajoutez au moins une question avant de publier le quiz.");
+      if (!first) throw new ConvexError("Ajoutez au moins une question avant de publier le quiz.");
     }
 
     await ctx.db.patch(quizId, {
@@ -376,7 +376,7 @@ export const saveQuestion = mutation({
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, a.questionId ? "lspa.quiz.edit" : "lspa.quiz.create");
     const quiz = await ctx.db.get(a.quizId);
-    if (!quiz) throw new Error("Quiz introuvable.");
+    if (!quiz) throw new ConvexError("Quiz introuvable.");
 
     validateQuestion(a.kind, a.points, a.choices);
 
@@ -395,7 +395,7 @@ export const saveQuestion = mutation({
     let questionId: Id<"quizQuestions">;
     if (a.questionId) {
       const existing = await ctx.db.get(a.questionId);
-      if (!existing || existing.quizId !== a.quizId) throw new Error("Question introuvable.");
+      if (!existing || existing.quizId !== a.quizId) throw new ConvexError("Question introuvable.");
       await ctx.db.patch(a.questionId, base);
       questionId = a.questionId;
       for (const c of await ctx.db.query("quizChoices").withIndex("by_question", (q) => q.eq("questionId", questionId)).collect()) {
@@ -459,7 +459,7 @@ export const moveQuestion = mutation({
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "lspa.quiz.edit");
     const question = await ctx.db.get(questionId);
-    if (!question) throw new Error("Question introuvable.");
+    if (!question) throw new ConvexError("Question introuvable.");
 
     const all = (await ctx.db.query("quizQuestions").withIndex("by_quiz", (q) => q.eq("quizId", question.quizId)).collect())
       .sort((a, b) => a.position - b.position);
@@ -485,14 +485,14 @@ function positiveOrUndefined(n: number | undefined): number | undefined {
 }
 
 function validateQuestion(kind: string, points: number, choices: ChoiceInput[]) {
-  if (!Number.isFinite(points) || points <= 0) throw new Error("Le barème doit être supérieur à zéro.");
+  if (!Number.isFinite(points) || points <= 0) throw new ConvexError("Le barème doit être supérieur à zéro.");
   if (kind === "TEXT") return;
 
   const filled = choices.filter((c) => c.label.trim().length > 0);
-  if (filled.length < 2) throw new Error("Une question à choix demande au moins deux réponses.");
+  if (filled.length < 2) throw new ConvexError("Une question à choix demande au moins deux réponses.");
   const correct = filled.filter((c) => c.correct).length;
-  if (correct === 0) throw new Error("Indiquez au moins une bonne réponse.");
+  if (correct === 0) throw new ConvexError("Indiquez au moins une bonne réponse.");
   if (kind === "SINGLE" && correct > 1) {
-    throw new Error("Une question à réponse unique ne peut avoir qu'une bonne réponse.");
+    throw new ConvexError("Une question à réponse unique ne peut avoir qu'une bonne réponse.");
   }
 }

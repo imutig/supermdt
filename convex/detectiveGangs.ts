@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import type { MutationCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
@@ -44,7 +44,7 @@ export const getGang = query({
   args: { gangId: v.id("dbGangs") },
   handler: async (ctx, { gangId }) => {
     const g = await ctx.db.get(gangId);
-    if (!g || g.deletedAt) throw new Error("Organisation introuvable.");
+    if (!g || g.deletedAt) throw new ConvexError("Organisation introuvable.");
     const { agent, division } = await requireDivView(ctx, g.divisionId);
     const ranks = (await ctx.db.query("dbGangRanks").withIndex("by_gang", (x) => x.eq("gangId", gangId)).collect())
       .sort((a, b) => a.position - b.position);
@@ -79,7 +79,7 @@ export const createGang = mutation({
   },
   handler: async (ctx, args) => {
     const { agent } = await requireDivPerm(ctx, args.divisionId, "db.gangs");
-    if (!args.name.trim()) throw new Error("Nom requis.");
+    if (!args.name.trim()) throw new ConvexError("Nom requis.");
     return await ctx.db.insert("dbGangs", {
       divisionId: args.divisionId, name: args.name.trim(), orgType: args.orgType,
       subDivision: args.subDivision ?? undefined, color: args.color ?? undefined, logoUrl: args.logoUrl ?? undefined,
@@ -102,7 +102,7 @@ export const updateGang = mutation({
     if (!g || g.deletedAt) return;
     await requireDivPerm(ctx, g.divisionId, "db.gangs");
     const up: Record<string, unknown> = {};
-    if (patch.name !== undefined) { if (!patch.name.trim()) throw new Error("Nom requis."); up.name = patch.name.trim(); }
+    if (patch.name !== undefined) { if (!patch.name.trim()) throw new ConvexError("Nom requis."); up.name = patch.name.trim(); }
     if (patch.orgType !== undefined) up.orgType = patch.orgType;
     if (patch.subDivision !== undefined) up.subDivision = patch.subDivision ?? undefined;
     if (patch.color !== undefined) up.color = patch.color ?? undefined;
@@ -139,9 +139,9 @@ export const removeGang = mutation({
 
 async function gangByRank(ctx: MutationCtx, rankId: Id<"dbGangRanks">) {
   const r = await ctx.db.get(rankId);
-  if (!r) throw new Error("Grade introuvable.");
+  if (!r) throw new ConvexError("Grade introuvable.");
   const g = await ctx.db.get(r.gangId);
-  if (!g || g.deletedAt) throw new Error("Organisation introuvable.");
+  if (!g || g.deletedAt) throw new ConvexError("Organisation introuvable.");
   return { rank: r, gang: g };
 }
 
@@ -149,9 +149,9 @@ export const gangRankCreate = mutation({
   args: { gangId: v.id("dbGangs"), name: v.string() },
   handler: async (ctx, { gangId, name }) => {
     const g = await ctx.db.get(gangId);
-    if (!g || g.deletedAt) throw new Error("Organisation introuvable.");
+    if (!g || g.deletedAt) throw new ConvexError("Organisation introuvable.");
     await requireDivPerm(ctx, g.divisionId, "db.gangs");
-    if (!name.trim()) throw new Error("Nom requis.");
+    if (!name.trim()) throw new ConvexError("Nom requis.");
     const all = await ctx.db.query("dbGangRanks").withIndex("by_gang", (x) => x.eq("gangId", gangId)).collect();
     const position = all.reduce((m, r) => Math.max(m, r.position), -1) + 1;
     return await ctx.db.insert("dbGangRanks", { gangId, name: name.trim(), position });
@@ -163,7 +163,7 @@ export const gangRankRename = mutation({
   handler: async (ctx, { rankId, name }) => {
     const { gang } = await gangByRank(ctx, rankId);
     await requireDivPerm(ctx, gang.divisionId, "db.gangs");
-    if (!name.trim()) throw new Error("Nom requis.");
+    if (!name.trim()) throw new ConvexError("Nom requis.");
     await ctx.db.patch(rankId, { name: name.trim() });
   },
 });
@@ -221,11 +221,11 @@ export const setGangRelation = mutation({
   args: { gangId: v.id("dbGangs"), otherGangId: v.id("dbGangs"), kind: REL_KIND },
   handler: async (ctx, { gangId, otherGangId, kind }) => {
     const g = await ctx.db.get(gangId);
-    if (!g || g.deletedAt) throw new Error("Organisation introuvable.");
+    if (!g || g.deletedAt) throw new ConvexError("Organisation introuvable.");
     await requireDivPerm(ctx, g.divisionId, "db.gangs");
-    if (gangId === otherGangId) throw new Error("Une organisation ne peut se relier à elle-même.");
+    if (gangId === otherGangId) throw new ConvexError("Une organisation ne peut se relier à elle-même.");
     const other = await ctx.db.get(otherGangId);
-    if (!other || other.deletedAt) throw new Error("Organisation cible introuvable.");
+    if (!other || other.deletedAt) throw new ConvexError("Organisation cible introuvable.");
     // Nettoie une éventuelle relation existante dans les deux sens, puis réécrit.
     for (const [a, b] of [[gangId, otherGangId], [otherGangId, gangId]] as const) {
       const rows = (await ctx.db.query("dbGangRelations").withIndex("by_gang", (x) => x.eq("gangId", a)).collect()).filter((r) => r.otherGangId === b);
@@ -265,9 +265,9 @@ export const territoryAdd = mutation({
   args: { gangId: v.id("dbGangs"), name: v.optional(v.string()), points: v.array(v.object({ x: v.number(), y: v.number() })), color: v.optional(v.string()) },
   handler: async (ctx, { gangId, name, points, color }) => {
     const g = await ctx.db.get(gangId);
-    if (!g || g.deletedAt) throw new Error("Organisation introuvable.");
+    if (!g || g.deletedAt) throw new ConvexError("Organisation introuvable.");
     await requireDivPerm(ctx, g.divisionId, "db.gangs");
-    if (points.length < 3) throw new Error("Un territoire nécessite au moins 3 points.");
+    if (points.length < 3) throw new ConvexError("Un territoire nécessite au moins 3 points.");
     return await ctx.db.insert("dbGangTerritories", { gangId, name: name?.trim() || undefined, points, color: color ?? g.color });
   },
 });
@@ -334,9 +334,9 @@ export const addCaseGang = mutation({
   handler: async (ctx, { caseId, gangId, note }) => {
     const { agent } = await requireCaseWrite(ctx, caseId);
     const existing = await ctx.db.query("dbCaseGangs").withIndex("by_case", (x) => x.eq("caseId", caseId)).collect();
-    if (existing.some((l) => l.gangId === gangId)) throw new Error("Affiliation déjà présente.");
+    if (existing.some((l) => l.gangId === gangId)) throw new ConvexError("Affiliation déjà présente.");
     const g = await ctx.db.get(gangId);
-    if (!g || g.deletedAt) throw new Error("Organisation introuvable.");
+    if (!g || g.deletedAt) throw new ConvexError("Organisation introuvable.");
     const id = await ctx.db.insert("dbCaseGangs", { caseId, gangId, note: note?.trim() || undefined });
     await ctx.db.insert("dbTimeline", { caseId, at: Date.now(), type: "auto", label: `Affiliation : ${g.name}`, authorId: agent._id, authorName: agentName(agent) });
     return id;
@@ -385,7 +385,7 @@ export const createDrugSite = mutation({
   },
   handler: async (ctx, args) => {
     const { agent } = await requireDivPerm(ctx, args.divisionId, "db.drugs");
-    if (!args.name.trim()) throw new Error("Nom requis.");
+    if (!args.name.trim()) throw new ConvexError("Nom requis.");
     return await ctx.db.insert("dbDrugSites", {
       divisionId: args.divisionId, name: args.name.trim(), kind: args.kind, gangId: args.gangId,
       drugTypes: args.drugTypes?.trim() || undefined, note: args.note, x: args.x, y: args.y, mediaUrls: args.mediaUrls,
@@ -405,7 +405,7 @@ export const updateDrugSite = mutation({
     if (!d || d.deletedAt) return;
     await requireDivPerm(ctx, d.divisionId, "db.drugs");
     const up: Record<string, unknown> = {};
-    if (patch.name !== undefined) { if (!patch.name.trim()) throw new Error("Nom requis."); up.name = patch.name.trim(); }
+    if (patch.name !== undefined) { if (!patch.name.trim()) throw new ConvexError("Nom requis."); up.name = patch.name.trim(); }
     if (patch.kind !== undefined) up.kind = patch.kind;
     if (patch.gangId !== undefined) up.gangId = patch.gangId ?? undefined;
     if (patch.drugTypes !== undefined) up.drugTypes = patch.drugTypes.trim() || undefined;

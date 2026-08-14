@@ -1,5 +1,5 @@
 import { mutation, query } from "./_generated/server";
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import { requireAgent, requirePermission, agentLabel } from "./rbac";
 import { writeAudit } from "./lib/audit";
 import { notify, NOTIFY_COLOR, deepLink } from "./lib/notify";
@@ -104,13 +104,13 @@ export const setPaid = mutation({
     await requirePermission(ctx, agent, "finances.manage");
     if (kind === "casier") {
       const e = await ctx.db.get(id as import("./_generated/dataModel").Id<"casierEntries">);
-      if (!e) throw new Error("Entrée introuvable.");
+      if (!e) throw new ConvexError("Entrée introuvable.");
       await ctx.db.patch(e._id, { finePaid: paid });
       await writeAudit(ctx, agent, { action: paid ? "fine.paid" : "fine.unpaid", resourceType: "casierEntry", resourceId: e._id, metadata: { amount: e.totalFine } });
       if (paid) await notifyPaid(ctx, agent, e.citizenId, e.totalFine);
     } else {
       const c = await ctx.db.get(id as import("./_generated/dataModel").Id<"citations">);
-      if (!c) throw new Error("Contravention introuvable.");
+      if (!c) throw new ConvexError("Contravention introuvable.");
       await ctx.db.patch(c._id, { finePaid: paid });
       await writeAudit(ctx, agent, { action: paid ? "fine.paid" : "fine.unpaid", resourceType: "citation", resourceId: c._id, metadata: { amount: c.totalFine } });
       if (paid) await notifyPaid(ctx, agent, c.citizenId, c.totalFine);

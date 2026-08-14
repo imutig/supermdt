@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
@@ -74,7 +74,7 @@ export const sendAccount = mutation({
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "invites.manage");
     const already = await ctx.db.query("agents").withIndex("by_discord", (q) => q.eq("discordId", discordId)).first();
-    if (already) throw new Error("Ce membre Discord est déjà relié à un compte.");
+    if (already) throw new ConvexError("Ce membre Discord est déjà relié à un compte.");
     const member = await ctx.db.query("discordMembers").withIndex("by_discord", (q) => q.eq("discordId", discordId)).first();
     const prefill = member ? parseNickname(member.displayName) : {};
     // Grade détecté depuis les rôles Discord du membre (grades.discordRoleId).
@@ -116,7 +116,7 @@ export const linkExisting = mutation({
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "invites.manage");
     const other = await ctx.db.query("agents").withIndex("by_discord", (q) => q.eq("discordId", discordId)).first();
-    if (other && other._id !== agentId) throw new Error("Ce membre Discord est déjà relié à un autre compte.");
+    if (other && other._id !== agentId) throw new ConvexError("Ce membre Discord est déjà relié à un autre compte.");
     await ctx.db.patch(agentId, { discordId });
   },
 });
@@ -138,13 +138,13 @@ export const syncGradeRole = mutation({
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "effectif.edit");
     const target = await ctx.db.get(agentId);
-    if (!target) throw new Error("Agent introuvable.");
-    if (!target.discordId) throw new Error("Cet agent n'est pas relié à un compte Discord.");
+    if (!target) throw new ConvexError("Agent introuvable.");
+    if (!target.discordId) throw new ConvexError("Cet agent n'est pas relié à un compte Discord.");
     const grade = target.gradeId ? await ctx.db.get(target.gradeId) : null;
     const addRoleId = grade?.discordRoleId ?? undefined;
     const allGradeRoles = (await ctx.db.query("grades").collect()).map((g) => g.discordRoleId).filter((r): r is string => !!r);
     const removeRoleIds = allGradeRoles.filter((r) => r !== addRoleId);
-    if (!addRoleId && removeRoleIds.length === 0) throw new Error("Aucun rôle Discord configuré pour les grades.");
+    if (!addRoleId && removeRoleIds.length === 0) throw new ConvexError("Aucun rôle Discord configuré pour les grades.");
     await ctx.db.insert("discordRoleJobs", {
       discordId: target.discordId, addRoleId, removeRoleIds,
       reason: `Grade : ${grade?.name ?? "-"}`, status: "PENDING", createdAt: Date.now(),

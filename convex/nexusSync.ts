@@ -1,7 +1,7 @@
 import { action, mutation, query, internalAction, internalMutation, internalQuery } from "./_generated/server";
 import type { ActionCtx } from "./_generated/server";
 import { internal, api } from "./_generated/api";
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import { getCurrentAgent, requireAgent, requirePermission, agentLabel } from "./rbac";
 import { nexusLogin, encryptSecret, decryptSecret } from "./lib/nexusAuth";
@@ -325,9 +325,9 @@ export const saveCredential = action({
   args: { email: v.string(), password: v.string() },
   handler: async (ctx, { email, password }): Promise<{ ok: boolean; error: string | null }> => {
     const agentId = await ctx.runQuery(api.nexusSync.myAgentId, {});
-    if (!agentId) throw new Error("Non authentifié.");
+    if (!agentId) throw new ConvexError("Non authentifié.");
     const mail = email.trim();
-    if (!mail || !password) throw new Error("Email et mot de passe requis.");
+    if (!mail || !password) throw new ConvexError("Email et mot de passe requis.");
 
     let status: "OK" | "INVALID" = "OK";
     let lastError: string | undefined;
@@ -348,9 +348,9 @@ export const testCredential = action({
   args: {},
   handler: async (ctx): Promise<{ ok: boolean; error: string | null }> => {
     const agentId = await ctx.runQuery(api.nexusSync.myAgentId, {});
-    if (!agentId) throw new Error("Non authentifié.");
+    if (!agentId) throw new ConvexError("Non authentifié.");
     const cred = await ctx.runQuery(internal.nexusSync._credFor, { agentId });
-    if (!cred) throw new Error("Aucun identifiant enregistré.");
+    if (!cred) throw new ConvexError("Aucun identifiant enregistré.");
     let status: "OK" | "INVALID" = "OK";
     let lastError: string | undefined;
     try {
@@ -442,9 +442,9 @@ export const createCitizen = action({
   },
   handler: async (ctx, a): Promise<Id<"citizens">> => {
     const agentId = await ctx.runQuery(api.nexusSync.myAgentId, {});
-    if (!agentId) throw new Error("Non authentifié.");
+    if (!agentId) throw new ConvexError("Non authentifié.");
     const cred = await ctx.runQuery(internal.nexusSync._credFor, { agentId });
-    if (!cred) throw new Error("Synchronisation Nexus non configurée (voir Mon profil).");
+    if (!cred) throw new ConvexError("Synchronisation Nexus non configurée (voir Mon profil).");
 
     const payload: Record<string, unknown> = {
       entity: "lspd",
@@ -468,7 +468,7 @@ export const createCitizen = action({
       });
     } catch (e) {
       await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: "citoyen", op: "POST", ok: false, durationMs: Date.now() - t0, agentId, error: e instanceof Error ? e.message : String(e) });
-      throw new Error("NexusMDT injoignable, citoyen non créé.");
+      throw new ConvexError("NexusMDT injoignable, citoyen non créé.");
     }
     if (!res.ok) {
       const txt = await res.text().catch(() => "");
@@ -492,7 +492,7 @@ export const createCitizen = action({
           return citizenId;
         }
       }
-      throw new Error(`Création côté NexusMDT échouée (HTTP ${res.status}). ${txt.slice(0, 120)}`);
+      throw new ConvexError(`Création côté NexusMDT échouée (HTTP ${res.status}). ${txt.slice(0, 120)}`);
     }
     const j: any = await res.json();
     const created = j.citoyen ?? j.data ?? j;
@@ -541,17 +541,17 @@ export const createContravention = action({
   },
   handler: async (ctx, a): Promise<Id<"citations">> => {
     const agentId = await ctx.runQuery(api.nexusSync.myAgentId, {});
-    if (!agentId) throw new Error("Non authentifié.");
+    if (!agentId) throw new ConvexError("Non authentifié.");
     const cred = await ctx.runQuery(internal.nexusSync._credFor, { agentId });
-    if (!cred) throw new Error("Synchronisation Nexus non configurée (voir Mon profil).");
+    if (!cred) throw new ConvexError("Synchronisation Nexus non configurée (voir Mon profil).");
 
     // 1) Création locale (calcul des amendes/charges par la logique existante).
     const citationId = await ctx.runMutation(api.citations.create, { citizenId: a.citizenId, vehicleId: a.vehicleId, charges: a.charges, notes: a.notes });
     const info = await ctx.runQuery(internal.nexusSync._citationForPush, { citationId });
-    if (!info) { throw new Error("Contravention introuvable après création."); }
+    if (!info) { throw new ConvexError("Contravention introuvable après création."); }
     if (!info.nexusId) {
       await ctx.runMutation(internal.nexusSync._rollbackCitation, { citationId });
-      throw new Error("Ce citoyen n'existe pas encore côté NexusMDT (resync nécessaire).");
+      throw new ConvexError("Ce citoyen n'existe pas encore côté NexusMDT (resync nécessaire).");
     }
 
     // 2) Push vers Nexus (rollback local si échec).
@@ -570,7 +570,7 @@ export const createContravention = action({
         const txt = await res.text().catch(() => "");
         await ctx.runMutation(internal.nexusSync._rollbackCitation, { citationId });
         await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: "amende", op: "POST", ok: false, httpStatus: res.status, durationMs: Date.now() - t0, agentId, error: txt.slice(0, 160) });
-        throw new Error(`Émission côté NexusMDT échouée (HTTP ${res.status}). Contravention annulée.`);
+        throw new ConvexError(`Émission côté NexusMDT échouée (HTTP ${res.status}). Contravention annulée.`);
       }
       const j: any = await res.json();
       const created = j.amende ?? j.data ?? j;
@@ -585,7 +585,7 @@ export const createContravention = action({
       await ctx.runMutation(internal.nexusSync._rollbackCitation, { citationId }).catch(() => {});
       if (e instanceof Error && e.message.includes("échouée")) throw e;
       await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: "amende", op: "POST", ok: false, durationMs: Date.now() - t0, agentId, error: e instanceof Error ? e.message : String(e) });
-      throw new Error("NexusMDT injoignable, contravention annulée.");
+      throw new ConvexError("NexusMDT injoignable, contravention annulée.");
     }
   },
 });
@@ -637,16 +637,16 @@ export const createCasier = action({
   },
   handler: async (ctx, a): Promise<Id<"casierEntries">> => {
     const agentId = await ctx.runQuery(api.nexusSync.myAgentId, {});
-    if (!agentId) throw new Error("Non authentifié.");
+    if (!agentId) throw new ConvexError("Non authentifié.");
     const cred = await ctx.runQuery(internal.nexusSync._credFor, { agentId });
-    if (!cred) throw new Error("Synchronisation Nexus non configurée (voir Mon profil).");
+    if (!cred) throw new ConvexError("Synchronisation Nexus non configurée (voir Mon profil).");
 
     const entryId = await ctx.runMutation(api.casier.addEntry, a);
     const info = await ctx.runQuery(internal.nexusSync._casierForPush, { entryId });
-    if (!info) throw new Error("Casier introuvable après création.");
+    if (!info) throw new ConvexError("Casier introuvable après création.");
     if (!info.nexusId) {
       await ctx.runMutation(internal.nexusSync._rollbackCasier, { entryId });
-      throw new Error("Ce citoyen n'existe pas encore côté NexusMDT (resync nécessaire).");
+      throw new ConvexError("Ce citoyen n'existe pas encore côté NexusMDT (resync nécessaire).");
     }
 
     const t0 = Date.now();
@@ -674,7 +674,7 @@ export const createCasier = action({
         const txt = await res.text().catch(() => "");
         await ctx.runMutation(internal.nexusSync._rollbackCasier, { entryId });
         await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity, op: "POST", ok: false, httpStatus: res.status, durationMs: Date.now() - t0, agentId, error: txt.slice(0, 160) });
-        throw new Error(`Création côté NexusMDT échouée (HTTP ${res.status}). ${entity} annulé.`);
+        throw new ConvexError(`Création côté NexusMDT échouée (HTTP ${res.status}). ${entity} annulé.`);
       }
       const j: any = await res.json();
       const created = j.dossier ?? j.rapport ?? j.data ?? j;
@@ -686,7 +686,7 @@ export const createCasier = action({
       await ctx.runMutation(internal.nexusSync._rollbackCasier, { entryId }).catch(() => {});
       if (e instanceof Error && e.message.includes("annulé")) throw e;
       await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: "casier", op: "POST", ok: false, durationMs: Date.now() - t0, agentId, error: e instanceof Error ? e.message : String(e) });
-      throw new Error("NexusMDT injoignable, casier annulé.");
+      throw new ConvexError("NexusMDT injoignable, casier annulé.");
     }
   },
 });
@@ -710,7 +710,7 @@ export const updateArrest = action({
   },
   handler: async (ctx, a): Promise<void> => {
     const agentId = await ctx.runQuery(api.nexusSync.myAgentId, {});
-    if (!agentId) throw new Error("Non authentifié.");
+    if (!agentId) throw new ConvexError("Non authentifié.");
     const cred = await ctx.runQuery(internal.nexusSync._credFor, { agentId });
     const rec = await ctx.runQuery(internal.nexusSync._recordNexusInfo, { kind: "casier", localId: a.entryId });
     const { entryId, ...fields } = a;
@@ -730,7 +730,7 @@ export const updateArrest = action({
     if (!res.ok) {
       const txt = await res.text().catch(() => "");
       await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity, op: "PATCH", ok: false, httpStatus: res.status, durationMs: Date.now() - t0, agentId, error: txt.slice(0, 160) });
-      throw new Error(`Édition côté NexusMDT échouée (HTTP ${res.status}). Modification non enregistrée.`);
+      throw new ConvexError(`Édition côté NexusMDT échouée (HTTP ${res.status}). Modification non enregistrée.`);
     }
     await ctx.runMutation(api.casier.updateArrest, { entryId, ...fields });
     await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity, op: "PATCH", ok: true, httpStatus: res.status, durationMs: Date.now() - t0, agentId });
@@ -780,7 +780,7 @@ export const deleteRecord = action({
   args: { kind: DELETE_KIND, localId: v.string() },
   handler: async (ctx, { kind, localId }): Promise<{ synced: boolean }> => {
     const agentId = await ctx.runQuery(api.nexusSync.myAgentId, {});
-    if (!agentId) throw new Error("Non authentifié.");
+    if (!agentId) throw new ConvexError("Non authentifié.");
     const cred = await ctx.runQuery(internal.nexusSync._credFor, { agentId });
     const info = await ctx.runQuery(internal.nexusSync._recordNexusInfo, { kind, localId });
 
@@ -808,12 +808,12 @@ export const deleteRecord = action({
       res = await nexusFetch(ctx, agentId, cred, `${path}/${info.nexusId}`, { method: "DELETE" });
     } catch (e) {
       await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: kind, op: "DELETE", ok: false, durationMs: Date.now() - t0, agentId, error: e instanceof Error ? e.message : String(e) });
-      throw new Error("NexusMDT injoignable, suppression annulée.");
+      throw new ConvexError("NexusMDT injoignable, suppression annulée.");
     }
     if (!res.ok) {
       const txt = await res.text().catch(() => "");
       await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: kind, op: "DELETE", ok: false, httpStatus: res.status, durationMs: Date.now() - t0, agentId, error: txt.slice(0, 160) });
-      throw new Error(res.status === 403 ? "Ton compte NexusMDT n'a pas le droit de supprimer. Suppression annulée." : `Suppression côté NexusMDT échouée (HTTP ${res.status}).`);
+      throw new ConvexError(res.status === 403 ? "Ton compte NexusMDT n'a pas le droit de supprimer. Suppression annulée." : `Suppression côté NexusMDT échouée (HTTP ${res.status}).`);
     }
     await localRemove();
     await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: kind, op: "DELETE", ok: true, httpStatus: res.status, durationMs: Date.now() - t0, agentId });
@@ -835,7 +835,7 @@ export const updateCitizen = action({
   },
   handler: async (ctx, a): Promise<void> => {
     const agentId = await ctx.runQuery(api.nexusSync.myAgentId, {});
-    if (!agentId) throw new Error("Non authentifié.");
+    if (!agentId) throw new ConvexError("Non authentifié.");
     const cred = await ctx.runQuery(internal.nexusSync._credFor, { agentId });
     const citizen = await ctx.runQuery(internal.nexusSync._citizenNexus, { citizenId: a.citizenId });
     const { citizenId, ...fields } = a;
@@ -856,7 +856,7 @@ export const updateCitizen = action({
     if (!res.ok) {
       const txt = await res.text().catch(() => "");
       await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: "citoyen", op: "PUT", ok: false, httpStatus: res.status, durationMs: Date.now() - t0, agentId, error: txt.slice(0, 160) });
-      throw new Error(`Édition côté NexusMDT échouée (HTTP ${res.status}). Modification non enregistrée.`);
+      throw new ConvexError(`Édition côté NexusMDT échouée (HTTP ${res.status}). Modification non enregistrée.`);
     }
     await ctx.runMutation(api.citizens.update, { id: citizenId, ...fields });
     await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: "citoyen", op: "PUT", ok: true, httpStatus: res.status, durationMs: Date.now() - t0, agentId, detail: `${a.prenom} ${a.nom}` });
@@ -954,11 +954,11 @@ export const createComplaint = action({
   },
   handler: async (ctx, a): Promise<Id<"complaints">> => {
     const agentId = await ctx.runQuery(api.nexusSync.myAgentId, {});
-    if (!agentId) throw new Error("Non authentifié.");
+    if (!agentId) throw new ConvexError("Non authentifié.");
     const cred = await ctx.runQuery(internal.nexusSync._credFor, { agentId });
-    if (!cred) throw new Error("Synchronisation Nexus non configurée (voir Mon profil).");
+    if (!cred) throw new ConvexError("Synchronisation Nexus non configurée (voir Mon profil).");
     const cx = await ctx.runQuery(internal.nexusSync._complaintPushCtx, { plaignantId: a.plaignantId, defendantCitizenId: a.defendantCitizenId, defendantName: a.defendantName, agentIds: a.agentIds });
-    if (!cx?.plaignant?.nexusId) throw new Error("Le plaignant n'existe pas encore côté NexusMDT (resync nécessaire).");
+    if (!cx?.plaignant?.nexusId) throw new ConvexError("Le plaignant n'existe pas encore côté NexusMDT (resync nécessaire).");
 
     const avocats = a.avocat?.trim() ? [a.avocat.trim()] : [];
     const statut = a.status || "En cours";
@@ -975,12 +975,12 @@ export const createComplaint = action({
       res = await nexusFetch(ctx, agentId, cred, `/api/plaintes`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
     } catch (e) {
       await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: "plainte", op: "POST", ok: false, durationMs: Date.now() - t0, agentId, error: e instanceof Error ? e.message : String(e) });
-      throw new Error("NexusMDT injoignable, plainte non créée.");
+      throw new ConvexError("NexusMDT injoignable, plainte non créée.");
     }
     if (!res.ok) {
       const txt = await res.text().catch(() => "");
       await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: "plainte", op: "POST", ok: false, httpStatus: res.status, durationMs: Date.now() - t0, agentId, error: txt.slice(0, 160) });
-      throw new Error(`Création côté NexusMDT échouée (HTTP ${res.status}). ${txt.slice(0, 120)}`);
+      throw new ConvexError(`Création côté NexusMDT échouée (HTTP ${res.status}). ${txt.slice(0, 120)}`);
     }
     const j: any = await res.json();
     const created = j.plainte ?? j.data ?? j;
@@ -1004,7 +1004,7 @@ export const updateComplaint = action({
   },
   handler: async (ctx, a): Promise<void> => {
     const agentId = await ctx.runQuery(api.nexusSync.myAgentId, {});
-    if (!agentId) throw new Error("Non authentifié.");
+    if (!agentId) throw new ConvexError("Non authentifié.");
     const cred = await ctx.runQuery(internal.nexusSync._credFor, { agentId });
     const info = await ctx.runQuery(internal.nexusSync._complaintNexusId, { id: a.id });
     const cx = await ctx.runQuery(internal.nexusSync._complaintPushCtx, { defendantCitizenId: a.defendantCitizenId, defendantName: a.defendantName, agentIds: a.agentIds });
@@ -1020,7 +1020,7 @@ export const updateComplaint = action({
     if (!res.ok) {
       const txt = await res.text().catch(() => "");
       await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: "plainte", op: "PATCH", ok: false, httpStatus: res.status, durationMs: Date.now() - t0, agentId, error: txt.slice(0, 160) });
-      throw new Error(`Édition côté NexusMDT échouée (HTTP ${res.status}). Modification non enregistrée.`);
+      throw new ConvexError(`Édition côté NexusMDT échouée (HTTP ${res.status}). Modification non enregistrée.`);
     }
     await ctx.runMutation(internal.nexusSync._applyComplaintLocal, local);
     await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: "plainte", op: "PATCH", ok: true, httpStatus: res.status, durationMs: Date.now() - t0, agentId, detail: a.motif });
@@ -1067,12 +1067,12 @@ export const createDeposition = action({
   args: { citizenId: v.id("citizens"), title: v.string(), body: v.string(), agentIds: v.array(v.id("agents")) },
   handler: async (ctx, a): Promise<Id<"depositions">> => {
     const agentId = await ctx.runQuery(api.nexusSync.myAgentId, {});
-    if (!agentId) throw new Error("Non authentifié.");
+    if (!agentId) throw new ConvexError("Non authentifié.");
     const cred = await ctx.runQuery(internal.nexusSync._credFor, { agentId });
-    if (!cred) throw new Error("Synchronisation Nexus non configurée (voir Mon profil).");
-    if (!a.title.trim()) throw new Error("L'objet de la déposition est requis.");
+    if (!cred) throw new ConvexError("Synchronisation Nexus non configurée (voir Mon profil).");
+    if (!a.title.trim()) throw new ConvexError("L'objet de la déposition est requis.");
     const cx = await ctx.runQuery(internal.nexusSync._depositionPushCtx, { citizenId: a.citizenId, agentIds: a.agentIds });
-    if (!cx?.citoyen?.nexusId) throw new Error("Ce citoyen n'existe pas encore côté NexusMDT (resync nécessaire).");
+    if (!cx?.citoyen?.nexusId) throw new ConvexError("Ce citoyen n'existe pas encore côté NexusMDT (resync nécessaire).");
 
     const t0 = Date.now();
     const { date } = nowParis();
@@ -1086,12 +1086,12 @@ export const createDeposition = action({
       res = await nexusFetch(ctx, agentId, cred, `/api/depositions`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
     } catch (e) {
       await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: "deposition", op: "POST", ok: false, durationMs: Date.now() - t0, agentId, error: e instanceof Error ? e.message : String(e) });
-      throw new Error("NexusMDT injoignable, déposition non créée.");
+      throw new ConvexError("NexusMDT injoignable, déposition non créée.");
     }
     if (!res.ok) {
       const txt = await res.text().catch(() => "");
       await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: "deposition", op: "POST", ok: false, httpStatus: res.status, durationMs: Date.now() - t0, agentId, error: txt.slice(0, 160) });
-      throw new Error(`Création côté NexusMDT échouée (HTTP ${res.status}). ${txt.slice(0, 120)}`);
+      throw new ConvexError(`Création côté NexusMDT échouée (HTTP ${res.status}). ${txt.slice(0, 120)}`);
     }
     const j: any = await res.json();
     const created = j.deposition ?? j.data ?? j;
@@ -1108,11 +1108,11 @@ export const updateDeposition = action({
   args: { id: v.id("depositions"), title: v.string(), body: v.string(), agentIds: v.array(v.id("agents")) },
   handler: async (ctx, a): Promise<void> => {
     const agentId = await ctx.runQuery(api.nexusSync.myAgentId, {});
-    if (!agentId) throw new Error("Non authentifié.");
+    if (!agentId) throw new ConvexError("Non authentifié.");
     const cred = await ctx.runQuery(internal.nexusSync._credFor, { agentId });
     const info = await ctx.runQuery(internal.nexusSync._depositionNexusId, { id: a.id });
     const citizenId = await ctx.runQuery(internal.nexusSync._depositionCitizen, { id: a.id });
-    if (!citizenId) throw new Error("Déposition introuvable.");
+    if (!citizenId) throw new ConvexError("Déposition introuvable.");
     const cx = await ctx.runQuery(internal.nexusSync._depositionPushCtx, { citizenId, agentIds: a.agentIds });
     const local = { id: a.id, title: a.title.trim(), body: a.body, officiers: cx.officiers };
 
@@ -1124,7 +1124,7 @@ export const updateDeposition = action({
     if (!res.ok) {
       const txt = await res.text().catch(() => "");
       await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: "deposition", op: "PATCH", ok: false, httpStatus: res.status, durationMs: Date.now() - t0, agentId, error: txt.slice(0, 160) });
-      throw new Error(`Édition côté NexusMDT échouée (HTTP ${res.status}). Modification non enregistrée.`);
+      throw new ConvexError(`Édition côté NexusMDT échouée (HTTP ${res.status}). Modification non enregistrée.`);
     }
     await ctx.runMutation(internal.nexusSync._applyDepositionLocal, local);
     await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: "deposition", op: "PATCH", ok: true, httpStatus: res.status, durationMs: Date.now() - t0, agentId, detail: a.title.trim() });
@@ -1202,9 +1202,9 @@ export const createWeapon = action({
   },
   handler: async (ctx, a): Promise<Id<"weapons">> => {
     const agentId = await ctx.runQuery(api.nexusSync.myAgentId, {});
-    if (!agentId) throw new Error("Non authentifié.");
+    if (!agentId) throw new ConvexError("Non authentifié.");
     const cred = await ctx.runQuery(internal.nexusSync._credFor, { agentId });
-    if (!cred) throw new Error("Synchronisation Nexus non configurée (voir Mon profil).");
+    if (!cred) throw new ConvexError("Synchronisation Nexus non configurée (voir Mon profil).");
     const owner = await ctx.runQuery(internal.nexusSync._citizenNexusRef, { citizenId: a.ownerId });
     const typeName = await ctx.runQuery(internal.nexusSync._weaponTypeName, { typeId: a.typeId });
     const t0 = Date.now();
@@ -1213,12 +1213,12 @@ export const createWeapon = action({
       res = await nexusFetch(ctx, agentId, cred, `/api/armes`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(weaponPayload(a, owner)) });
     } catch (e) {
       await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: "arme", op: "POST", ok: false, durationMs: Date.now() - t0, agentId, error: e instanceof Error ? e.message : String(e) });
-      throw new Error("NexusMDT injoignable, arme non créée.");
+      throw new ConvexError("NexusMDT injoignable, arme non créée.");
     }
     if (!res.ok) {
       const txt = await res.text().catch(() => "");
       await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: "arme", op: "POST", ok: false, httpStatus: res.status, durationMs: Date.now() - t0, agentId, error: txt.slice(0, 160) });
-      throw new Error(`Création côté NexusMDT échouée (HTTP ${res.status}). ${txt.slice(0, 120)}`);
+      throw new ConvexError(`Création côté NexusMDT échouée (HTTP ${res.status}). ${txt.slice(0, 120)}`);
     }
     const j: any = await res.json();
     const created = j.arme ?? j.data ?? j;
@@ -1238,7 +1238,7 @@ export const updateWeapon = action({
   },
   handler: async (ctx, a): Promise<void> => {
     const agentId = await ctx.runQuery(api.nexusSync.myAgentId, {});
-    if (!agentId) throw new Error("Non authentifié.");
+    if (!agentId) throw new ConvexError("Non authentifié.");
     const cred = await ctx.runQuery(internal.nexusSync._credFor, { agentId });
     const info = await ctx.runQuery(internal.nexusSync._weaponNexus, { id: a.id });
     const owner = await ctx.runQuery(internal.nexusSync._citizenNexusRef, { citizenId: a.ownerId });
@@ -1251,7 +1251,7 @@ export const updateWeapon = action({
     if (!res.ok) {
       const txt = await res.text().catch(() => "");
       await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: "arme", op: "PUT", ok: false, httpStatus: res.status, durationMs: Date.now() - t0, agentId, error: txt.slice(0, 160) });
-      throw new Error(`Édition côté NexusMDT échouée (HTTP ${res.status}). Modification non enregistrée.`);
+      throw new ConvexError(`Édition côté NexusMDT échouée (HTTP ${res.status}). Modification non enregistrée.`);
     }
     await ctx.runMutation(api.weapons.update, { id, ...fields });
     await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: "arme", op: "PUT", ok: true, httpStatus: res.status, durationMs: Date.now() - t0, agentId, detail: `${a.modele} ${a.serial}` });
@@ -1283,9 +1283,9 @@ export const createVehicle = action({
   },
   handler: async (ctx, a): Promise<Id<"vehicles">> => {
     const agentId = await ctx.runQuery(api.nexusSync.myAgentId, {});
-    if (!agentId) throw new Error("Non authentifié.");
+    if (!agentId) throw new ConvexError("Non authentifié.");
     const cred = await ctx.runQuery(internal.nexusSync._credFor, { agentId });
-    if (!cred) throw new Error("Synchronisation Nexus non configurée (voir Mon profil).");
+    if (!cred) throw new ConvexError("Synchronisation Nexus non configurée (voir Mon profil).");
     const owner = await ctx.runQuery(internal.nexusSync._citizenNexusRef, { citizenId: a.ownerId });
     const t0 = Date.now();
     let res: Response;
@@ -1293,12 +1293,12 @@ export const createVehicle = action({
       res = await nexusFetch(ctx, agentId, cred, `/api/vehicules`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(vehiclePayload(a, undefined, owner)) });
     } catch (e) {
       await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: "vehicule", op: "POST", ok: false, durationMs: Date.now() - t0, agentId, error: e instanceof Error ? e.message : String(e) });
-      throw new Error("NexusMDT injoignable, véhicule non créé.");
+      throw new ConvexError("NexusMDT injoignable, véhicule non créé.");
     }
     if (!res.ok) {
       const txt = await res.text().catch(() => "");
       await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: "vehicule", op: "POST", ok: false, httpStatus: res.status, durationMs: Date.now() - t0, agentId, error: txt.slice(0, 160) });
-      throw new Error(`Création côté NexusMDT échouée (HTTP ${res.status}). ${txt.slice(0, 120)}`);
+      throw new ConvexError(`Création côté NexusMDT échouée (HTTP ${res.status}). ${txt.slice(0, 120)}`);
     }
     const j: any = await res.json();
     const created = j.vehicule ?? j.data ?? j;
@@ -1317,7 +1317,7 @@ export const updateVehicle = action({
   },
   handler: async (ctx, a): Promise<void> => {
     const agentId = await ctx.runQuery(api.nexusSync.myAgentId, {});
-    if (!agentId) throw new Error("Non authentifié.");
+    if (!agentId) throw new ConvexError("Non authentifié.");
     const cred = await ctx.runQuery(internal.nexusSync._credFor, { agentId });
     const info = await ctx.runQuery(internal.nexusSync._vehicleNexus, { id: a.id });
     const owner = await ctx.runQuery(internal.nexusSync._citizenNexusRef, { citizenId: a.ownerId });
@@ -1330,7 +1330,7 @@ export const updateVehicle = action({
     if (!res.ok) {
       const txt = await res.text().catch(() => "");
       await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: "vehicule", op: "PUT", ok: false, httpStatus: res.status, durationMs: Date.now() - t0, agentId, error: txt.slice(0, 160) });
-      throw new Error(`Édition côté NexusMDT échouée (HTTP ${res.status}). Modification non enregistrée.`);
+      throw new ConvexError(`Édition côté NexusMDT échouée (HTTP ${res.status}). Modification non enregistrée.`);
     }
     await ctx.runMutation(api.vehicles.update, { id, ...fields });
     await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: "vehicule", op: "PUT", ok: true, httpStatus: res.status, durationMs: Date.now() - t0, agentId, detail: a.plaque });

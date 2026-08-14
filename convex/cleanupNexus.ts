@@ -1,6 +1,6 @@
 import { internalAction } from "./_generated/server";
 import { internal } from "./_generated/api";
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 
 // ============================================================================
 // Nettoyage ponctuel des fiches de TEST laissées sur le NexusMDT pendant la
@@ -27,7 +27,7 @@ type DeleteResult = { total: number; ok: number; failed: number; results: { labe
 
 async function apiGet(path: string, token: string): Promise<any> {
   const res = await fetch(`${BASE}${path}`, { headers: { Authorization: `Bearer ${token}` } });
-  if (!res.ok) throw new Error(`GET ${path} -> HTTP ${res.status}`);
+  if (!res.ok) throw new ConvexError(`GET ${path} -> HTTP ${res.status}`);
   return res.json();
 }
 async function fetchAll(resource: string, key: string, token: string): Promise<any[]> {
@@ -94,7 +94,7 @@ export const listTestRecords = internalAction({
   args: { agentId: v.id("agents") },
   handler: async (ctx, { agentId }): Promise<ListResult> => {
     const token: string | null = await ctx.runAction(internal.nexusSync.tokenFor, { agentId });
-    if (!token) throw new Error("Aucun token Nexus pour cet agent (compte non lié ?).");
+    if (!token) throw new ConvexError("Aucun token Nexus pour cet agent (compte non lié ?).");
     return await buildPlan(token);
   },
 });
@@ -104,7 +104,7 @@ export const deleteAllTestRecords = internalAction({
   args: { agentId: v.id("agents") },
   handler: async (ctx, { agentId }): Promise<DeleteResult> => {
     const token: string | null = await ctx.runAction(internal.nexusSync.tokenFor, { agentId });
-    if (!token) throw new Error("Aucun token Nexus pour cet agent (compte non lié ?).");
+    if (!token) throw new ConvexError("Aucun token Nexus pour cet agent (compte non lié ?).");
     const { plan } = await buildPlan(token);
     return await runDeletes(token, plan);
   },

@@ -1,6 +1,6 @@
 import { mutation, query } from "./_generated/server";
 import type { QueryCtx } from "./_generated/server";
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import { requireAgent, requirePermission, agentLabel } from "./rbac";
 import { writeAudit } from "./lib/audit";
 import { notify, NOTIFY_COLOR, deepLink } from "./lib/notify";
@@ -288,7 +288,7 @@ export const addSuspect = mutation({
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "rapports.contribute");
     const r = await ctx.db.get(reportId);
-    if (!r) throw new Error("Rapport introuvable.");
+    if (!r) throw new ConvexError("Rapport introuvable.");
     if (!r.citizenIds.includes(citizenId)) {
       await ctx.db.patch(reportId, { citizenIds: [...r.citizenIds, citizenId] });
     }
@@ -348,7 +348,7 @@ export const setRole = mutation({
         : role === "scribe"
           ? { scribeId: agentId }
           : { negotiatorId: agentId };
-    if (role === "lead" && !agentId) throw new Error("Le lead opé est obligatoire.");
+    if (role === "lead" && !agentId) throw new ConvexError("Le lead opé est obligatoire.");
     await ctx.db.patch(reportId, patch);
   },
 });

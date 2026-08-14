@@ -1,6 +1,6 @@
 import { internalAction, internalMutation, action, query } from "./_generated/server";
 import { internal, api } from "./_generated/api";
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import { getAuthUserId } from "@convex-dev/auth/server";
 import type { Id } from "./_generated/dataModel";
 import { can } from "./rbac";
@@ -164,8 +164,8 @@ function mapVehicle(v: any) {
 async function apiGet(path: string, token: string): Promise<any> {
   const res = await fetch(`${BASE}${path}`, { headers: { Authorization: `Bearer ${token}` } });
   if (res.status === 401)
-    throw new Error("Token invalide ou expiré. Récupère un nouveau token (localStorage.auth) puis: npx convex env set VIZU_TOKEN \"...\"");
-  if (!res.ok) throw new Error(`Erreur API ${res.status} sur ${path}`);
+    throw new ConvexError("Token invalide ou expiré. Récupère un nouveau token (localStorage.auth) puis: npx convex env set VIZU_TOKEN \"...\"");
+  if (!res.ok) throw new ConvexError(`Erreur API ${res.status} sur ${path}`);
   return res.json();
 }
 async function fetchAllPaged(path: string, key: string, token: string): Promise<any[]> {
@@ -186,7 +186,7 @@ export const sync = internalAction({
     const t0 = Date.now();
     const tk = token || process.env.VIZU_TOKEN;
     if (!tk)
-      throw new Error("Aucun token. Définis-le: npx convex env set VIZU_TOKEN \"<token>\"  (token = JSON.parse(localStorage.auth).state.token sur mdt.vizu-world.com), ou passe {\"token\":\"...\"}.");
+      throw new ConvexError("Aucun token. Définis-le: npx convex env set VIZU_TOKEN \"<token>\"  (token = JSON.parse(localStorage.auth).state.token sur mdt.vizu-world.com), ou passe {\"token\":\"...\"}.");
 
     // Récupération en direct
     const [citoyens, armes, chargesRaw] = await Promise.all([
@@ -271,17 +271,17 @@ async function vizuLogin(): Promise<string> {
   const email = process.env.VIZU_EMAIL;
   const password = process.env.VIZU_PASSWORD;
   const path = process.env.VIZU_LOGIN_PATH || "/auth/login";
-  if (!email || !password) throw new Error("VIZU_EMAIL / VIZU_PASSWORD non configurés.");
+  if (!email || !password) throw new ConvexError("VIZU_EMAIL / VIZU_PASSWORD non configurés.");
   const res = await fetch(`${BASE}${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password }),
   });
-  if (!res.ok) throw new Error(`Login vizu échoué (${res.status}).`);
+  if (!res.ok) throw new ConvexError(`Login vizu échoué (${res.status}).`);
   const j: any = await res.json();
   // Formats tolérés ; à ajuster selon la vraie réponse de l'API vizu.
   const token = j.token || j.accessToken || j?.state?.token || j?.data?.token || j?.data?.accessToken;
-  if (!token) throw new Error("Token introuvable dans la réponse de login vizu.");
+  if (!token) throw new ConvexError("Token introuvable dans la réponse de login vizu.");
   return token;
 }
 
@@ -334,7 +334,7 @@ export const runSync = action({
   args: {},
   handler: async (ctx): Promise<unknown> => {
     const ok = await ctx.runQuery(api.migration.canSync, {});
-    if (!ok) throw new Error("Vous n'êtes pas autorisé à lancer la synchronisation.");
+    if (!ok) throw new ConvexError("Vous n'êtes pas autorisé à lancer la synchronisation.");
     // Priorité au compte Nexus lié de l'admin (write-through, testé OK) ; sinon
     // le compte de service VIZU_EMAIL/PASSWORD.
     const agentId = await ctx.runQuery(api.nexusSync.myAgentId, {});
@@ -343,7 +343,7 @@ export const runSync = action({
     if (!token) token = await ctx.runAction(internal.nexusSync.anyLinkedToken, {});
     if (!token) {
       if (!process.env.VIZU_EMAIL || !process.env.VIZU_PASSWORD)
-        throw new Error("Aucun identifiant Nexus : lie ton compte dans Mon profil (Utiliser SuperMDT comme MDT principal), ou configure VIZU_EMAIL / VIZU_PASSWORD.");
+        throw new ConvexError("Aucun identifiant Nexus : lie ton compte dans Mon profil (Utiliser SuperMDT comme MDT principal), ou configure VIZU_EMAIL / VIZU_PASSWORD.");
       token = await vizuLogin();
     }
     // Ne PAS recréer les fiches de citoyens supprimés du Nexus : ce qui est

@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { requireAgent, requirePermission } from "./rbac";
 import { writeAudit } from "./lib/audit";
@@ -226,16 +226,16 @@ export const setAcademyRank = mutation({
     await requirePermission(ctx, actor, "lspa.rank.manage");
 
     const target = await ctx.db.get(agentId);
-    if (!target) throw new Error("Agent introuvable.");
-    if (target.isOwner) throw new Error("Le compte propriétaire est intouchable.");
+    if (!target) throw new ConvexError("Agent introuvable.");
+    if (target.isOwner) throw new ConvexError("Le compte propriétaire est intouchable.");
 
     const grade = target.gradeId ? await ctx.db.get(target.gradeId) : null;
-    if (grade?.academyOnly) throw new Error("Un cadet ne peut pas encadrer l'académie.");
-    if (grade?.external) throw new Error("Un grade extérieur ne peut pas encadrer l'académie.");
+    if (grade?.academyOnly) throw new ConvexError("Un cadet ne peut pas encadrer l'académie.");
+    if (grade?.external) throw new ConvexError("Un grade extérieur ne peut pas encadrer l'académie.");
 
     const before = target.academyRankId ? await ctx.db.get(target.academyRankId) : null;
     const after = rankId ? await ctx.db.get(rankId) : null;
-    if (rankId && !after) throw new Error("Grade d'académie introuvable.");
+    if (rankId && !after) throw new ConvexError("Grade d'académie introuvable.");
 
     await ctx.db.patch(agentId, { academyRankId: rankId });
     await writeAudit(ctx, actor, {

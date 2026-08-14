@@ -9,6 +9,7 @@ import { EmptyState } from "@/components/common/EmptyState";
 import { SkeletonRows } from "@/components/common/Skeleton";
 import { CitizenPicker } from "@/components/common/CitizenPicker";
 import { LosSantosMap } from "@/components/carte/LosSantosMap";
+import { readableError } from "@/lib/errors";
 
 type Fiche = NonNullable<FunctionReturnType<typeof api.calls911.get>>;
 
@@ -121,7 +122,7 @@ function FicheModal({ id, canOperate, onClose }: { id?: Id<"calls911">; canOpera
   const [patrol, setPatrol] = useState("");
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState(false);
-  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const dirty = useRef(false);
 
   if (!init && existing) {
@@ -160,7 +161,13 @@ function FicheModal({ id, canOperate, onClose }: { id?: Id<"calls911">; canOpera
     const payload = buildPayload();
     const t = setTimeout(async () => {
       try { await update({ id: id!, ...payload }); dirty.current = false; setSaveState("saved"); }
-      catch { setSaveState("idle"); }
+      catch (e) {
+        // Ne PAS avaler l'erreur : sur un appel en direct, l'opérateur doit
+        // savoir que sa fiche n'est pas enregistrée. On garde `dirty` pour
+        // retenter à la prochaine frappe.
+        setSaveState("error");
+        toast.error(readableError(e, "Sauvegarde de la fiche impossible."));
+      }
     }, 700);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -189,9 +196,10 @@ function FicheModal({ id, canOperate, onClose }: { id?: Id<"calls911">; canOpera
           <PhoneCall className="h-[18px] w-[18px]" style={{ color: "var(--accent)" }} />
           <h2 className="m-0 flex-1 text-[15px] font-bold">{isCreate ? "Nouvelle fiche 911" : `Fiche 911 n°${existing?.number ?? ""}`}</h2>
           {!isCreate && canEdit && (
-            <span className="flex items-center gap-[5px] text-[11px] text-faint">
+            <span className="flex items-center gap-[5px] text-[11px]" style={{ color: saveState === "error" ? "var(--danger)" : "var(--faint)" }}>
               {saveState === "saving" ? <><Loader2 className="h-[13px] w-[13px] animate-spin" /> Enregistrement…</>
                 : saveState === "saved" ? <><Check className="h-[13px] w-[13px]" style={{ color: "var(--success)" }} /> Enregistré</>
+                : saveState === "error" ? <><AlertTriangle className="h-[13px] w-[13px]" /> Non enregistré</>
                 : "Édition directe"}
             </span>
           )}

@@ -1,5 +1,5 @@
 import { mutation, query } from "./_generated/server";
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import { requireAgent, requirePermission } from "./rbac";
 import { writeAudit } from "./lib/audit";
 
@@ -75,7 +75,7 @@ export const removeGrade = mutation({
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "rbac.manage");
     const holders = (await ctx.db.query("agents").collect()).filter((a) => a.gradeId === gradeId).length;
-    if (holders > 0) throw new Error("Grade encore attribué à des agents.");
+    if (holders > 0) throw new ConvexError("Grade encore attribué à des agents.");
     for (const gp of await ctx.db.query("gradePermissions").withIndex("by_grade", (q) => q.eq("gradeId", gradeId)).collect()) await ctx.db.delete(gp._id);
     await ctx.db.delete(gradeId);
     await writeAudit(ctx, agent, { action: "grade.delete", resourceType: "grade", resourceId: gradeId });
@@ -109,7 +109,7 @@ export const copyGradePermissions = mutation({
   handler: async (ctx, { fromGradeId, toGradeId }) => {
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "rbac.manage");
-    if (fromGradeId === toGradeId) throw new Error("Grades source et cible identiques.");
+    if (fromGradeId === toGradeId) throw new ConvexError("Grades source et cible identiques.");
     const src = await ctx.db.query("gradePermissions").withIndex("by_grade", (q) => q.eq("gradeId", fromGradeId)).collect();
     const dst = await ctx.db.query("gradePermissions").withIndex("by_grade", (q) => q.eq("gradeId", toGradeId)).collect();
     const srcSet = new Set(src.map((s) => s.permissionId as string));

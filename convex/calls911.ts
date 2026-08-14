@@ -1,6 +1,6 @@
 import { mutation, query } from "./_generated/server";
 import type { MutationCtx } from "./_generated/server";
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import { requireAgent, requirePermission, can, agentLabel } from "./rbac";
 import { writeAudit } from "./lib/audit";
 
@@ -18,7 +18,7 @@ const STATUS = v.union(v.literal("EN_COURS"), v.literal("ATTRIBUE"), v.literal("
 async function requireCanSee(ctx: Parameters<typeof requireAgent>[0]) {
   const agent = await requireAgent(ctx);
   if (!(await can(ctx, agent, "n911.view")) && !(await can(ctx, agent, "n911.operate"))) {
-    throw new Error("Accès refusé aux fiches 911.");
+    throw new ConvexError("Accès refusé aux fiches 911.");
   }
   return agent;
 }
@@ -111,7 +111,7 @@ export const create = mutation({
   handler: async (ctx, a) => {
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "n911.operate");
-    if (!a.info.trim()) throw new Error("Les informations de l'appel sont requises.");
+    if (!a.info.trim()) throw new ConvexError("Les informations de l'appel sont requises.");
     const number = await nextNumber(ctx);
     const id = await ctx.db.insert("calls911", {
       number,
@@ -130,8 +130,8 @@ export const create = mutation({
 async function requireOwnerOfFiche(ctx: MutationCtx, id: string) {
   const agent = await requireAgent(ctx);
   const c = await ctx.db.get(id as any);
-  if (!c || (c as any).deletedAt) throw new Error("Fiche introuvable.");
-  if ((c as any).createdBy !== agent._id && !agent.isOwner) throw new Error("Seul l'opérateur qui a créé la fiche peut la modifier.");
+  if (!c || (c as any).deletedAt) throw new ConvexError("Fiche introuvable.");
+  if ((c as any).createdBy !== agent._id && !agent.isOwner) throw new ConvexError("Seul l'opérateur qui a créé la fiche peut la modifier.");
   return { agent, c: c as any };
 }
 
@@ -139,7 +139,7 @@ export const update = mutation({
   args: { id: v.id("calls911"), ...FIELDS },
   handler: async (ctx, { id, ...a }) => {
     const { agent } = await requireOwnerOfFiche(ctx, id);
-    if (!a.info.trim()) throw new Error("Les informations de l'appel sont requises.");
+    if (!a.info.trim()) throw new ConvexError("Les informations de l'appel sont requises.");
     await ctx.db.patch(id, { ...a, info: a.info.trim(), updatedAt: Date.now() });
     await writeAudit(ctx, agent, { action: "call911.edit", resourceType: "call911", resourceId: id });
   },

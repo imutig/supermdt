@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { QueryCtx } from "./_generated/server";
@@ -138,7 +138,7 @@ export const saveItem = mutation({
   handler: async (ctx, a) => {
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "effectif.validate");
-    if (!a.label.trim() || !a.section.trim()) throw new Error("Section et libellé sont obligatoires.");
+    if (!a.label.trim() || !a.section.trim()) throw new ConvexError("Section et libellé sont obligatoires.");
     const base = {
       section: a.section.trim(),
       label: a.label.trim(),

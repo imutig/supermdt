@@ -1,5 +1,5 @@
 import { mutation, query } from "./_generated/server";
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { requireAgent, requirePermission, agentLabel } from "./rbac";
@@ -101,8 +101,8 @@ export const create = mutation({
     const modele = a.modele.trim();
     const plaque = a.plaque.trim().toUpperCase();
     const roofNumber = a.roofNumber.trim();
-    if (!modele || !plaque) throw new Error("Modèle et plaque requis.");
-    if (!isBanalise(type) && !roofNumber) throw new Error("Numéro de toit requis (sauf véhicule banalisé).");
+    if (!modele || !plaque) throw new ConvexError("Modèle et plaque requis.");
+    if (!isBanalise(type) && !roofNumber) throw new ConvexError("Numéro de toit requis (sauf véhicule banalisé).");
     const id = await ctx.db.insert("fleetVehicles", {
       modele, plaque, type, roofNumber,
       photoUrls: a.photoUrl ? [a.photoUrl] : undefined,
@@ -129,13 +129,13 @@ export const update = mutation({
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "flotte.edit");
     const cur = await ctx.db.get(id);
-    if (!cur) throw new Error("Véhicule introuvable.");
+    if (!cur) throw new ConvexError("Véhicule introuvable.");
     const type = normType(a.type);
     const modele = a.modele.trim();
     const plaque = a.plaque.trim().toUpperCase();
     const roofNumber = a.roofNumber.trim();
-    if (!modele || !plaque) throw new Error("Modèle et plaque requis.");
-    if (!isBanalise(type) && !roofNumber) throw new Error("Numéro de toit requis (sauf véhicule banalisé).");
+    if (!modele || !plaque) throw new ConvexError("Modèle et plaque requis.");
+    if (!isBanalise(type) && !roofNumber) throw new ConvexError("Numéro de toit requis (sauf véhicule banalisé).");
     await ctx.db.patch(id, {
       modele, plaque, type, roofNumber,
       photoUrls: a.photoUrl ? [a.photoUrl] : [],

@@ -1,7 +1,7 @@
 import { mutation, query } from "./_generated/server";
 import type { MutationCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import { requireAgent, requirePermission } from "./rbac";
 import { writeAudit } from "./lib/audit";
 import { parisWallToEpoch } from "./lib/paris";
@@ -73,12 +73,12 @@ export const create = mutation({
     const actor = await requireAgent(ctx);
     await requirePermission(ctx, actor, "convocations.create");
     if (!args.agentId && !(args.discordId && args.discordId.trim())) {
-      throw new Error("Choisis un agent recensé ou saisis un ID Discord.");
+      throw new ConvexError("Choisis un agent recensé ou saisis un ID Discord.");
     }
     let agentLabel: string | undefined;
     if (args.agentId) {
       const ag = await ctx.db.get(args.agentId);
-      if (!ag) throw new Error("Agent introuvable.");
+      if (!ag) throw new ConvexError("Agent introuvable.");
       agentLabel = `${ag.prenomRP} ${ag.nomRP}`;
     }
     const reference = await nextReference(ctx);

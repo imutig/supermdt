@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import type { Doc } from "./_generated/dataModel";
 import type { QueryCtx, MutationCtx } from "./_generated/server";
@@ -13,12 +13,12 @@ import { writeAudit } from "./lib/audit";
 async function assertAccess(ctx: QueryCtx | MutationCtx, agent: Doc<"agents">) {
   if (agent.isOwner || agent.academyRankId) return;
   if (await can(ctx, agent, "lspa.entretiens")) return;
-  throw new Error("Accès aux entretiens réservé à l'académie.");
+  throw new ConvexError("Accès aux entretiens réservé à l'académie.");
 }
 // Configuration de la banque : encadrement académie + owner uniquement.
 function assertConfig(agent: Doc<"agents">) {
   if (agent.isOwner || agent.academyRankId) return;
-  throw new Error("Configuration de la banque réservée à l'encadrement de l'académie.");
+  throw new ConvexError("Configuration de la banque réservée à l'encadrement de l'académie.");
 }
 
 // Note 1-5 -> fraction étalée (1 = 0 %, 5 = 100 %).
@@ -66,7 +66,7 @@ export const saveItem = mutation({
     const agent = await requireAgent(ctx);
     assertConfig(agent);
     const text = a.text.trim();
-    if (!text) throw new Error("L'intitulé est obligatoire.");
+    if (!text) throw new ConvexError("L'intitulé est obligatoire.");
     const base = { kind: a.kind, text, explanation: a.explanation?.trim() || undefined };
     if (a.itemId) { await ctx.db.patch(a.itemId, base); return a.itemId; }
     const all = await ctx.db.query("interviewItems").collect();
@@ -161,7 +161,7 @@ export const create = mutation({
   handler: async (ctx, { prenom, nom, dateNaissance }) => {
     const agent = await requireAgent(ctx);
     await assertAccess(ctx, agent);
-    if (!prenom.trim() || !nom.trim()) throw new Error("Prénom et nom du candidat requis.");
+    if (!prenom.trim() || !nom.trim()) throw new ConvexError("Prénom et nom du candidat requis.");
     const active = (await ctx.db.query("interviewItems").withIndex("by_position").collect()).filter((i) => i.active !== false);
     const questions: ItemSnap[] = active.filter((i) => i.kind === "QUESTION").map((i) => ({ text: i.text, explanation: i.explanation }));
     const scenarios = active.filter((i) => i.kind === "SCENARIO");
@@ -191,7 +191,7 @@ export const save = mutation({
     const agent = await requireAgent(ctx);
     await assertAccess(ctx, agent);
     const r = await ctx.db.get(id);
-    if (!r || r.deletedAt) throw new Error("Entretien introuvable.");
+    if (!r || r.deletedAt) throw new ConvexError("Entretien introuvable.");
     const clean = (s?: ItemSnap | null): ItemSnap | undefined => s ? { text: s.text, explanation: s.explanation?.trim() || undefined, note: s.note && s.note >= 1 && s.note <= 5 ? s.note : undefined } : undefined;
     const q = questions.map((x) => clean(x)!).filter(Boolean);
     const sc = clean(scenario);

@@ -1,5 +1,5 @@
 import { mutation, query, internalMutation } from "./_generated/server";
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import { requireAgent, requirePermission } from "./rbac";
 import { writeAudit } from "./lib/audit";
 import { touchStats } from "./stats";
@@ -235,7 +235,7 @@ export const update = mutation({
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "citoyens.edit");
     const before = await ctx.db.get(id);
-    if (!before) throw new Error("Dossier introuvable.");
+    if (!before) throw new ConvexError("Dossier introuvable.");
     await ctx.db.patch(id, { ...fields, searchText: buildSearchText(fields) });
     await writeAudit(ctx, agent, {
       action: "citizen.update",
@@ -255,7 +255,7 @@ export const setDeceased = mutation({
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "citoyens.edit");
     const c = await ctx.db.get(id);
-    if (!c) throw new Error("Dossier introuvable.");
+    if (!c) throw new ConvexError("Dossier introuvable.");
     await ctx.db.patch(id, { deceased });
     await writeAudit(ctx, agent, {
       action: deceased ? "citizen.deceased" : "citizen.revived",
@@ -350,7 +350,7 @@ export const archive = mutation({
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "citoyens.edit");
     const c = await ctx.db.get(id);
-    if (!c) throw new Error("Dossier introuvable.");
+    if (!c) throw new ConvexError("Dossier introuvable.");
     await ctx.db.patch(id, { status: "ARCHIVED" });
     await writeAudit(ctx, agent, {
       action: "citizen.archive",

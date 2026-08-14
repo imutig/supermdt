@@ -1,7 +1,7 @@
 import { mutation, query, internalMutation } from "./_generated/server";
 import type { MutationCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import { assertOutranks, requireAgent, requirePermission } from "./rbac";
 import { writeAudit } from "./lib/audit";
 import { notify, NOTIFY_COLOR, deepLink } from "./lib/notify";
@@ -136,7 +136,7 @@ export const create = mutation({
     const actor = await requireAgent(ctx);
     await requirePermission(ctx, actor, "discipline.create");
     const targetAgent = await ctx.db.get(args.agentId);
-    if (!targetAgent) throw new Error("Agent introuvable.");
+    if (!targetAgent) throw new ConvexError("Agent introuvable.");
     await assertOutranks(ctx, actor, targetAgent);
     const reference = await nextReference(ctx);
     const suspendedUntil = args.suspends ? wallToEpoch(args.suspendedUntilWall) : undefined;
@@ -187,7 +187,7 @@ export const reactivate = mutation({
     const actor = await requireAgent(ctx);
     await requirePermission(ctx, actor, "discipline.edit");
     const target = await ctx.db.get(agentId);
-    if (!target) throw new Error("Agent introuvable.");
+    if (!target) throw new ConvexError("Agent introuvable.");
     if (target.status !== "SUSPENDED") return;
     await ctx.db.patch(agentId, { status: "ACTIVE", suspendedUntil: undefined, suspendedReason: undefined, suspendedBy: undefined });
     await writeAudit(ctx, actor, { action: "discipline.reactivate", resourceType: "agent", resourceId: agentId });

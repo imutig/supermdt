@@ -1,5 +1,5 @@
 import { mutation, query, internalMutation } from "./_generated/server";
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import { requireAgent, requirePermission, agentLabel } from "./rbac";
 import { writeAudit } from "./lib/audit";
 import { touchStats } from "./stats";
@@ -80,7 +80,7 @@ export const remove = mutation({
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "mandats.annul");
     const m = await ctx.db.get(mandatId);
-    if (!m) throw new Error("Mandat introuvable.");
+    if (!m) throw new ConvexError("Mandat introuvable.");
     if (m.deletedAt) return;
     const citizen = await ctx.db.get(m.citizenId);
     await ctx.db.patch(mandatId, { deletedAt: Date.now(), deletedBy: agent._id });
@@ -109,8 +109,8 @@ export const execute = mutation({
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "mandats.execute");
     const m = await ctx.db.get(mandatId);
-    if (!m) throw new Error("Mandat introuvable.");
-    if (m.status !== "ACTIF") throw new Error("Seul un mandat actif peut être exécuté.");
+    if (!m) throw new ConvexError("Mandat introuvable.");
+    if (m.status !== "ACTIF") throw new ConvexError("Seul un mandat actif peut être exécuté.");
     const citizen = await ctx.db.get(m.citizenId);
     await ctx.db.patch(mandatId, {
       status: "EXECUTE",

@@ -1,5 +1,5 @@
 import { mutation, query } from "./_generated/server";
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import type { QueryCtx, MutationCtx } from "./_generated/server";
 import type { Id, TableNames } from "./_generated/dataModel";
 import { requireAgent, requirePermission, agentLabel, assertOutranks } from "./rbac";
@@ -179,10 +179,10 @@ export const restore = mutation({
     if (kind === "agent") {
       const aid = ctx.db.normalizeId("agents", id);
       const a = aid ? await ctx.db.get(aid) : null;
-      if (!a) throw new Error("Compte introuvable.");
+      if (!a) throw new ConvexError("Compte introuvable.");
       // Une mise à pied disciplinaire (SUSPENDED) NE se lève PAS depuis les
       // archives : elle passe par la Discipline (séparation des pouvoirs).
-      if (a.status === "SUSPENDED") throw new Error("Cet agent est sous mise à pied : levez-la depuis la Discipline.");
+      if (a.status === "SUSPENDED") throw new ConvexError("Cet agent est sous mise à pied : levez-la depuis la Discipline.");
       // Réactiver un agent est une action hiérarchique : on ne réactive qu'un
       // subordonné (l'owner est intouchable, cf. assertOutranks).
       await assertOutranks(ctx, agent, a);
@@ -193,7 +193,7 @@ export const restore = mutation({
     if (kind === "citizen") {
       const cid = ctx.db.normalizeId("citizens", id);
       const c = cid ? await ctx.db.get(cid) : null;
-      if (!c) throw new Error("Dossier introuvable.");
+      if (!c) throw new ConvexError("Dossier introuvable.");
       await ctx.db.patch(c._id, { status: "ACTIVE" });
       await writeAudit(ctx, agent, { action: "citizen.restore", resourceType: "citizen", resourceId: id, resourceLabel: `${c.prenom} ${c.nom}` });
       return;
@@ -202,8 +202,8 @@ export const restore = mutation({
     // type-confusion / écriture sur une table arbitraire) et qu'il était supprimé.
     const nid = ctx.db.normalizeId(SOFT[kind].table, id);
     const doc = nid ? await ctx.db.get(nid) : null;
-    if (!doc) throw new Error("Élément introuvable.");
-    if (!(doc as Doc).deletedAt) throw new Error("Seul un élément archivé peut être restauré.");
+    if (!doc) throw new ConvexError("Élément introuvable.");
+    if (!(doc as Doc).deletedAt) throw new ConvexError("Seul un élément archivé peut être restauré.");
     await ctx.db.patch(nid!, { deletedAt: undefined, deletedBy: undefined } as Partial<Doc>);
     await writeAudit(ctx, agent, { action: "archive.restore", resourceType: kind, resourceId: id, metadata: { kind } });
   },
@@ -214,14 +214,14 @@ export const purge = mutation({
   handler: async (ctx, { kind, id }) => {
     const agent = await requireAgent(ctx);
     // Suppression définitive : réservée au compte propriétaire (owner).
-    if (!agent.isOwner) throw new Error("Seul le compte propriétaire peut supprimer définitivement un élément.");
-    if (kind === "agent" || kind === "citizen") throw new Error("Ce type ne peut pas être purgé depuis les archives.");
+    if (!agent.isOwner) throw new ConvexError("Seul le compte propriétaire peut supprimer définitivement un élément.");
+    if (kind === "agent" || kind === "citizen") throw new ConvexError("Ce type ne peut pas être purgé depuis les archives.");
     const cfg = SOFT[kind];
     // On valide l'appartenance à la table du `kind` : sinon `cfg.children`
     // nettoierait la mauvaise table (enfants orphelins).
     const nid = ctx.db.normalizeId(cfg.table, id);
     const doc = nid ? await ctx.db.get(nid) : null;
-    if (!doc || !(doc as Doc).deletedAt) throw new Error("Seul un élément archivé peut être purgé.");
+    if (!doc || !(doc as Doc).deletedAt) throw new ConvexError("Seul un élément archivé peut être purgé.");
     if (cfg.children) await cfg.children(ctx, doc);
     await ctx.db.delete(nid!);
     await writeAudit(ctx, agent, { action: "archive.purge", resourceType: kind, resourceId: id, metadata: { kind } });

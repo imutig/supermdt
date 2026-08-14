@@ -1,4 +1,5 @@
 import { convexAuth } from "@convex-dev/auth/server";
+import { ConvexError } from "convex/values";
 import { Password } from "@convex-dev/auth/providers/Password";
 import type { GenericMutationCtx, AnyDataModel } from "convex/server";
 import type { DataModel, Id } from "./_generated/dataModel";
@@ -44,7 +45,7 @@ export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
       if (!agent) return;
 
       if (agent.status === "INACTIVE") {
-        throw new Error("Ce compte a été désactivé. Contactez l'État-Major.");
+        throw new ConvexError("Ce compte a été désactivé. Contactez l'État-Major.");
       }
       // Mise à pied : bloque avec l'échéance, ou lève automatiquement si passée.
       if (agent.status === "SUSPENDED") {
@@ -53,14 +54,14 @@ export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
           await db.patch(agent._id, { status: "ACTIVE", suspendedUntil: undefined, suspendedReason: undefined, suspendedBy: undefined });
         } else if (typeof until === "number") {
           const d = new Date(until).toLocaleString("fr-FR", { timeZone: "Europe/Paris" });
-          throw new Error(`Vous êtes en mise à pied jusqu'au ${d}${agent.suspendedReason ? ` — ${agent.suspendedReason}` : ""}.`);
+          throw new ConvexError(`Vous êtes en mise à pied jusqu'au ${d}${agent.suspendedReason ? ` — ${agent.suspendedReason}` : ""}.`);
         } else {
-          throw new Error(`Vous êtes en mise à pied jusqu'à nouvel ordre${agent.suspendedReason ? ` — ${agent.suspendedReason}` : ""}. Contactez l'État-Major.`);
+          throw new ConvexError(`Vous êtes en mise à pied jusqu'à nouvel ordre${agent.suspendedReason ? ` — ${agent.suspendedReason}` : ""}. Contactez l'État-Major.`);
         }
       }
       if (typeof agent.lockedUntil === "number" && agent.lockedUntil > Date.now()) {
         const until = new Date(agent.lockedUntil).toLocaleString("fr-FR", { timeZone: "Europe/Paris" });
-        throw new Error(`Compte verrouillé jusqu'au ${until}.`);
+        throw new ConvexError(`Compte verrouillé jusqu'au ${until}.`);
       }
     },
   },

@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import type { QueryCtx } from "./_generated/server";
 import type { Doc } from "./_generated/dataModel";
@@ -159,10 +159,10 @@ export const addEdge = mutation({
   },
   handler: async (ctx, { caseId, fromNodeId, toNodeId, label, color }) => {
     await requireCaseWrite(ctx, caseId);
-    if (fromNodeId === toNodeId) throw new Error("Un lien doit relier deux nœuds différents.");
+    if (fromNodeId === toNodeId) throw new ConvexError("Un lien doit relier deux nœuds différents.");
     const existing = await ctx.db.query("dbBoardEdges").withIndex("by_case", (x) => x.eq("caseId", caseId)).collect();
     if (existing.some((e) => (e.fromNodeId === fromNodeId && e.toNodeId === toNodeId) || (e.fromNodeId === toNodeId && e.toNodeId === fromNodeId))) {
-      throw new Error("Ces deux nœuds sont déjà reliés.");
+      throw new ConvexError("Ces deux nœuds sont déjà reliés.");
     }
     return await ctx.db.insert("dbBoardEdges", { caseId, fromNodeId, toNodeId, label: label?.trim() || undefined, color });
   },

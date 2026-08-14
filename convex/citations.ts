@@ -1,5 +1,5 @@
 import { mutation, query } from "./_generated/server";
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import type { QueryCtx } from "./_generated/server";
 import { requireAgent, requirePermission, requireOwnOrPermission, agentLabel } from "./rbac";
 import { writeAudit } from "./lib/audit";
@@ -110,7 +110,7 @@ export const remove = mutation({
   handler: async (ctx, { citationId }) => {
     const agent = await requireAgent(ctx);
     const c = await ctx.db.get(citationId);
-    if (!c) throw new Error("Contravention introuvable.");
+    if (!c) throw new ConvexError("Contravention introuvable.");
     if (c.deletedAt) return;
     // L'agent qui a établi l'acte peut l'annuler ; au-delà, la permission.
     await requireOwnOrPermission(ctx, agent, c.createdBy, "contraventions.annul");
@@ -182,7 +182,7 @@ export const create = mutation({
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "contraventions.create");
     const defcon = await currentDefcon(ctx);
-    if (!defcon) throw new Error("DEFCON non configuré.");
+    if (!defcon) throw new ConvexError("DEFCON non configuré.");
 
     let totalFine = 0;
     const snaps = [];
@@ -193,7 +193,7 @@ export const create = mutation({
       const sev = pc.severityId ? await ctx.db.get(pc.severityId) : null;
       // Une contravention ne peut retenir que des infractions de sévérité "Contravention" (§4).
       if (sev?.name !== "Contravention") {
-        throw new Error(`« ${pc.name} » n'est pas une contravention.`);
+        throw new ConvexError(`« ${pc.name} » n'est pas une contravention.`);
       }
       const sanctionNames: string[] = [];
       for (const sid of pc.sanctionIds) {

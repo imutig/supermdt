@@ -1,5 +1,5 @@
 import { mutation, query } from "./_generated/server";
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import type { QueryCtx, MutationCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 
@@ -11,8 +11,8 @@ import type { Doc, Id } from "./_generated/dataModel";
 // LECTURE SEULE — le bot n'écrit rien dans le MDT.
 function assertBot(secret: string) {
   const expected = process.env.BOT_SECRET;
-  if (!expected) throw new Error("BOT_SECRET non configuré côté Convex.");
-  if (secret !== expected) throw new Error("Secret invalide.");
+  if (!expected) throw new ConvexError("BOT_SECRET non configuré côté Convex.");
+  if (secret !== expected) throw new ConvexError("Secret invalide.");
 }
 
 const DAY = 86_400_000;

@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import { mutation, query } from "./_generated/server";
 
 // Verrou d'accès aux portails (MDT et LSPA), en amont de toute connexion.
@@ -47,7 +47,7 @@ export const unlock = mutation({
   handler: async (_ctx, { code, portal }) => {
     const expected = accessCode(portal ?? "mdt");
     if (!expected) return { ok: true as const, expiresAt: null };
-    if (!sameSecret(code.trim(), expected)) throw new Error("Code d'accès incorrect.");
+    if (!sameSecret(code.trim(), expected)) throw new ConvexError("Code d'accès incorrect.");
     return { ok: true as const, expiresAt: Date.now() + UNLOCK_DAYS * 24 * 3600 * 1000 };
   },
 });

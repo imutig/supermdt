@@ -1,6 +1,6 @@
 "use node";
 
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import { action } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { modifyAccountCredentials, invalidateSessions, retrieveAccount } from "@convex-dev/auth/server";
@@ -44,8 +44,8 @@ export const resetPassword = action({
 export const changeMyPassword = action({
   args: { current: v.string(), next: v.string() },
   handler: async (ctx, { current, next }): Promise<null> => {
-    if (next.length < 8) throw new Error("Le nouveau mot de passe doit faire au moins 8 caractères.");
-    if (next === current) throw new Error("Le nouveau mot de passe doit être différent de l'ancien.");
+    if (next.length < 8) throw new ConvexError("Le nouveau mot de passe doit faire au moins 8 caractères.");
+    if (next === current) throw new ConvexError("Le nouveau mot de passe doit être différent de l'ancien.");
 
     const me: { login: string } = await ctx.runMutation(internal.agents.prepareSelfChange, {});
     // retrieveAccount valide le secret fourni : c'est notre contrôle du mot de
@@ -53,7 +53,7 @@ export const changeMyPassword = action({
     try {
       await retrieveAccount(ctx, { provider: "password", account: { id: me.login, secret: current } });
     } catch {
-      throw new Error("Mot de passe actuel incorrect.");
+      throw new ConvexError("Mot de passe actuel incorrect.");
     }
 
     await modifyAccountCredentials(ctx, {

@@ -58,8 +58,8 @@ export function Calendrier() {
           {cells.map((d, i) => (
             <div
               key={i}
-              onClick={() => d && canManage && setModalDay(d)}
-              className={`min-h-[104px] border-b border-r border-border p-[6px] ${d && canManage ? "cursor-pointer hover:bg-surface-2" : ""}`}
+              onClick={() => d && setModalDay(d)}
+              className={`min-h-[104px] border-b border-r border-border p-[6px] ${d ? "cursor-pointer hover:bg-surface-2" : ""}`}
               style={{ background: d ? undefined : "var(--surface-2)" }}
             >
               {d && (

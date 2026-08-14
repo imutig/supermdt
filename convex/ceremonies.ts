@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import type { MutationCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
@@ -120,8 +120,8 @@ export const create = mutation({
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, PERM);
     const title = args.title.trim();
-    if (!title) throw new Error("Le titre est requis.");
-    if (!/^\d{1,2}:\d{2}$/.test(args.startTime)) throw new Error("Heure invalide.");
+    if (!title) throw new ConvexError("Le titre est requis.");
+    if (!/^\d{1,2}:\d{2}$/.test(args.startTime)) throw new ConvexError("Heure invalide.");
     const lieu = args.lieu?.trim() || undefined;
     const endTime = plusOneHour(args.startTime);
 
@@ -165,8 +165,8 @@ export const update = mutation({
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, PERM);
     const c = await ctx.db.get(ceremonyId);
-    if (!c || c.deletedAt) throw new Error("Cérémonie introuvable.");
-    if (patch.startTime !== undefined && !/^\d{1,2}:\d{2}$/.test(patch.startTime)) throw new Error("Heure invalide.");
+    if (!c || c.deletedAt) throw new ConvexError("Cérémonie introuvable.");
+    if (patch.startTime !== undefined && !/^\d{1,2}:\d{2}$/.test(patch.startTime)) throw new ConvexError("Heure invalide.");
 
     const next = {
       title: patch.title !== undefined ? patch.title.trim() || c.title : c.title,
@@ -211,9 +211,9 @@ export const addReminder = mutation({
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, PERM);
     const t = text.trim();
-    if (!t) throw new Error("Le rappel est vide.");
+    if (!t) throw new ConvexError("Le rappel est vide.");
     const c = await ctx.db.get(ceremonyId);
-    if (!c || c.deletedAt) throw new Error("Cérémonie introuvable.");
+    if (!c || c.deletedAt) throw new ConvexError("Cérémonie introuvable.");
     await ctx.db.insert("ceremonyReminders", { ceremonyId, text: t, createdAt: Date.now() });
   },
 });
@@ -234,11 +234,11 @@ export const addPromotion = mutation({
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, PERM);
     const c = await ctx.db.get(ceremonyId);
-    if (!c || c.deletedAt) throw new Error("Cérémonie introuvable.");
+    if (!c || c.deletedAt) throw new ConvexError("Cérémonie introuvable.");
     const target = await ctx.db.get(agentId);
-    if (!target) throw new Error("Agent introuvable.");
+    if (!target) throw new ConvexError("Agent introuvable.");
     const toGrade = await ctx.db.get(toGradeId);
-    if (!toGrade) throw new Error("Grade introuvable.");
+    if (!toGrade) throw new ConvexError("Grade introuvable.");
     // Contrôle hiérarchique dès l'ajout (comme applyGrades) : sauf owner, on ne
     // promeut que vers un grade STRICTEMENT inférieur au sien, sur une cible
     // qu'on surclasse. Empêche d'octroyer un rôle Discord élevé via la cérémonie.
@@ -246,7 +246,7 @@ export const addPromotion = mutation({
       const actorGrade = agent.gradeId ? await ctx.db.get(agent.gradeId) : null;
       const targetGrade = target.gradeId ? await ctx.db.get(target.gradeId) : null;
       if (!actorGrade || toGrade.position >= actorGrade.position || (targetGrade && targetGrade.position >= actorGrade.position)) {
-        throw new Error("Cette promotion est hors de votre portée hiérarchique.");
+        throw new ConvexError("Cette promotion est hors de votre portée hiérarchique.");
       }
     }
     // Un même agent n'apparaît qu'une fois dans une cérémonie.
@@ -280,7 +280,7 @@ export const executeDiscordPromotions = mutation({
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, PERM);
     const c = await ctx.db.get(ceremonyId);
-    if (!c || c.deletedAt) throw new Error("Cérémonie introuvable.");
+    if (!c || c.deletedAt) throw new ConvexError("Cérémonie introuvable.");
     const allGradeRoles = (await ctx.db.query("grades").collect()).map((g) => g.discordRoleId).filter((r): r is string => !!r);
     const promos = await ctx.db.query("ceremonyPromotions").withIndex("by_ceremony", (q) => q.eq("ceremonyId", ceremonyId)).collect();
 
@@ -316,7 +316,7 @@ export const applyGrades = mutation({
     const actor = await requireAgent(ctx);
     await requirePermission(ctx, actor, PERM);
     const c = await ctx.db.get(ceremonyId);
-    if (!c || c.deletedAt) throw new Error("Cérémonie introuvable.");
+    if (!c || c.deletedAt) throw new ConvexError("Cérémonie introuvable.");
     const actorGrade = actor.gradeId ? await ctx.db.get(actor.gradeId) : null;
     const promos = await ctx.db.query("ceremonyPromotions").withIndex("by_ceremony", (q) => q.eq("ceremonyId", ceremonyId)).collect();
 
@@ -364,16 +364,16 @@ export const addDismissal = mutation({
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, PERM);
     const c = await ctx.db.get(ceremonyId);
-    if (!c || c.deletedAt) throw new Error("Cérémonie introuvable.");
+    if (!c || c.deletedAt) throw new ConvexError("Cérémonie introuvable.");
     let finalName = name?.trim() || "";
     let finalGrade = fromGradeName?.trim() || undefined;
     if (agentId) {
       const target = await ctx.db.get(agentId);
-      if (!target) throw new Error("Agent introuvable.");
+      if (!target) throw new ConvexError("Agent introuvable.");
       finalName = `${target.prenomRP} ${target.nomRP}`;
       if (!finalGrade && target.gradeId) finalGrade = (await ctx.db.get(target.gradeId))?.name ?? undefined;
     }
-    if (!finalName) throw new Error("Nom requis.");
+    if (!finalName) throw new ConvexError("Nom requis.");
     return await ctx.db.insert("ceremonyDismissals", { ceremonyId, agentId, name: finalName, fromGradeName: finalGrade, createdAt: Date.now() });
   },
 });
@@ -401,7 +401,7 @@ function promoMention(discordId: string | null, matricule: number | null, name: 
 async function ceremonyChannelOrThrow(ctx: MutationCtx): Promise<string> {
   const cfg = await ctx.db.query("integrationConfig").first();
   const channel = cfg?.botCeremonyChannel;
-  if (!channel) throw new Error("Aucun salon de cérémonie configuré (Configuration > Bot Discord).");
+  if (!channel) throw new ConvexError("Aucun salon de cérémonie configuré (Configuration > Bot Discord).");
   return channel;
 }
 
@@ -412,7 +412,7 @@ export const announce = mutation({
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, PERM);
     const c = await ctx.db.get(ceremonyId);
-    if (!c || c.deletedAt) throw new Error("Cérémonie introuvable.");
+    if (!c || c.deletedAt) throw new ConvexError("Cérémonie introuvable.");
     await ceremonyChannelOrThrow(ctx);
     const lines = [
       "📌 **ANNONCE DE CÉRÉMONIE**",
@@ -435,14 +435,14 @@ export const announceResult = mutation({
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, PERM);
     const c = await ctx.db.get(ceremonyId);
-    if (!c || c.deletedAt) throw new Error("Cérémonie introuvable.");
+    if (!c || c.deletedAt) throw new ConvexError("Cérémonie introuvable.");
     await ceremonyChannelOrThrow(ctx);
 
     const promoRows = (await ctx.db.query("ceremonyPromotions").withIndex("by_ceremony", (q) => q.eq("ceremonyId", ceremonyId)).collect())
       .sort((a, b) => a.createdAt - b.createdAt);
     const dismissals = (await ctx.db.query("ceremonyDismissals").withIndex("by_ceremony", (q) => q.eq("ceremonyId", ceremonyId)).collect())
       .sort((a, b) => a.createdAt - b.createdAt);
-    if (promoRows.length === 0 && dismissals.length === 0) throw new Error("Aucune montée en grade ni licenciement à annoncer.");
+    if (promoRows.length === 0 && dismissals.length === 0) throw new ConvexError("Aucune montée en grade ni licenciement à annoncer.");
 
     const lines: string[] = ["📌 **ANNONCE CÉRÉMONIE**", ""];
     if (promoRows.length) {

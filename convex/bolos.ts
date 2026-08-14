@@ -1,5 +1,5 @@
 import { mutation, query } from "./_generated/server";
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import { requireAgent, requirePermission, agentLabel, can } from "./rbac";
 import { writeAudit } from "./lib/audit";
 import { notify, NOTIFY_COLOR, deepLink } from "./lib/notify";
@@ -64,7 +64,7 @@ export const create = mutation({
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "bolo.manage");
     const title = a.title.trim();
-    if (!title) throw new Error("Intitulé requis.");
+    if (!title) throw new ConvexError("Intitulé requis.");
     const id = await ctx.db.insert("bolos", {
       ...a, title, active: true, createdBy: agent._id, at: Date.now(),
     });

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { readableError } from "@/lib/errors";
 import { X, Trash2, Skull } from "lucide-react";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { api, type Doc } from "@/lib/api";
@@ -63,7 +64,7 @@ export function EditIdentityModal({
       toast.success("Fiche mise à jour.");
       onClose();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Modification impossible.");
+      toast.error(readableError(e, "Modification impossible."));
     } finally {
       setBusy(false);
     }

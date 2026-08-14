@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { requireDivView, requireDivPerm, requireCaseRead, requireCaseWrite, agentName } from "./lib/detectiveAccess";
 import { hasPerm } from "./lib/divisionAccess";
@@ -46,7 +46,7 @@ export const getPerson = query({
   args: { personId: v.id("dbPersons") },
   handler: async (ctx, { personId }) => {
     const p = await ctx.db.get(personId);
-    if (!p || p.deletedAt) throw new Error("Personne introuvable.");
+    if (!p || p.deletedAt) throw new ConvexError("Personne introuvable.");
     const { agent, division } = await requireDivView(ctx, p.divisionId);
     const canSensitive = await hasPerm(ctx, agent, division, "db.sensitive");
     const gang = p.gangId ? await ctx.db.get(p.gangId) : null;
@@ -96,7 +96,7 @@ export const createPerson = mutation({
   args: { divisionId: v.id("divisions"), ...PERSON_FIELDS },
   handler: async (ctx, { divisionId, ...f }) => {
     const { agent } = await requireDivPerm(ctx, divisionId, "db.registry");
-    if (!f.name.trim()) throw new Error("Nom requis.");
+    if (!f.name.trim()) throw new ConvexError("Nom requis.");
     return await ctx.db.insert("dbPersons", {
       divisionId, name: f.name.trim(), alias: f.alias?.trim() || undefined,
       citizenId: f.citizenId ?? undefined, role: f.role ?? undefined, notes: f.notes,
@@ -117,7 +117,7 @@ export const updatePerson = mutation({
     await requireDivPerm(ctx, p.divisionId, "db.registry");
     const up: Record<string, unknown> = {};
     const t = (s?: string) => (s === undefined ? undefined : (s.trim() || undefined));
-    if (patch.name !== undefined) { if (!patch.name.trim()) throw new Error("Nom requis."); up.name = patch.name.trim(); }
+    if (patch.name !== undefined) { if (!patch.name.trim()) throw new ConvexError("Nom requis."); up.name = patch.name.trim(); }
     if (patch.alias !== undefined) up.alias = t(patch.alias);
     if (patch.citizenId !== undefined) up.citizenId = patch.citizenId ?? undefined;
     if (patch.role !== undefined) up.role = patch.role ?? undefined;
@@ -184,7 +184,7 @@ export const addCasePerson = mutation({
     const { agent, case: c } = await requireCaseWrite(ctx, caseId);
     let pid = personId;
     if (!pid) {
-      if (!name?.trim()) throw new Error("Sélectionnez une personne ou saisissez un nom.");
+      if (!name?.trim()) throw new ConvexError("Sélectionnez une personne ou saisissez un nom.");
       // Créer une personne à la volée alimente le REGISTRE de la division : exige
       // la permission dédiée (au-delà du simple droit d'écriture sur l'enquête).
       await requireDivPerm(ctx, c.divisionId, "db.registry");
@@ -195,10 +195,10 @@ export const addCasePerson = mutation({
       });
     } else {
       const p = await ctx.db.get(pid);
-      if (!p || p.deletedAt) throw new Error("Personne introuvable.");
+      if (!p || p.deletedAt) throw new ConvexError("Personne introuvable.");
     }
     const existing = await ctx.db.query("dbCasePersons").withIndex("by_case", (x) => x.eq("caseId", caseId)).collect();
-    if (existing.some((l) => l.personId === pid)) throw new Error("Cette personne est déjà liée à l'enquête.");
+    if (existing.some((l) => l.personId === pid)) throw new ConvexError("Cette personne est déjà liée à l'enquête.");
     const linkId = await ctx.db.insert("dbCasePersons", { caseId, personId: pid, caseRole, note: note?.trim() || undefined });
     const p = await ctx.db.get(pid);
     await ctx.db.insert("dbTimeline", { caseId, at: Date.now(), type: "auto", label: `${caseRole === "VICTIM" ? "Victime" : caseRole === "WITNESS" ? "Témoin" : caseRole === "SUSPECT" ? "Suspect" : "Personne"} ajouté${caseRole === "VICTIM" ? "e" : ""} : ${p?.name ?? ""}`, authorId: agent._id, authorName: agentName(agent) });

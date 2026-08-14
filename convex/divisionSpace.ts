@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { requireAgent, can } from "./rbac";
 import { writeAudit } from "./lib/audit";
@@ -184,7 +184,7 @@ export const setModule = mutation({
   handler: async (ctx, { divisionId, module, enabled }) => {
     const agent = await requireAgent(ctx);
     await assertGlobalManage(ctx, agent);
-    if (!DIVISION_MODULES.some((m) => m.slug === module)) throw new Error("Module inconnu.");
+    if (!DIVISION_MODULES.some((m) => m.slug === module)) throw new ConvexError("Module inconnu.");
     const division = await loadDivision(ctx, divisionId);
     const set = new Set(division.modules ?? []);
     if (enabled) set.add(module); else set.delete(module);
@@ -201,7 +201,7 @@ export const setLead = mutation({
     const division = await loadDivision(ctx, divisionId);
     if (agentId) {
       const m = await membershipOf(ctx, agentId, divisionId);
-      if (!m) throw new Error("Le Lead doit être membre de la division.");
+      if (!m) throw new ConvexError("Le Lead doit être membre de la division.");
     }
     await ctx.db.patch(divisionId, { leadAgentId: agentId ?? undefined });
     await writeAudit(ctx, agent, { action: "division.set_lead", resourceType: "division", resourceId: divisionId, resourceLabel: division.name });
@@ -214,7 +214,7 @@ export const rankCreate = mutation({
     const agent = await requireAgent(ctx);
     const division = await loadDivision(ctx, divisionId);
     await assertPerm(ctx, agent, division, "ranks");
-    if (!name.trim()) throw new Error("Nom du grade requis.");
+    if (!name.trim()) throw new ConvexError("Nom du grade requis.");
     const all = await ctx.db.query("divisionRanks").withIndex("by_division", (q) => q.eq("divisionId", divisionId)).collect();
     const position = all.reduce((m, r) => Math.max(m, r.position), -1) + 1;
     return await ctx.db.insert("divisionRanks", { divisionId, name: name.trim(), color, position });
@@ -290,7 +290,7 @@ export const assignMemberRank = mutation({
     const division = await loadDivision(ctx, divisionId);
     await assertPerm(ctx, agent, division, "members");
     const m = await membershipOf(ctx, agentId, divisionId);
-    if (!m) throw new Error("Cet agent n'est pas membre de la division.");
+    if (!m) throw new ConvexError("Cet agent n'est pas membre de la division.");
     await ctx.db.patch(m._id, { rankId: rankId ?? undefined });
   },
 });
@@ -303,7 +303,7 @@ export const announce = mutation({
     const agent = await requireAgent(ctx);
     const division = await loadDivision(ctx, a.divisionId);
     await assertPerm(ctx, agent, division, "announcements");
-    if (!a.title.trim()) throw new Error("Titre requis.");
+    if (!a.title.trim()) throw new ConvexError("Titre requis.");
     return await ctx.db.insert("divisionAnnouncements", {
       divisionId: a.divisionId, authorId: agent._id, authorName: `${agent.prenomRP} ${agent.nomRP}`,
       title: a.title.trim(), body: a.body, imageUrls: a.imageUrls, pinned: a.pinned, at: Date.now(),

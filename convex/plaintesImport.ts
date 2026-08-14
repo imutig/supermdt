@@ -1,6 +1,6 @@
 import { internalAction, internalMutation } from "./_generated/server";
 import { internal } from "./_generated/api";
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 
 // ============================================================================
@@ -22,8 +22,8 @@ function norm(s: string) {
 // ------------------------------- fetch ------------------------------------
 async function apiGet(path: string, token: string): Promise<any> {
   const res = await fetch(`${BASE}${path}`, { headers: { Authorization: `Bearer ${token}` } });
-  if (res.status === 401) throw new Error("Token invalide/expiré (plaintes/dépositions).");
-  if (!res.ok) throw new Error(`Erreur API ${res.status} sur ${path}`);
+  if (res.status === 401) throw new ConvexError("Token invalide/expiré (plaintes/dépositions).");
+  if (!res.ok) throw new ConvexError(`Erreur API ${res.status} sur ${path}`);
   return res.json();
 }
 async function fetchAllPaged(base: string, key: string, token: string): Promise<any[]> {
@@ -115,7 +115,7 @@ export const _upsertPlaintes = internalMutation({
   args: { raws: v.array(v.string()), dryRun: v.optional(v.boolean()), reconcile: v.optional(v.boolean()) },
   handler: async (ctx, { raws, dryRun, reconcile }) => {
     const refs = await resolveRefs(ctx);
-    if (!refs.owner) throw new Error("Aucun compte owner pour rattacher les plaintes importées.");
+    if (!refs.owner) throw new ConvexError("Aucun compte owner pour rattacher les plaintes importées.");
     const all = await ctx.db.query("complaints").collect();
     const byRef = new Map<string, (typeof all)[number]>();
     const byNexus = new Map<string, (typeof all)[number]>();
@@ -181,7 +181,7 @@ export const _upsertDepositions = internalMutation({
   args: { raws: v.array(v.string()), dryRun: v.optional(v.boolean()), reconcile: v.optional(v.boolean()) },
   handler: async (ctx, { raws, dryRun, reconcile }) => {
     const refs = await resolveRefs(ctx);
-    if (!refs.owner) throw new Error("Aucun compte owner pour rattacher les dépositions importées.");
+    if (!refs.owner) throw new ConvexError("Aucun compte owner pour rattacher les dépositions importées.");
     const all = await ctx.db.query("depositions").collect();
     const byRef = new Map<string, (typeof all)[number]>();
     const byNexus = new Map<string, (typeof all)[number]>();
@@ -237,7 +237,7 @@ export const plaintesSync = internalAction({
   args: { token: v.optional(v.string()), dryRun: v.optional(v.boolean()), limit: v.optional(v.number()) },
   handler: async (ctx, { token, dryRun, limit }): Promise<unknown> => {
     const tk = token || process.env.VIZU_TOKEN;
-    if (!tk) throw new Error("Aucun token (plaintes).");
+    if (!tk) throw new ConvexError("Aucun token (plaintes).");
     let raw = await fetchAllPaged("/api/plaintes", "plaintes", tk);
     if (limit) raw = raw.slice(0, limit);
     // Réconciliation des suppressions seulement en synchro complète (non tronquée).
@@ -248,7 +248,7 @@ export const depositionsSync = internalAction({
   args: { token: v.optional(v.string()), dryRun: v.optional(v.boolean()), limit: v.optional(v.number()) },
   handler: async (ctx, { token, dryRun, limit }): Promise<unknown> => {
     const tk = token || process.env.VIZU_TOKEN;
-    if (!tk) throw new Error("Aucun token (dépositions).");
+    if (!tk) throw new ConvexError("Aucun token (dépositions).");
     let raw = await fetchAllPaged("/api/depositions", "depositions", tk);
     if (limit) raw = raw.slice(0, limit);
     return await ctx.runMutation(internal.plaintesImport._upsertDepositions, { raws: raw.map((r) => JSON.stringify(r)), dryRun, reconcile: !limit });

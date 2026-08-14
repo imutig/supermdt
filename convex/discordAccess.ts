@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { requireAgent, requirePermission } from "./rbac";
 
@@ -48,7 +48,7 @@ export const set = mutation({
   handler: async (ctx, { command, minGradeId, roleIds }) => {
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "rbac.manage");
-    if (!KNOWN.has(command)) throw new Error("Commande inconnue.");
+    if (!KNOWN.has(command)) throw new ConvexError("Commande inconnue.");
     const cleanRoles = [...new Set(roleIds.map((r) => r.trim()).filter((r) => /^\d{5,}$/.test(r)))];
     const existing = await ctx.db.query("discordCommandAccess").withIndex("by_command", (q) => q.eq("command", command)).first();
     if (existing) await ctx.db.patch(existing._id, { minGradeId, roleIds: cleanRoles });

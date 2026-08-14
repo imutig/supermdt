@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { readableError } from "@/lib/errors";
 import { ImagePlus, Loader2, X } from "lucide-react";
 import { uploadMedia, mediaKind } from "@/lib/uploadImage";
 import { useToast } from "@/providers/toast";
@@ -33,7 +34,7 @@ export function MediaField({ value, onChange }: { value: string[]; onChange: (v:
       for (const f of Array.from(files)) urls.push(await uploadMedia(f));
       onChange([...value, ...urls]);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Échec de l'envoi.");
+      toast.error(readableError(e, "Échec de l'envoi."));
     } finally { setBusy(false); }
   };
   return (
@@ -67,7 +68,7 @@ export function PhotoField({ value, onChange }: { value: string | null; onChange
   const pick = async (file: File) => {
     setBusy(true);
     try { const url = await uploadMedia(file); onChange(url); }
-    catch (e) { toast.error(e instanceof Error ? e.message : "Échec de l'envoi."); }
+    catch (e) { toast.error(readableError(e, "Échec de l'envoi.")); }
     finally { setBusy(false); }
   };
   return (

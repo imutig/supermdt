@@ -1,5 +1,5 @@
 import { mutation, query } from "./_generated/server";
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import { paginationOptsValidator } from "convex/server";
 import { requireAgent, requirePermission, requireOwnOrPermission } from "./rbac";
 import { writeAudit } from "./lib/audit";
@@ -324,7 +324,7 @@ export const update = mutation({
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "vehicules.edit");
     const before = await ctx.db.get(id);
-    if (!before) throw new Error("Véhicule introuvable.");
+    if (!before) throw new ConvexError("Véhicule introuvable.");
     const plaque = fields.plaque.trim().toUpperCase();
     await ctx.db.patch(id, {
       ...fields,
@@ -348,7 +348,7 @@ export const remove = mutation({
   handler: async (ctx, { id }) => {
     const agent = await requireAgent(ctx);
     const veh = await ctx.db.get(id);
-    if (!veh || veh.deletedAt) throw new Error("Véhicule introuvable.");
+    if (!veh || veh.deletedAt) throw new ConvexError("Véhicule introuvable.");
     await requireOwnOrPermission(ctx, agent, veh.createdBy, "vehicules.edit");
     // Archivage (soft-delete) : le véhicule et ses flags sont conservés,
     // restaurables ; la purge définitive (owner) se fait depuis les Archives.

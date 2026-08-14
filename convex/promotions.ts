@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { requireAgent, requirePermission } from "./rbac";
@@ -151,7 +151,7 @@ export const create = mutation({
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "effectif.validate");
     const clean = name.trim();
-    if (!clean) throw new Error("Le nom de la promotion est obligatoire.");
+    if (!clean) throw new ConvexError("Le nom de la promotion est obligatoire.");
     // Date de PA normalisée à minuit UTC : c'est la clé de rapprochement avec
     // les annonces Discord (voir promoUpsertByDate).
     const key = paDate != null ? (() => { const d = new Date(paDate); return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()); })() : undefined;
@@ -236,8 +236,8 @@ export const setMemberStatus = mutation({
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "effectif.validate");
     const m = await ctx.db.get(memberId);
-    if (!m) throw new Error("Membre introuvable.");
-    if (m.status === "GRADUATED") throw new Error("Ce cadet est déjà diplômé.");
+    if (!m) throw new ConvexError("Membre introuvable.");
+    if (m.status === "GRADUATED") throw new ConvexError("Ce cadet est déjà diplômé.");
     await ctx.db.patch(memberId, { status, decidedAt: Date.now(), decidedBy: agent._id });
     await writeAudit(ctx, agent, {
       action: status === "REJECTED" ? "lspa.promo_reject" : "lspa.promo_reinstate",
@@ -265,16 +265,16 @@ export const graduate = mutation({
     const actor = await requireAgent(ctx);
     await requirePermission(ctx, actor, "effectif.validate");
     const m = await ctx.db.get(memberId);
-    if (!m) throw new Error("Membre introuvable.");
-    if (m.status === "GRADUATED") throw new Error("Déjà diplômé.");
+    if (!m) throw new ConvexError("Membre introuvable.");
+    if (m.status === "GRADUATED") throw new ConvexError("Déjà diplômé.");
     const target = await ctx.db.get(m.agentId);
-    if (!target) throw new Error("Cadet introuvable.");
+    if (!target) throw new ConvexError("Cadet introuvable.");
 
     const grade = await entryGrade(ctx);
-    if (!grade) throw new Error("Aucun grade d'entrée (Officier 1) n'est configuré.");
-    if (!matricule || matricule < 1 || matricule > 99999) throw new Error("Numéro de badge (5 chiffres) requis.");
+    if (!grade) throw new ConvexError("Aucun grade d'entrée (Officier 1) n'est configuré.");
+    if (!matricule || matricule < 1 || matricule > 99999) throw new ConvexError("Numéro de badge (5 chiffres) requis.");
     const dup = await ctx.db.query("agents").withIndex("by_matricule", (q) => q.eq("matricule", matricule)).first();
-    if (dup) throw new Error("Numéro de badge déjà attribué.");
+    if (dup) throw new ConvexError("Numéro de badge déjà attribué.");
 
     await ctx.db.patch(m.agentId, { gradeId: grade._id, matricule, status: "ACTIVE" });
     await ctx.db.patch(memberId, { status: "GRADUATED", decidedAt: Date.now(), decidedBy: actor._id });

@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import { action, internalAction, internalMutation, mutation, query } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { requireAgent, requirePermission } from "./rbac";
@@ -100,18 +100,18 @@ export const setBotConfig = mutation({
     // Un id de salon Discord est une suite de 17 à 20 chiffres.
     const chan = (v?: string) => {
       const t = (v ?? "").trim();
-      if (t && !/^\d{17,20}$/.test(t)) throw new Error("Identifiant de salon invalide (17 à 20 chiffres).");
+      if (t && !/^\d{17,20}$/.test(t)) throw new ConvexError("Identifiant de salon invalide (17 à 20 chiffres).");
       return t || undefined;
     };
     // Un id de rôle Discord suit le même format (snowflake).
     const role = (v?: string) => {
       const t = (v ?? "").trim();
-      if (t && !/^\d{17,20}$/.test(t)) throw new Error("Identifiant de rôle invalide (17 à 20 chiffres).");
+      if (t && !/^\d{17,20}$/.test(t)) throw new ConvexError("Identifiant de rôle invalide (17 à 20 chiffres).");
       return t || undefined;
     };
     const time = (label: string, v?: string) => {
       const t = (v ?? "").trim();
-      if (t && !/^\d{1,2}:\d{2}$/.test(t)) throw new Error(`${label} : heure invalide (format HH:MM).`);
+      if (t && !/^\d{1,2}:\d{2}$/.test(t)) throw new ConvexError(`${label} : heure invalide (format HH:MM).`);
       return t || undefined;
     };
     const patch = {
@@ -143,7 +143,7 @@ export const setBaseUrl = mutation({
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "webhooks.manage");
     const clean = url.trim().replace(/\/+$/, "");
-    if (clean && !/^https?:\/\//.test(clean)) throw new Error("L'adresse doit commencer par http:// ou https://.");
+    if (clean && !/^https?:\/\//.test(clean)) throw new ConvexError("L'adresse doit commencer par http:// ou https://.");
     const existing = await ctx.db.query("integrationConfig").first();
     if (existing) await ctx.db.patch(existing._id, { baseUrl: clean, updatedBy: agent._id, updatedAt: Date.now() });
     else await ctx.db.insert("integrationConfig", { baseUrl: clean, updatedBy: agent._id, updatedAt: Date.now() });
@@ -181,7 +181,7 @@ export const list = query({
 
 function assertUrl(url: string) {
   if (!/^https:\/\/(canary\.|ptb\.)?discord(app)?\.com\/api\/webhooks\//.test(url)) {
-    throw new Error("URL de webhook Discord invalide.");
+    throw new ConvexError("URL de webhook Discord invalide.");
   }
 }
 
@@ -191,7 +191,7 @@ export const create = mutation({
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "webhooks.manage");
     const name = a.name.trim();
-    if (!name) throw new Error("Nom requis.");
+    if (!name) throw new ConvexError("Nom requis.");
     assertUrl(a.url.trim());
     const id = await ctx.db.insert("webhooks", {
       name,
@@ -216,7 +216,7 @@ export const update = mutation({
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "webhooks.manage");
     const w = await ctx.db.get(id);
-    if (!w) throw new Error("Webhook introuvable.");
+    if (!w) throw new ConvexError("Webhook introuvable.");
     const next: Record<string, unknown> = {};
     if (patch.name !== undefined && patch.name.trim()) next.name = patch.name.trim();
     if (patch.url !== undefined && patch.url.trim()) { assertUrl(patch.url.trim()); next.url = patch.url.trim(); }
@@ -244,7 +244,7 @@ export const test = action({
   handler: async (ctx, { id }): Promise<string> => {
     await ctx.runMutation(internal.webhooks.assertCanSend, { manage: true });
     const url = await ctx.runMutation(internal.webhooks.urlOf, { id });
-    if (!url) throw new Error("Webhook introuvable.");
+    if (!url) throw new ConvexError("Webhook introuvable.");
     return await ctx.runAction(internal.webhooks.post, {
       urls: [url],
       embed: {
@@ -284,7 +284,7 @@ export const assertCanSend = internalMutation({
     }
     if (agent.status !== "ACTIVE") {
       // Un compte suspendu ou en attente ne relaie rien vers Discord.
-      throw new Error("Compte inactif.");
+      throw new ConvexError("Compte inactif.");
     }
     // Émission d'un document : exiger la permission du domaine ; un événement
     // non répertorié est réservé aux gestionnaires de webhooks.

@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
@@ -49,7 +49,7 @@ async function canEditSheet(ctx: QueryCtx | MutationCtx, viewer: Doc<"agents">, 
   return await can(ctx, viewer, "fto.edit");
 }
 async function assertEdit(ctx: MutationCtx, viewer: Doc<"agents">, agentId: Id<"agents">) {
-  if (!(await canEditSheet(ctx, viewer, agentId))) throw new Error("Seul le tuteur FTO ou l'académie peut modifier cette fiche.");
+  if (!(await canEditSheet(ctx, viewer, agentId))) throw new ConvexError("Seul le tuteur FTO ou l'académie peut modifier cette fiche.");
 }
 
 // Ajouter un RAPPORT DE PATROUILLE : tout Officier 2+ (en plus de ceux qui
@@ -63,7 +63,7 @@ async function canAddPatrol(ctx: QueryCtx | MutationCtx, viewer: Doc<"agents">, 
 async function assertManage(ctx: QueryCtx | MutationCtx, viewer: Doc<"agents">) {
   if (viewer.isOwner || isAcademy(viewer)) return;
   if (await can(ctx, viewer, "fto.manage")) return;
-  throw new Error("Réservé à l'encadrement de l'académie.");
+  throw new ConvexError("Réservé à l'encadrement de l'académie.");
 }
 
 // ---------- Liste des Officiers 1 ----------
@@ -206,7 +206,7 @@ export const addPatrol = mutation({
   args: { agentId: v.id("agents"), startAt: v.number(), endAt: v.optional(v.number()), lacunes: v.optional(v.string()), progres: v.optional(v.string()), general: v.optional(v.string()) },
   handler: async (ctx, a) => {
     const viewer = await requireAgent(ctx);
-    if (!(await canAddPatrol(ctx, viewer, a.agentId))) throw new Error("Réservé aux Officiers 2 et plus.");
+    if (!(await canAddPatrol(ctx, viewer, a.agentId))) throw new ConvexError("Réservé aux Officiers 2 et plus.");
     await ctx.db.insert("ftoPatrols", {
       agentId: a.agentId,
       startAt: a.startAt,
@@ -269,7 +269,7 @@ export const saveItem = mutation({
   handler: async (ctx, a) => {
     const viewer = await requireAgent(ctx);
     await assertManage(ctx, viewer);
-    if (!a.section.trim() || !a.label.trim()) throw new Error("Section et libellé obligatoires.");
+    if (!a.section.trim() || !a.label.trim()) throw new ConvexError("Section et libellé obligatoires.");
     const base = { section: a.section.trim(), label: a.label.trim(), kind: a.kind };
     if (a.itemId) { await ctx.db.patch(a.itemId, base); return a.itemId; }
     const all = await ctx.db.query("ftoItems").collect();

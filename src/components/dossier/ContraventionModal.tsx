@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { readableError } from "@/lib/errors";
 import { X, Trash2, FileText } from "lucide-react";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { api, type Id } from "@/lib/api";
@@ -37,7 +38,7 @@ export function ContraventionModal({
       toast.success("Contravention supprimée.");
       onClose();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Suppression impossible.");
+      toast.error(readableError(e, "Suppression impossible."));
     } finally {
       setBusy(false);
     }

@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
@@ -151,13 +151,13 @@ export const open = mutation({
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "lspa.session.manage");
     const quiz = await ctx.db.get(quizId);
-    if (!quiz) throw new Error("Quiz introuvable.");
+    if (!quiz) throw new ConvexError("Quiz introuvable.");
 
     const firstQuestion = await ctx.db
       .query("quizQuestions")
       .withIndex("by_quiz", (q) => q.eq("quizId", quizId))
       .first();
-    if (!firstQuestion) throw new Error("Ce quiz n'a aucune question : ajoutez-en avant d'ouvrir une session.");
+    if (!firstQuestion) throw new ConvexError("Ce quiz n'a aucune question : ajoutez-en avant d'ouvrir une session.");
 
     // Une seule session ouverte (salle d'attente ou en cours) par quiz.
     const existing = await ctx.db
@@ -165,7 +165,7 @@ export const open = mutation({
       .withIndex("by_quiz", (q) => q.eq("quizId", quizId))
       .collect();
     const live = existing.find((s) => s.status === "LOBBY" || s.status === "RUNNING");
-    if (live) throw new Error("Une session est déjà ouverte pour ce quiz.");
+    if (live) throw new ConvexError("Une session est déjà ouverte pour ce quiz.");
 
     const sessionId = await ctx.db.insert("quizSessions", {
       quizId,
@@ -185,8 +185,8 @@ export const start = mutation({
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "lspa.session.manage");
     const session = await ctx.db.get(sessionId);
-    if (!session) throw new Error("Session introuvable.");
-    if (session.status !== "LOBBY") throw new Error("La session n'est plus en salle d'attente.");
+    if (!session) throw new ConvexError("Session introuvable.");
+    if (session.status !== "LOBBY") throw new ConvexError("La session n'est plus en salle d'attente.");
 
     const quiz = await ctx.db.get(session.quizId);
     const now = Date.now();
@@ -204,9 +204,9 @@ export const close = mutation({
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "lspa.session.manage");
     const session = await ctx.db.get(sessionId);
-    if (!session) throw new Error("Session introuvable.");
+    if (!session) throw new ConvexError("Session introuvable.");
     if (session.status !== "RUNNING" && session.status !== "LOBBY") {
-      throw new Error("La session est déjà terminée.");
+      throw new ConvexError("La session est déjà terminée.");
     }
     // Les copies non rendues sont figées en l'état (les réponses saisies sont
     // déjà enregistrées) et notées automatiquement pour ce qui peut l'être.
@@ -228,8 +228,8 @@ export const publish = mutation({
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "lspa.grade");
     const session = await ctx.db.get(sessionId);
-    if (!session) throw new Error("Session introuvable.");
-    if (session.status !== "CLOSED") throw new Error("Terminez la session avant de publier les résultats.");
+    if (!session) throw new ConvexError("Session introuvable.");
+    if (session.status !== "CLOSED") throw new ConvexError("Terminez la session avant de publier les résultats.");
 
     const participants = await ctx.db
       .query("quizParticipants")
@@ -237,7 +237,7 @@ export const publish = mutation({
       .collect();
     const pending = participants.filter((p) => p.needsGrading).length;
     if (pending > 0) {
-      throw new Error(`${pending} copie(s) restent à corriger avant publication.`);
+      throw new ConvexError(`${pending} copie(s) restent à corriger avant publication.`);
     }
     await ctx.db.patch(sessionId, { status: "PUBLISHED", publishedAt: Date.now() });
     await writeAudit(ctx, agent, { action: "lspa.session_publish", resourceType: "quizSession", resourceId: sessionId, resourceLabel: session.title });
@@ -254,7 +254,7 @@ export const cancel = mutation({
     // On ne supprime une session que tant qu'elle n'a rien produit d'utile
     // (salle d'attente). Une session jouée se termine et s'archive avec ses
     // copies plutôt que de disparaître.
-    if (session.status !== "LOBBY") throw new Error("Une session lancée ne peut plus être annulée : terminez-la.");
+    if (session.status !== "LOBBY") throw new ConvexError("Une session lancée ne peut plus être annulée : terminez-la.");
     const participants = await ctx.db
       .query("quizParticipants")
       .withIndex("by_session", (q) => q.eq("sessionId", sessionId))
@@ -418,10 +418,10 @@ export const claimGrading = mutation({
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "lspa.grade");
     const p = await ctx.db.get(participantId);
-    if (!p) throw new Error("Copie introuvable.");
+    if (!p) throw new ConvexError("Copie introuvable.");
     const held = p.gradingBy && p.gradingAt && Date.now() - p.gradingAt < GRADING_LOCK_MS;
     if (held && p.gradingBy !== agent._id) {
-      throw new Error(`Copie en cours de correction par ${p.gradingByName ?? "un autre correcteur"}.`);
+      throw new ConvexError(`Copie en cours de correction par ${p.gradingByName ?? "un autre correcteur"}.`);
     }
     await ctx.db.patch(participantId, {
       gradingBy: agent._id,
@@ -513,7 +513,7 @@ export const gradeParticipant = mutation({
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "lspa.grade");
     const participant = await ctx.db.get(participantId);
-    if (!participant) throw new Error("Copie introuvable.");
+    if (!participant) throw new ConvexError("Copie introuvable.");
 
     for (const a of awards) {
       const question = await ctx.db.get(a.questionId);
@@ -612,9 +612,9 @@ export const join = mutation({
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "lspa.view");
     const session = await ctx.db.get(sessionId);
-    if (!session) throw new Error("Session introuvable.");
+    if (!session) throw new ConvexError("Session introuvable.");
     if (session.status !== "LOBBY" && session.status !== "RUNNING") {
-      throw new Error("Cette session n'accepte plus de participants.");
+      throw new ConvexError("Cette session n'accepte plus de participants.");
     }
     const existing = await ctx.db
       .query("quizParticipants")
@@ -623,7 +623,7 @@ export const join = mutation({
     if (existing) return existing._id;
     // On ne rejoint une session déjà lancée que si on en était : sinon un
     // retardataire démarrerait avec moins de temps. En salle d'attente, ouvert.
-    if (session.status === "RUNNING") throw new Error("La session est déjà lancée.");
+    if (session.status === "RUNNING") throw new ConvexError("La session est déjà lancée.");
     return await ctx.db.insert("quizParticipants", {
       sessionId,
       agentId: agent._id,
@@ -731,18 +731,18 @@ export const saveAnswer = mutation({
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "lspa.view");
     const session = await ctx.db.get(sessionId);
-    if (!session || session.status !== "RUNNING") throw new Error("La session n'est pas en cours.");
-    if (session.endsAt && Date.now() > session.endsAt) throw new Error("Le temps est écoulé.");
+    if (!session || session.status !== "RUNNING") throw new ConvexError("La session n'est pas en cours.");
+    if (session.endsAt && Date.now() > session.endsAt) throw new ConvexError("Le temps est écoulé.");
 
     const participant = await ctx.db
       .query("quizParticipants")
       .withIndex("by_session_agent", (q) => q.eq("sessionId", sessionId).eq("agentId", agent._id))
       .unique();
-    if (!participant) throw new Error("Vous ne participez pas à cette session.");
-    if (participant.submittedAt) throw new Error("Votre copie est déjà rendue.");
+    if (!participant) throw new ConvexError("Vous ne participez pas à cette session.");
+    if (participant.submittedAt) throw new ConvexError("Votre copie est déjà rendue.");
 
     const question = await ctx.db.get(questionId);
-    if (!question || question.quizId !== session.quizId) throw new Error("Question introuvable.");
+    if (!question || question.quizId !== session.quizId) throw new ConvexError("Question introuvable.");
 
     const correct = (await correctByQuestion(ctx, session.quizId)).get(questionId as string) ?? [];
     const awarded = autoAward(question, choiceIds, correct);
@@ -775,7 +775,7 @@ export const submit = mutation({
       .query("quizParticipants")
       .withIndex("by_session_agent", (q) => q.eq("sessionId", sessionId).eq("agentId", agent._id))
       .unique();
-    if (!participant) throw new Error("Vous ne participez pas à cette session.");
+    if (!participant) throw new ConvexError("Vous ne participez pas à cette session.");
     if (participant.submittedAt) return;
     await ctx.db.patch(participant._id, { submittedAt: Date.now() });
     await recomputeParticipant(ctx, (await ctx.db.get(participant._id))!);

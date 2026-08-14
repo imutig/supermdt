@@ -1,5 +1,5 @@
 import { mutation, query } from "./_generated/server";
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import type { QueryCtx } from "./_generated/server";
 import { requireAgent, requirePermission, requireOwnOrPermission, agentLabel, can } from "./rbac";
 import { writeAudit } from "./lib/audit";
@@ -194,10 +194,10 @@ export const updateArrest = mutation({
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "casier.edit");
     const e = await ctx.db.get(entryId);
-    if (!e) throw new Error("Entrée introuvable.");
+    if (!e) throw new ConvexError("Entrée introuvable.");
     // Un dossier clôturé n'est modifiable qu'avec la permission spéciale (item I).
     if (e.closed && !(await can(ctx, agent, "casier.editClosed"))) {
-      throw new Error("Ce dossier est clôturé. Seul un haut gradé peut le modifier.");
+      throw new ConvexError("Ce dossier est clôturé. Seul un haut gradé peut le modifier.");
     }
     // Un rapport (pas dossier) ne porte pas les champs réservés au dossier.
     const patch =
@@ -223,7 +223,7 @@ export const closeDossier = mutation({
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "casier.edit");
     const e = await ctx.db.get(entryId);
-    if (!e) throw new Error("Entrée introuvable.");
+    if (!e) throw new ConvexError("Entrée introuvable.");
     await ctx.db.patch(entryId, { closed: true, closedAt: Date.now(), closedBy: agent._id });
     await writeAudit(ctx, agent, { action: "casier.dossier_close", resourceType: "casierEntry", resourceId: entryId });
     const closedCitizen = await ctx.db.get(e.citizenId);
@@ -243,7 +243,7 @@ export const reopenDossier = mutation({
     // Rouvrir un dossier clos exige la permission spéciale (haut gradé).
     await requirePermission(ctx, agent, "casier.editClosed");
     const e = await ctx.db.get(entryId);
-    if (!e) throw new Error("Entrée introuvable.");
+    if (!e) throw new ConvexError("Entrée introuvable.");
     await ctx.db.patch(entryId, { closed: false, closedAt: undefined, closedBy: undefined });
     await writeAudit(ctx, agent, { action: "casier.dossier_reopen", resourceType: "casierEntry", resourceId: entryId });
   },
@@ -255,7 +255,7 @@ export const remove = mutation({
   handler: async (ctx, { entryId }) => {
     const agent = await requireAgent(ctx);
     const e = await ctx.db.get(entryId);
-    if (!e) throw new Error("Entrée introuvable.");
+    if (!e) throw new ConvexError("Entrée introuvable.");
     if (e.deletedAt) return;
     // L'agent qui a établi l'acte peut l'annuler ; au-delà, la permission.
     await requireOwnOrPermission(ctx, agent, e.createdBy, "casier.annul");
@@ -306,16 +306,16 @@ export const addEntry = mutation({
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "casier.create");
     const defcon = await currentDefcon(ctx);
-    if (!defcon) throw new Error("DEFCON non configuré.");
+    if (!defcon) throw new ConvexError("DEFCON non configuré.");
 
     // Validation des bornes de quantité (§3) : le paramètre doit être dans [min, max].
     for (const c of args.charges) {
       const pc = await ctx.db.get(c.penalChargeId);
       if (!pc) continue;
       if (pc.minParam != null && (c.param ?? 0) < pc.minParam)
-        throw new Error(`« ${pc.name} » : quantité minimale ${pc.minParam}.`);
+        throw new ConvexError(`« ${pc.name} » : quantité minimale ${pc.minParam}.`);
       if (pc.maxParam != null && (c.param ?? 0) > pc.maxParam)
-        throw new Error(`« ${pc.name} » : quantité maximale ${pc.maxParam}.`);
+        throw new ConvexError(`« ${pc.name} » : quantité maximale ${pc.maxParam}.`);
     }
 
     let totalFine = 0;

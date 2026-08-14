@@ -1,5 +1,5 @@
 import { mutation, query } from "./_generated/server";
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import { requireAgent, requirePermission, can, agentLabel } from "./rbac";
 import { writeAudit } from "./lib/audit";
 import { releaseAgentFromPatrol } from "./dispatch";
@@ -73,10 +73,10 @@ async function loadOwnable(
 ) {
   const agent = await requireAgent(ctx);
   const s = await ctx.db.get(sessionId);
-  if (!s) throw new Error("Service introuvable.");
+  if (!s) throw new ConvexError("Service introuvable.");
   const isMine = s.agentId === agent._id;
   const canManage = await can(ctx, agent, "services.manage");
-  if (!isMine && !canManage) throw new Error("Permission refusée.");
+  if (!isMine && !canManage) throw new ConvexError("Permission refusée.");
   if (isMine && !canManage) await requirePermission(ctx, agent, "service.self");
   return { agent, s };
 }
@@ -85,7 +85,7 @@ export const update = mutation({
   args: { id: v.id("serviceSessions"), startedAt: v.number(), endedAt: v.optional(v.number()) },
   handler: async (ctx, { id, startedAt, endedAt }) => {
     const { agent, s } = await loadOwnable(ctx, id);
-    if (endedAt != null && endedAt < startedAt) throw new Error("Fin avant le début.");
+    if (endedAt != null && endedAt < startedAt) throw new ConvexError("Fin avant le début.");
     await ctx.db.patch(id, { startedAt, endedAt });
     await writeAudit(ctx, agent, {
       action: "service.edit",

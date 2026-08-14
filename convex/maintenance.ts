@@ -1,5 +1,5 @@
 import { internalMutation } from "./_generated/server";
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 
 // Opérations de maintenance ponctuelles, NON exposées au client (internalMutation :
@@ -14,7 +14,7 @@ import type { Id } from "./_generated/dataModel";
 export const purgeNonOwnerAccounts = internalMutation({
   args: { confirm: v.string() },
   handler: async (ctx, { confirm }) => {
-    if (confirm !== "SUPPRIMER") throw new Error('Confirmation requise : passe {"confirm":"SUPPRIMER"}.');
+    if (confirm !== "SUPPRIMER") throw new ConvexError('Confirmation requise : passe {"confirm":"SUPPRIMER"}.');
 
     const agents = await ctx.db.query("agents").collect();
     const victims = agents.filter((a) => !a.isOwner);

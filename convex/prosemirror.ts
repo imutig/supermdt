@@ -1,4 +1,5 @@
 import { ProsemirrorSync } from "@convex-dev/prosemirror-sync";
+import { ConvexError } from "convex/values";
 import { components } from "./_generated/api";
 import type { QueryCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
@@ -15,7 +16,7 @@ async function assertReportAccess(ctx: QueryCtx, id: string, write: boolean) {
   const agent = await requireAgent(ctx);
   await requirePermission(ctx, agent, write ? "rapports.contribute" : "rapports.view");
   const report = await ctx.db.get(id as Id<"reports">);
-  if (report && report.deletedAt) throw new Error("Rapport indisponible.");
+  if (report && report.deletedAt) throw new ConvexError("Rapport indisponible.");
 }
 
 export const { getSnapshot, submitSnapshot, latestVersion, getSteps, submitSteps } =

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { readableError } from "@/lib/errors";
 import { useConvex } from "convex/react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import Image from "@tiptap/extension-image";
@@ -66,7 +67,7 @@ export function DetectiveEditor({
       else if (k === "audio") editor.chain().focus().insertContent({ type: "audio", attrs: { src: url } }).run();
       else editor.chain().focus().setImage({ src: url }).run();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Échec de l'envoi du média.");
+      toast.error(readableError(e, "Échec de l'envoi du média."));
     } finally {
       setBusy(false);
     }
