@@ -1667,11 +1667,14 @@ export default defineSchema({
     callerName: v.optional(v.string()),
     callerPhone: v.optional(v.string()),
     location: v.optional(v.string()),
+    locX: v.optional(v.number()), // point sur la carte (%, 0-100)
+    locY: v.optional(v.number()),
     nature: v.optional(v.string()), // nature / motif de l'appel
     priority: v.optional(v.string()), // P1 / P2 / P3
     info: v.string(), // récit / informations recueillies
     peopleInvolved: v.optional(v.string()),
     weapons: v.optional(v.boolean()),
+    weaponType: v.optional(v.string()), // type d'arme signalée (si weapons)
     vehicle: v.optional(v.string()),
     citizenId: v.optional(v.id("citizens")), // appelant relié à une fiche citoyen (optionnel)
     // Attribution

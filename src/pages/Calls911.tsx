@@ -1,15 +1,30 @@
-import { useState } from "react";
-import { PhoneCall, X, Plus, Trash2, MapPin, User, Phone, Car, AlertTriangle } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { PhoneCall, X, Plus, Trash2, MapPin, User, Phone, Car, AlertTriangle, Check, Loader2 } from "lucide-react";
 import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import { api, type Id } from "@/lib/api";
-
-type Fiche = NonNullable<FunctionReturnType<typeof api.calls911.get>>;
 import { useCan } from "@/hooks/useCan";
 import { useToast } from "@/providers/toast";
 import { EmptyState } from "@/components/common/EmptyState";
 import { SkeletonRows } from "@/components/common/Skeleton";
 import { CitizenPicker } from "@/components/common/CitizenPicker";
+import { LosSantosMap } from "@/components/carte/LosSantosMap";
+
+type Fiche = NonNullable<FunctionReturnType<typeof api.calls911.get>>;
+
+// Sélection / affichage d'un point sur la carte GTA (LosSantosMap ignore le fond
+// configuré : aucun droit carte.view requis). Coordonnées en % (0-100).
+function MapPickField({ value, onChange }: { value: { x: number; y: number } | null; onChange: (v: { x: number; y: number }) => void }) {
+  return (
+    <div>
+      <LosSantosMap pin={value} onPick={(x, y) => onChange({ x, y })} height={300} />
+      <div className="mt-1 text-[11px] text-faint">{value ? `Point placé (${value.x.toFixed(1)}, ${value.y.toFixed(1)})` : "Cliquez sur la carte pour placer le lieu de l'appel."}</div>
+    </div>
+  );
+}
+function MapPointView({ x, y }: { x: number; y: number }) {
+  return <LosSantosMap pin={{ x, y }} height={240} />;
+}
 
 type Status = "EN_COURS" | "ATTRIBUE" | "RESOLU";
 const STATUS_META: Record<Status, { label: string; color: string; bg: string }> = {
@@ -88,6 +103,8 @@ export function Calls911() {
 
 const F = "h-10 w-full rounded-sm border border-border bg-surface-2 px-3 text-[13px] outline-none focus:border-accent";
 
+const EMPTY_F = { nature: "", priority: "", callerName: "", callerPhone: "", location: "", peopleInvolved: "", vehicle: "", weapons: false, weaponType: "", info: "" };
+
 function FicheModal({ id, canOperate, onClose }: { id?: Id<"calls911">; canOperate: boolean; onClose: () => void }) {
   const isCreate = !id;
   const existing = useQuery(api.calls911.get, id ? { id } : "skip");
@@ -98,49 +115,72 @@ function FicheModal({ id, canOperate, onClose }: { id?: Id<"calls911">; canOpera
   const toast = useToast();
 
   const [init, setInit] = useState(false);
-  const [f, setF] = useState({ nature: "", priority: "", callerName: "", callerPhone: "", location: "", peopleInvolved: "", vehicle: "", weapons: false, info: "" });
+  const [f, setF] = useState(EMPTY_F);
+  const [loc, setLoc] = useState<{ x: number; y: number } | null>(null);
   const [citizen, setCitizen] = useState<{ id: string; name: string } | null>(null);
   const [patrol, setPatrol] = useState("");
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState(false);
-  const [editing, setEditing] = useState(false);
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
+  const dirty = useRef(false);
 
   if (!init && existing) {
     setInit(true);
-    setF({ nature: existing.nature, priority: existing.priority, callerName: existing.callerName, callerPhone: existing.callerPhone, location: existing.location, peopleInvolved: existing.peopleInvolved, vehicle: existing.vehicle, weapons: existing.weapons, info: existing.info });
+    setF({ nature: existing.nature, priority: existing.priority, callerName: existing.callerName, callerPhone: existing.callerPhone, location: existing.location, peopleInvolved: existing.peopleInvolved, vehicle: existing.vehicle, weapons: existing.weapons, weaponType: existing.weaponType, info: existing.info });
     setPatrol(existing.assignedPatrol);
+    if (existing.locX != null && existing.locY != null) setLoc({ x: existing.locX, y: existing.locY });
     if (existing.citizenId) setCitizen({ id: existing.citizenId, name: existing.citizenName ?? "Citoyen" });
   }
 
   const canEdit = isCreate ? canOperate : existing?.canEdit ?? false;
-  const readOnly = !isCreate && !editing;
   const status = (existing?.status ?? "EN_COURS") as Status;
 
-  async function save() {
+  // Marqueurs « dirty » : toute édition déclenche la sauvegarde auto (fiche existante).
+  const up = (patch: Partial<typeof f>) => { dirty.current = true; setF((p) => ({ ...p, ...patch })); };
+  const pickLoc = (v: { x: number; y: number }) => { dirty.current = true; setLoc(v); };
+  const changePatrol = (v: string) => { dirty.current = true; setPatrol(v); };
+  const changeCitizen = (v: { id: string; name: string } | null) => { dirty.current = true; setCitizen(v); };
+
+  const buildPayload = () => ({
+    nature: f.nature.trim() || undefined, priority: f.priority || undefined,
+    callerName: f.callerName.trim() || undefined, callerPhone: f.callerPhone.trim() || undefined,
+    location: f.location.trim() || undefined, locX: loc?.x, locY: loc?.y,
+    peopleInvolved: f.peopleInvolved.trim() || undefined, vehicle: f.vehicle.trim() || undefined,
+    weapons: f.weapons || undefined, weaponType: f.weapons ? (f.weaponType.trim() || undefined) : undefined,
+    info: f.info.trim(), citizenId: (citizen?.id as Id<"citizens">) ?? undefined,
+    assignedPatrol: patrol.trim() || undefined,
+  });
+
+  // Sauvegarde automatique (fiche existante, créateur) : le créateur édite en
+  // direct, l'agent voit les changements en temps réel (Convex réactif).
+  useEffect(() => {
+    if (isCreate || !canEdit || !init || !dirty.current) return;
+    if (!f.info.trim()) return; // on n'écrase pas avec des infos vides
+    setSaveState("saving");
+    const payload = buildPayload();
+    const t = setTimeout(async () => {
+      try { await update({ id: id!, ...payload }); dirty.current = false; setSaveState("saved"); }
+      catch { setSaveState("idle"); }
+    }, 700);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [f, loc, citizen, patrol]);
+
+  async function createFiche() {
     if (!f.info.trim()) { toast.error("Les informations de l'appel sont requises."); return; }
     setBusy(true);
-    const payload = {
-      nature: f.nature.trim() || undefined, priority: f.priority || undefined,
-      callerName: f.callerName.trim() || undefined, callerPhone: f.callerPhone.trim() || undefined,
-      location: f.location.trim() || undefined, peopleInvolved: f.peopleInvolved.trim() || undefined,
-      vehicle: f.vehicle.trim() || undefined, weapons: f.weapons || undefined,
-      info: f.info.trim(), citizenId: (citizen?.id as Id<"citizens">) ?? undefined,
-      assignedPatrol: patrol.trim() || undefined,
-    };
-    const r = isCreate
-      ? await toast.guard(create(payload), "Création impossible")
-      : await toast.guard(update({ id: id!, ...payload }), "Modification impossible");
+    const r = await toast.guard(create(buildPayload()), "Création impossible");
     setBusy(false);
-    if (r !== undefined) {
-      toast.success(isCreate ? `Fiche 911 n°${(r as { number: number }).number} créée.` : "Fiche mise à jour.");
-      if (isCreate) onClose(); else setEditing(false);
-    }
+    if (r !== undefined) { toast.success(`Fiche 911 n°${(r as { number: number }).number} créée.`); onClose(); }
   }
 
   async function changeStatus(s: Status) {
-    const r = await toast.guard(setStatus({ id: id!, status: s, assignedPatrol: patrol.trim() || undefined }), "Changement de statut impossible");
+    const r = await toast.guard(setStatus({ id: id!, status: s }), "Changement de statut impossible");
     if (r !== undefined) toast.success("Statut mis à jour.");
   }
+
+  const loading = !isCreate && existing === undefined;
+  const notFound = !isCreate && existing === null;
 
   return (
     <div onClick={onClose} className="fixed inset-0 z-[60] flex justify-end" style={{ background: "var(--scrim)", backdropFilter: "blur(6px)", animation: "mdtFade .15s ease" }}>
@@ -148,6 +188,13 @@ function FicheModal({ id, canOperate, onClose }: { id?: Id<"calls911">; canOpera
         <div className="flex flex-shrink-0 items-center gap-3 border-b border-border px-[18px] py-4">
           <PhoneCall className="h-[18px] w-[18px]" style={{ color: "var(--accent)" }} />
           <h2 className="m-0 flex-1 text-[15px] font-bold">{isCreate ? "Nouvelle fiche 911" : `Fiche 911 n°${existing?.number ?? ""}`}</h2>
+          {!isCreate && canEdit && (
+            <span className="flex items-center gap-[5px] text-[11px] text-faint">
+              {saveState === "saving" ? <><Loader2 className="h-[13px] w-[13px] animate-spin" /> Enregistrement…</>
+                : saveState === "saved" ? <><Check className="h-[13px] w-[13px]" style={{ color: "var(--success)" }} /> Enregistré</>
+                : "Édition directe"}
+            </span>
+          )}
           {!isCreate && existing && (
             <span className="rounded-[5px] px-[8px] py-[3px] text-[10px] font-bold uppercase tracking-[0.05em]" style={{ background: STATUS_META[status].bg, color: STATUS_META[status].color }}>{STATUS_META[status].label}</span>
           )}
@@ -155,6 +202,8 @@ function FicheModal({ id, canOperate, onClose }: { id?: Id<"calls911">; canOpera
         </div>
 
         <div className="flex min-h-0 flex-1 flex-col gap-[13px] overflow-y-auto px-[18px] py-4">
+          {loading ? <SkeletonRows rows={5} /> : notFound ? <div className="text-[13px] text-muted">Fiche introuvable.</div> : (
+          <>
           {/* Statut (créateur uniquement) */}
           {!isCreate && canEdit && (
             <div className="rounded-card border border-border bg-surface-2 p-[12px]">
@@ -168,43 +217,49 @@ function FicheModal({ id, canOperate, onClose }: { id?: Id<"calls911">; canOpera
                   </button>
                 ))}
               </div>
-              <input value={patrol} onChange={(e) => setPatrol(e.target.value)} placeholder="Patrouille attribuée (ex. 13A09)" className={`${F} font-data`} />
+              <input value={patrol} onChange={(e) => changePatrol(e.target.value)} placeholder="Patrouille attribuée (ex. 13A09)" className={`${F} font-data`} />
             </div>
           )}
           {!isCreate && !canEdit && existing?.assignedPatrol && (
             <div className="rounded-card border border-border bg-surface-2 px-[12px] py-[9px] text-[12.5px]">Patrouille attribuée : <span className="font-data font-semibold">{existing.assignedPatrol}</span></div>
           )}
 
-          {readOnly ? (
+          {!canEdit ? (
             <ReadView existing={existing} />
           ) : (
             <>
               <div className="grid grid-cols-2 gap-3">
-                <L label="Nature de l'appel"><input value={f.nature} onChange={(e) => setF({ ...f, nature: e.target.value })} placeholder="Accident, bagarre, cambriolage…" className={F} /></L>
+                <L label="Nature de l'appel"><input value={f.nature} onChange={(e) => up({ nature: e.target.value })} placeholder="Accident, bagarre, cambriolage…" className={F} /></L>
                 <L label="Priorité">
-                  <select value={f.priority} onChange={(e) => setF({ ...f, priority: e.target.value })} className={F}>
+                  <select value={f.priority} onChange={(e) => up({ priority: e.target.value })} className={F}>
                     {PRIORITIES.map((p) => <option key={p} value={p}>{p || "—"}</option>)}
                   </select>
                 </L>
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <L label="Nom de l'appelant"><input value={f.callerName} onChange={(e) => setF({ ...f, callerName: e.target.value })} className={F} /></L>
-                <L label="Numéro de l'appelant"><input value={f.callerPhone} onChange={(e) => setF({ ...f, callerPhone: e.target.value })} className={`${F} font-data`} /></L>
+                <L label="Nom de l'appelant"><input value={f.callerName} onChange={(e) => up({ callerName: e.target.value })} className={F} /></L>
+                <L label="Numéro de l'appelant"><input value={f.callerPhone} onChange={(e) => up({ callerPhone: e.target.value })} className={`${F} font-data`} /></L>
               </div>
-              <L label="Lieu / adresse"><input value={f.location} onChange={(e) => setF({ ...f, location: e.target.value })} className={F} /></L>
+              <L label="Lieu / adresse"><input value={f.location} onChange={(e) => up({ location: e.target.value })} placeholder="Nom du lieu, adresse…" className={F} /></L>
+              <L label="Lieu sur la carte">
+                <MapPickField value={loc} onChange={pickLoc} />
+              </L>
               <div className="grid grid-cols-2 gap-3">
-                <L label="Personnes impliquées"><input value={f.peopleInvolved} onChange={(e) => setF({ ...f, peopleInvolved: e.target.value })} placeholder="Nombre, signalement…" className={F} /></L>
-                <L label="Véhicule"><input value={f.vehicle} onChange={(e) => setF({ ...f, vehicle: e.target.value })} placeholder="Modèle, couleur, plaque…" className={F} /></L>
+                <L label="Personnes impliquées"><input value={f.peopleInvolved} onChange={(e) => up({ peopleInvolved: e.target.value })} placeholder="Nombre, signalement…" className={F} /></L>
+                <L label="Véhicule"><input value={f.vehicle} onChange={(e) => up({ vehicle: e.target.value })} placeholder="Modèle, couleur, plaque…" className={F} /></L>
               </div>
               <label className="flex cursor-pointer items-center gap-[9px] text-[13px]">
-                <input type="checkbox" checked={f.weapons} onChange={(e) => setF({ ...f, weapons: e.target.checked })} className="h-[15px] w-[15px] accent-[var(--danger)]" />
+                <input type="checkbox" checked={f.weapons} onChange={(e) => up({ weapons: e.target.checked })} className="h-[15px] w-[15px] accent-[var(--danger)]" />
                 Arme(s) signalée(s) sur les lieux
               </label>
+              {f.weapons && (
+                <L label="Type d'arme signalée"><input value={f.weaponType} onChange={(e) => up({ weaponType: e.target.value })} placeholder="Pistolet, fusil d'assaut, arme blanche…" className={F} /></L>
+              )}
               <L label="Appelant lié à une fiche citoyen (optionnel)">
-                <CitizenPicker value={citizen} onChange={setCitizen} />
+                <CitizenPicker value={citizen} onChange={changeCitizen} />
               </L>
               <L label="Informations recueillies *">
-                <textarea value={f.info} onChange={(e) => setF({ ...f, info: e.target.value })} rows={6} className={`${F} h-auto resize-y py-2`} placeholder="Récit de l'appel, consignes transmises à la patrouille…" />
+                <textarea value={f.info} onChange={(e) => up({ info: e.target.value })} rows={6} className={`${F} h-auto resize-y py-2`} placeholder="Récit de l'appel, consignes transmises à la patrouille…" />
               </L>
             </>
           )}
@@ -212,10 +267,12 @@ function FicheModal({ id, canOperate, onClose }: { id?: Id<"calls911">; canOpera
           {!isCreate && existing && (
             <div className="text-[11px] text-faint">Créée par {existing.by} · {new Date(existing.at).toLocaleString("fr-FR")}{existing.updatedAt ? ` · modifiée le ${new Date(existing.updatedAt).toLocaleString("fr-FR")}` : ""}</div>
           )}
+          </>
+          )}
         </div>
 
         <div className="flex flex-shrink-0 items-center gap-2 border-t border-border px-[18px] py-4">
-          {!isCreate && canEdit && !editing && (confirm ? (
+          {!isCreate && canEdit && (confirm ? (
             <>
               <span className="flex-1 text-[12.5px] text-muted">Supprimer cette fiche ?</span>
               <button onClick={() => setConfirm(false)} className="rounded-sm border border-border bg-surface-2 px-3 py-[9px] text-[12.5px] font-semibold">Annuler</button>
@@ -227,11 +284,9 @@ function FicheModal({ id, canOperate, onClose }: { id?: Id<"calls911">; canOpera
           {!confirm && (
             <>
               <button onClick={onClose} className="rounded-sm border border-border bg-surface-2 px-4 py-[10px] text-[13px] font-semibold hover:border-border-strong">Fermer</button>
-              {canEdit && (readOnly ? (
-                <button onClick={() => setEditing(true)} className="flex-1 rounded-sm bg-accent px-4 py-[10px] text-[13px] font-semibold text-accent-contrast hover:brightness-[1.06]">Modifier</button>
-              ) : (
-                <button onClick={save} disabled={busy} className="flex-1 rounded-sm bg-accent px-4 py-[10px] text-[13px] font-semibold text-accent-contrast hover:brightness-[1.06] disabled:opacity-50">{busy ? "…" : isCreate ? "Créer la fiche" : "Enregistrer"}</button>
-              ))}
+              {isCreate && canEdit && (
+                <button onClick={createFiche} disabled={busy} className="flex-1 rounded-sm bg-accent px-4 py-[10px] text-[13px] font-semibold text-accent-contrast hover:brightness-[1.06] disabled:opacity-50">{busy ? "…" : "Créer la fiche"}</button>
+              )}
             </>
           )}
         </div>
@@ -251,8 +306,14 @@ function ReadView({ existing }: { existing: Fiche | null | undefined }) {
         <Info icon={MapPin} label="Lieu" value={existing.location || "—"} />
         <Info icon={User} label="Personnes" value={existing.peopleInvolved || "—"} />
         <Info icon={Car} label="Véhicule" value={existing.vehicle || "—"} />
-        <Info icon={AlertTriangle} label="Arme(s)" value={existing.weapons ? "Oui" : "Non"} danger={existing.weapons} />
+        <Info icon={AlertTriangle} label="Arme(s)" value={existing.weapons ? (existing.weaponType || "Oui") : "Non"} danger={existing.weapons} />
       </div>
+      {existing.locX != null && existing.locY != null && (
+        <div>
+          <div className="mb-[5px] text-[10.5px] font-bold uppercase tracking-[0.09em] text-faint">Lieu sur la carte</div>
+          <MapPointView x={existing.locX} y={existing.locY} />
+        </div>
+      )}
       {existing.citizenName && <div className="text-[12.5px] text-muted">Fiche citoyen liée : <span className="font-semibold text-text">{existing.citizenName}</span></div>}
       <div>
         <div className="mb-[5px] text-[10.5px] font-bold uppercase tracking-[0.09em] text-faint">Informations</div>
