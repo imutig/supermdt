@@ -799,6 +799,24 @@ async function softCloseTicket(interaction: ModalSubmitInteraction) {
   await interaction.reply({ embeds: [embed], components: [controls] });
 }
 
+// Fermeture AUTOMATIQUE (échéance !close atteinte) : on ferme RÉELLEMENT le
+// ticket comme une fermeture douce (le candidat perd l'accès + panneau
+// encadrement pour rouvrir/archiver), au lieu de seulement poster un message.
+export async function finalizeAutoClose(client: Client, channelId: string, ownerId: string, label: string) {
+  const chan = await client.channels.fetch(channelId).catch(() => null);
+  if (!chan || chan.type !== ChannelType.GuildText) return;
+  const tc = chan as TextChannel;
+  await tc.permissionOverwrites.edit(ownerId, { ViewChannel: false, SendMessages: false }).catch(() => {});
+  const embed = baseEmbed(BRAND.muted).setTitle("🔒 Ticket fermé automatiquement")
+    .setDescription(`Faute de réponse dans le délai imparti, le ticket de **${label}** a été **fermé**.`)
+    .setFooter({ text: "Réservé à l'encadrement : rouvrir ou archiver définitivement." });
+  const controls = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId("tk|reopen").setLabel("Rouvrir le ticket").setEmoji("🔓").setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId("tk|delete").setLabel("Fermer définitivement").setEmoji("🗄️").setStyle(ButtonStyle.Danger),
+  );
+  await tc.send({ embeds: [embed], components: [controls] }).catch(() => {});
+}
+
 async function reopenTicket(interaction: ButtonInteraction) {
   if (!isStaff(interaction)) { await interaction.reply({ content: "Réservé à l'encadrement.", flags: EPH }); return; }
   const channel = interaction.channel;
@@ -1155,6 +1173,18 @@ function candidateInterviewButtons() {
     new ButtonBuilder().setCustomId("tk|ino").setLabel("Je ne serai pas disponible").setEmoji("❌").setStyle(ButtonStyle.Danger),
   );
 }
+// Après une réponse de présence, on laisse le choix INVERSE : le candidat peut
+// changer d'avis (confirmer puis se désister, ou l'inverse) tant que l'entretien
+// est programmé.
+function candidatePresenceToggle(presence: "CONFIRMED" | "DECLINED") {
+  const row = new ActionRowBuilder<ButtonBuilder>();
+  if (presence === "CONFIRMED") {
+    row.addComponents(new ButtonBuilder().setCustomId("tk|ino").setLabel("Finalement, je ne serai pas disponible").setEmoji("❌").setStyle(ButtonStyle.Danger));
+  } else {
+    row.addComponents(new ButtonBuilder().setCustomId("tk|iyes").setLabel("Finalement, je confirme ma présence").setEmoji("✅").setStyle(ButtonStyle.Success));
+  }
+  return row;
+}
 async function postInterviewMessage(client: Client, channel: TextChannel, at: number) {
   const t = await mdt.ticketByChannel(channel.id);
   const embed = interviewEmbed(at, t?.interviewPresence ?? null);
@@ -1228,9 +1258,9 @@ async function handlePresenceButton(interaction: ButtonInteraction, presence: "C
   if (!res) { await interaction.update({ components: [] }).catch(() => {}); await interaction.followUp({ content: "Cet entretien n'est plus programmé.", flags: EPH }).catch(() => {}); return; }
   const sec = Math.floor(res.interviewAt / 1000);
   const embed = presence === "CONFIRMED"
-    ? baseEmbed(BRAND.green).setTitle("✅ Présence confirmée").setDescription(`Merci ! Ta présence est confirmée pour l'entretien du <t:${sec}:F>. À très vite.`)
-    : baseEmbed(BRAND.warning).setTitle("Indisponibilité notée").setDescription("C'est noté. Les recruteurs ont été prévenus et te proposeront une autre date.");
-  await interaction.update({ embeds: [embed], components: [] }).catch(() => {});
+    ? baseEmbed(BRAND.green).setTitle("✅ Présence confirmée").setDescription(`Merci ! Ta présence est confirmée pour l'entretien du <t:${sec}:F>.\nSi tu changes d'avis, tu peux te désister avec le bouton ci-dessous.`)
+    : baseEmbed(BRAND.warning).setTitle("Indisponibilité notée").setDescription("C'est noté. Les recruteurs ont été prévenus et te proposeront une autre date.\nSi finalement tu es disponible, tu peux confirmer ci-dessous.");
+  await interaction.update({ embeds: [embed], components: [candidatePresenceToggle(presence)] }).catch(() => {});
   await refreshInterviewMessage(interaction.client, res.channelId).catch(() => {});
   // Note dans le ticket (ping l'instructeur si indisponible).
   const chan = await interaction.client.channels.fetch(res.channelId).catch(() => null);

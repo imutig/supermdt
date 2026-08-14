@@ -14,6 +14,7 @@ const FLEET_TYPES: { value: string; label: string }[] = [
   { value: "SWAT", label: "SWAT" },
   { value: "METRO", label: "Metro" },
   { value: "DB", label: "DB (Banalisé)" },
+  { value: "TD", label: "TD" },
   { value: "SUPERVISOR", label: "Supervisor" },
   { value: "COMMAND_STAFF", label: "Command Staff" },
   { value: "AUTRE", label: "Autre" },

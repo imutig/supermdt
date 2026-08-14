@@ -52,7 +52,7 @@ export const EVIDENCE_TYPE: Record<string, string> = {
   PHYSIQUE: "Physique", NUMERIQUE: "Numérique", TEMOIGNAGE: "Témoignage", AUTRE: "Autre",
 };
 
-export const DRUG_KIND: Record<string, string> = { POINT_VENTE: "Point de vente", LABO: "Labo" };
+export const DRUG_KIND: Record<string, string> = { POINT_VENTE: "Point de vente", LABO: "Labo", CARAVANE: "Caravane" };
 
 export function Pill({ label, color }: { label: string; color: string }) {
   return (

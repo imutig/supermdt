@@ -8,7 +8,7 @@ import { writeAudit } from "./lib/audit";
 const norm = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
 // Types de véhicule LSPD reconnus. DB = banalisé (pas de numéro de toit).
-const FLEET_TYPES = ["PATROUILLE", "SWAT", "METRO", "DB", "SUPERVISOR", "COMMAND_STAFF", "AUTRE"] as const;
+const FLEET_TYPES = ["PATROUILLE", "SWAT", "METRO", "DB", "TD", "SUPERVISOR", "COMMAND_STAFF", "AUTRE"] as const;
 type FleetType = (typeof FLEET_TYPES)[number];
 function normType(t?: string): FleetType {
   return (t && (FLEET_TYPES as readonly string[]).includes(t)) ? (t as FleetType) : "PATROUILLE";

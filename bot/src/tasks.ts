@@ -2,7 +2,7 @@ import { type Client, type TextChannel } from "discord.js";
 import { mdt } from "./convex.js";
 import { presenceEmbed, dailyEmbed, absencePublishEmbed, sanctionEmbed, convocationEmbed } from "./embeds.js";
 import { openRollcall, closeRollcall, remindNonVoters, LSPD_ROLE } from "./rollcall.js";
-import { reconcilePromoCategories, reconcilePromoDeletions, deprogramInterview, parisWallToEpoch } from "./tickets.js";
+import { reconcilePromoCategories, reconcilePromoDeletions, deprogramInterview, parisWallToEpoch, finalizeAutoClose } from "./tickets.js";
 import { baseEmbed, BRAND } from "./theme.js";
 
 // Les salons et l'heure du récap sont lus depuis le MDT (page Configuration),
@@ -160,8 +160,8 @@ export function startTasks(client: Client) {
           await cand.send({ embeds: [baseEmbed(BRAND.muted).setTitle("Candidature fermée")
             .setDescription("Faute de réponse dans le délai imparti, ta candidature a été **fermée**. Tu peux repartir de zéro à tout moment en m'envoyant le mot **Candidature**.")] }).catch(() => {});
         }
-        const chan = await channel(client, t.channelId);
-        if (chan) await chan.send({ embeds: [baseEmbed(BRAND.muted).setDescription(`🔒 Ticket de **${t.prenom} ${t.nom}** fermé automatiquement (absence de réponse du candidat).`)] }).catch(() => {});
+        // Ferme réellement le ticket (retire l'accès candidat + panneau encadrement).
+        await finalizeAutoClose(client, t.channelId, t.ownerId, `${t.prenom} ${t.nom}`);
       }
     } catch (err) { console.error("[ticket] fermetures auto :", err); }
 

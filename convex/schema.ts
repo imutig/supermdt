@@ -374,7 +374,7 @@ export default defineSchema({
   dbDrugSites: defineTable({
     divisionId: v.id("divisions"),
     name: v.string(),
-    kind: v.union(v.literal("POINT_VENTE"), v.literal("LABO")),
+    kind: v.union(v.literal("POINT_VENTE"), v.literal("LABO"), v.literal("CARAVANE")),
     gangId: v.optional(v.id("dbGangs")),
     drugTypes: v.optional(v.string()),
     note: v.optional(v.string()), // HTML riche

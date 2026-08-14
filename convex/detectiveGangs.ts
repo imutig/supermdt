@@ -355,7 +355,7 @@ export const removeCaseGang = mutation({
 
 // ============ STUPÉFIANTS ============
 
-const DRUG_KIND = v.union(v.literal("POINT_VENTE"), v.literal("LABO"));
+const DRUG_KIND = v.union(v.literal("POINT_VENTE"), v.literal("LABO"), v.literal("CARAVANE"));
 
 export const listDrugSites = query({
   args: { divisionId: v.id("divisions"), kind: v.optional(DRUG_KIND), gangId: v.optional(v.id("dbGangs")), q: v.optional(v.string()) },
