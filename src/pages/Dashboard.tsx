@@ -5,6 +5,7 @@ import { useCan } from "@/hooks/useCan";
 import { useApp } from "@/providers/app-state";
 import { useMe } from "@/hooks/useMe";
 import { useService } from "@/hooks/useService";
+import { FEATURES } from "@/lib/features";
 import { quickActions } from "@/data/demo";
 import { fmtMatricule } from "@/components/common/AgentTag";
 import { ServiceToggle } from "@/components/common/ServiceToggle";
@@ -60,7 +61,8 @@ export function Dashboard() {
     { label: "Grade", value: gradeName, sub: corpsLabel, danger: false },
     { label: "Divisions", value: String(me?.divisions.length ?? 0), sub: divLabel, danger: false },
     { label: "Mandats actifs", value: String(mandats.length), sub: "sur le serveur", danger: mandats.length > 0 },
-    { label: "Agents en service", value: String(presenceList.length), sub: "temps réel", danger: false },
+    // Compteur « en service » masqué tant que la prise de service MDT est off.
+    ...(FEATURES.service ? [{ label: "Agents en service", value: String(presenceList.length), sub: "temps réel", danger: false }] : []),
   ];
 
   const today = new Date().toLocaleDateString("fr-FR", {
@@ -205,19 +207,22 @@ export function Dashboard() {
 
         {/* Right column */}
         <div className="mdt-stagger flex flex-col gap-[18px]">
-          {/* Service — interrupteur trèfle (élément 3) */}
-          <div className="rounded-card border border-border bg-surface p-4">
-            <div className="mb-[12px] text-[10.5px] font-bold uppercase tracking-[0.09em] text-faint">
-              Mon service
+          {/* Service — interrupteur trèfle (élément 3). Désactivé tant que la
+              prise de service via le MDT est off (FEATURES.service). */}
+          {FEATURES.service && (
+            <div className="rounded-card border border-border bg-surface p-4">
+              <div className="mb-[12px] text-[10.5px] font-bold uppercase tracking-[0.09em] text-faint">
+                Mon service
+              </div>
+              <div className="flex items-center gap-[10px]">
+                <ServiceToggle onDuty={onDuty} onToggle={toggleDuty} />
+                <div className="flex-1" />
+                <span className="font-data text-[12px] text-muted">
+                  {onDuty && dutySince ? `depuis ${fmtTime(dutySince)}` : ""}
+                </span>
+              </div>
             </div>
-            <div className="flex items-center gap-[10px]">
-              <ServiceToggle onDuty={onDuty} onToggle={toggleDuty} />
-              <div className="flex-1" />
-              <span className="font-data text-[12px] text-muted">
-                {onDuty && dutySince ? `depuis ${fmtTime(dutySince)}` : ""}
-              </span>
-            </div>
-          </div>
+          )}
 
           {/* Quick actions */}
           <div className="rounded-card border border-border bg-surface p-4">
@@ -268,7 +273,8 @@ export function Dashboard() {
             )}
           </div>
 
-          {/* Presence */}
+          {/* Présence « en service » — masquée tant que la prise de service MDT est off. */}
+          {FEATURES.service && (
           <div className="overflow-hidden rounded-card border border-border bg-surface">
             <div className="flex items-center gap-2 border-b border-border px-4 py-[13px]">
               <span className="h-[6px] w-[6px] rounded-full" style={{ background: "#16a34a" }} />
@@ -315,6 +321,7 @@ export function Dashboard() {
               </div>
             ))}
           </div>
+          )}
         </div>
       </div>
     </div>
