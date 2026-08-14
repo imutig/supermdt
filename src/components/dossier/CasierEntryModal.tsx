@@ -62,7 +62,9 @@ export function CasierEntryModal({ entryId, canDelete: canDeleteAny, onClose }: 
   if (!init && entry) {
     setInit(true);
     setA({
-      arrestType: entry.arrestType, reportBody: entry.reportBody, imageUrls: entry.imageUrls, avocat: entry.avocat,
+      // Reprend le « déroulé des faits » hérité si le rapport est vide (champ
+      // unifié : plus qu'un seul récit, éditable et synchronisé).
+      arrestType: entry.arrestType, reportBody: entry.reportBody || entry.derouleFaits || "", imageUrls: entry.imageUrls, avocat: entry.avocat,
       linkedReportId: entry.linkedReportId ?? "", vehicleIds: entry.vehicleIds, weaponIds: entry.weaponIds,
       dossierStatus: entry.dossierStatus, forceUsed: entry.forceUsed, finePaid: entry.finePaid,
     });
@@ -201,10 +203,6 @@ export function CasierEntryModal({ entryId, canDelete: canDeleteAny, onClose }: 
                 <Field label="Sanctions">{entry.sanctions.length ? entry.sanctions.join(", ") : "-"}</Field>
                 <Field label="Menottage / Miranda">{entry.cuffedAt || "-"} / {entry.mirandaAt || "-"}</Field>
               </div>
-
-              {entry.derouleFaits && (
-                <div><div className={H}>Déroulé des faits</div><div className="rounded-sm border border-border bg-surface-2 px-[10px] py-[8px]"><RichTextEditor value={entry.derouleFaits} editable={false} /></div></div>
-              )}
 
               {/* Avocat (les deux) */}
               <div><div className={H}>Avocat</div>{canEdit ? <input value={a.avocat} onChange={(e) => setA({ ...a, avocat: e.target.value })} placeholder="Nom de l'avocat" className={F} /> : <div className="text-[13px]">{a.avocat || "-"}</div>}</div>

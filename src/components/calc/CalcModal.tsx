@@ -38,7 +38,6 @@ export function CalcModal() {
   const isCitation = calcMode === "contravention";
   const [pq, setPq] = useState("");
   const [rows, setRows] = useState<Row[]>([]);
-  const [narr, setNarr] = useState("");
   const [place, setPlace] = useState("");
   const [busy, setBusy] = useState(false);
   // Champs arrestation (casier uniquement, §3)
@@ -162,7 +161,6 @@ export function CalcModal() {
     const casierArgs = {
       citizenId,
       charges,
-      derouleFaits: narr || undefined,
       lieu: place || undefined,
       cuffedAt: cuffedAt || undefined,
       mirandaAt: mirandaAt || undefined,
@@ -194,7 +192,6 @@ export function CalcModal() {
         ? { kind: "citation", id: res as Id<"citations"> }
         : { kind: "casier", id: res as Id<"casierEntries"> });
       setRows([]);
-      setNarr("");
       setPlace("");
       setCuffedAt("");
       setMirandaAt("");
@@ -401,9 +398,9 @@ export function CalcModal() {
           <div className="flex flex-col gap-[10px]">
             <div>
               <div className="mb-[6px] text-[10.5px] font-bold uppercase tracking-[0.09em] text-faint">
-                Déroulé des faits
+                Rapport d'arrestation
               </div>
-              <RichTextEditor value={narr} onChange={setNarr} minHeight={110} placeholder="Récit de l'intervention…" />
+              <RichTextEditor value={dReport} onChange={setDReport} minHeight={120} placeholder="Récit de l'intervention…" />
             </div>
             <div>
               <div className="mb-[6px] text-[10.5px] font-bold uppercase tracking-[0.09em] text-faint">
@@ -471,7 +468,6 @@ export function CalcModal() {
           {!isCitation && isDossier && (
             <div className="flex flex-col gap-[11px] rounded-sm border border-accent p-[13px]" style={{ background: "var(--accent-soft)" }}>
               <div className="flex items-center gap-2 text-[10.5px] font-bold uppercase tracking-[0.09em] text-accent"><Clover size={13} /> Dossier d'arrestation</div>
-              <div><div className={LBL}>Rapport d'arrestation</div><RichTextEditor value={dReport} onChange={setDReport} /></div>
               <div><div className={LBL}>Images</div><ImageGallery urls={dImages} onChange={setDImages} emptyLabel="Aucune image." /></div>
               <div><div className={LBL}>Avocat</div><input value={dAvocat} onChange={(e) => setDAvocat(e.target.value)} placeholder="Nom de l'avocat" className={INP} /></div>
               <div><div className={LBL}>Rapport lié</div>
