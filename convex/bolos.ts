@@ -1,6 +1,6 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
-import { requireAgent, requirePermission, agentLabel } from "./rbac";
+import { requireAgent, requirePermission, agentLabel, can } from "./rbac";
 import { writeAudit } from "./lib/audit";
 import { notify, NOTIFY_COLOR, deepLink } from "./lib/notify";
 
@@ -13,12 +13,17 @@ export const active = query({
     const rows = await ctx.db.query("bolos").withIndex("by_active", (q) => q.eq("active", true)).collect();
     const out = [];
     for (const b of rows) {
+      // Photo : l'image de l'avis, sinon le mugshot du citoyen lié (l'individu
+      // s'il a une fiche enregistrée).
+      let photo = b.imageUrl ?? null;
+      if (!photo && b.citizenId) { const c = await ctx.db.get(b.citizenId); photo = c?.mugshotUrl ?? null; }
       out.push({
         _id: b._id,
         kind: b.kind,
         title: b.title,
         description: b.description ?? null,
         imageUrl: b.imageUrl ?? null,
+        photo,
         citizenId: b.citizenId ?? null,
         danger: b.danger === true,
         at: b.at,
@@ -28,6 +33,20 @@ export const active = query({
     // Les avis « dangereux » d'abord, puis les plus récents.
     out.sort((a, b) => (a.danger === b.danger ? b.at - a.at : a.danger ? -1 : 1));
     return out;
+  },
+});
+
+// Avis de recherche actifs visant un citoyen précis : sert à passer sa fiche en
+// rouge (bien visible) sur son dossier.
+export const activeForCitizen = query({
+  args: { citizenId: v.id("citizens") },
+  handler: async (ctx, { citizenId }) => {
+    const agent = await requireAgent(ctx);
+    if (!(await can(ctx, agent, "bolo.view"))) return [];
+    const rows = await ctx.db.query("bolos").withIndex("by_active", (q) => q.eq("active", true)).collect();
+    return rows
+      .filter((b) => b.citizenId === citizenId)
+      .map((b) => ({ _id: b._id, title: b.title, description: b.description ?? null, danger: b.danger === true, at: b.at }));
   },
 });
 

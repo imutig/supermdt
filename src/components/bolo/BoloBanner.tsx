@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery } from "convex/react";
-import { AlertTriangle, X, Plus, Check, Search } from "lucide-react";
+import { AlertTriangle, X, Plus, Check, Search, ChevronLeft, ChevronRight, User } from "lucide-react";
 import { api, type Id } from "@/lib/api";
 import { useCan } from "@/hooks/useCan";
 import { useToast } from "@/providers/toast";
@@ -36,6 +36,25 @@ export function BoloBanner() {
   }
 
   return (
+    <BoloCarousel rows={rows} canManage={canManage} onCompose={() => setCompose(true)} nav={nav} close={close} toast={toast} compose={compose} onCloseCompose={() => setCompose(false)} />
+  );
+}
+
+// Carrousel des avis actifs : un seul avis à la fois (photo de l'individu +
+// détails), navigation par flèches et pastilles. Évite d'empiler des bandeaux
+// quand plusieurs avis sont ouverts.
+function BoloCarousel({ rows, canManage, onCompose, nav, close, toast, compose, onCloseCompose }: {
+  rows: any[]; canManage: boolean; onCompose: () => void; nav: (p: string) => void;
+  close: (a: { id: Id<"bolos"> }) => Promise<unknown>; toast: ReturnType<typeof useToast>;
+  compose: boolean; onCloseCompose: () => void;
+}) {
+  const [idx, setIdx] = useState(0);
+  // Reste dans les bornes si un avis est clos (la liste rétrécit).
+  useEffect(() => { if (idx > rows.length - 1) setIdx(Math.max(0, rows.length - 1)); }, [rows.length, idx]);
+  const b = rows[Math.min(idx, rows.length - 1)];
+  const go = (d: number) => setIdx((i) => (i + d + rows.length) % rows.length);
+
+  return (
     <div className="mb-[20px] flex flex-col gap-[12px]">
       <div className="flex items-center gap-2">
         <AlertTriangle className="h-[17px] w-[17px]" style={{ color: "var(--danger)" }} />
@@ -44,70 +63,74 @@ export function BoloBanner() {
         </h2>
         <div className="h-px flex-1" style={{ background: "var(--danger)", opacity: 0.3 }} />
         {canManage && (
-          <button
-            onClick={() => setCompose(true)}
-            className="mdt-press flex items-center gap-[6px] rounded-[8px] border border-border bg-surface-2 px-[11px] py-[6px] text-[12px] font-semibold text-muted hover:border-border-strong"
-          >
+          <button onClick={onCompose} className="mdt-press flex items-center gap-[6px] rounded-[8px] border border-border bg-surface-2 px-[11px] py-[6px] text-[12px] font-semibold text-muted hover:border-border-strong">
             <Plus className="h-[14px] w-[14px]" /> Émettre
           </button>
         )}
       </div>
 
-      {rows.map((b) => (
+      <div className="flex items-stretch gap-[10px]">
+        {rows.length > 1 && (
+          <button onClick={() => go(-1)} aria-label="Précédent" className="mdt-press flex w-[34px] flex-shrink-0 items-center justify-center rounded-[10px] border border-border bg-surface-2 text-muted hover:border-border-strong">
+            <ChevronLeft className="h-[18px] w-[18px]" />
+          </button>
+        )}
+
         <div
           key={b._id}
-          className="mdt-reveal flex gap-[16px] overflow-hidden rounded-card border p-[16px]"
+          className="mdt-reveal flex min-w-0 flex-1 gap-[16px] overflow-hidden rounded-card border p-[16px]"
           style={{
             borderColor: b.danger ? "var(--danger)" : "var(--border-strong)",
             background: b.danger ? "color-mix(in srgb, var(--danger) 8%, var(--surface))" : "var(--surface)",
           }}
         >
-          {b.imageUrl && (
-            <img
-              src={b.imageUrl}
-              alt=""
-              className="h-[128px] w-[128px] flex-shrink-0 rounded-[10px] border border-border object-cover"
-            />
-          )}
+          <div className="h-[128px] w-[128px] flex-shrink-0 overflow-hidden rounded-[10px] border border-border bg-surface-2">
+            {b.photo
+              ? <img src={b.photo} alt="" className="h-full w-full object-cover" />
+              : <span className="flex h-full w-full items-center justify-center text-faint"><User className="h-[40px] w-[40px]" /></span>}
+          </div>
           <div className="flex min-w-0 flex-1 flex-col">
             <div className="mb-[6px] flex flex-wrap items-center gap-[8px]">
-              <span
-                className="rounded-[5px] px-[7px] py-[2px] text-[10px] font-bold uppercase tracking-[0.08em] text-white"
-                style={{ background: b.danger ? "var(--danger)" : "var(--warning)" }}
-              >
+              <span className="rounded-[5px] px-[7px] py-[2px] text-[10px] font-bold uppercase tracking-[0.08em] text-white" style={{ background: b.danger ? "var(--danger)" : "var(--warning)" }}>
                 {b.danger ? "Armé et dangereux" : b.kind === "PERSONNE" ? "Personne recherchée" : "Véhicule recherché"}
               </span>
-              <span className="text-[11px] text-faint">
-                Émis par {b.author} · {new Date(b.at).toLocaleString("fr-FR")}
-              </span>
+              <span className="text-[11px] text-faint">Émis par {b.author} · {new Date(b.at).toLocaleString("fr-FR")}</span>
             </div>
             <div className="text-[17px] font-bold leading-tight">{b.title}</div>
-            {b.description && (
-              <p className="mt-[6px] mb-0 whitespace-pre-wrap text-[13px] leading-[1.55] text-muted">{b.description}</p>
-            )}
+            {b.description && <p className="mt-[6px] mb-0 whitespace-pre-wrap text-[13px] leading-[1.55] text-muted">{b.description}</p>}
             <div className="mt-auto flex flex-wrap gap-[8px] pt-[12px]">
               {b.citizenId && (
-                <button
-                  onClick={() => nav(`/citoyens/${b.citizenId}`)}
-                  className="mdt-press rounded-[8px] border border-border bg-surface-2 px-[11px] py-[6px] text-[12px] font-semibold text-muted hover:border-border-strong"
-                >
+                <button onClick={() => nav(`/citoyen/${b.citizenId}`)} className="mdt-press rounded-[8px] border border-border bg-surface-2 px-[11px] py-[6px] text-[12px] font-semibold text-muted hover:border-border-strong">
                   Ouvrir le dossier
                 </button>
               )}
               {canManage && (
-                <button
-                  onClick={() => toast.guard(close({ id: b._id as Id<"bolos"> }), "Clôture impossible")}
-                  className="mdt-press flex items-center gap-[6px] rounded-[8px] border border-border bg-surface-2 px-[11px] py-[6px] text-[12px] font-semibold text-muted hover:border-border-strong"
-                >
+                <button onClick={() => toast.guard(close({ id: b._id as Id<"bolos"> }), "Clôture impossible")} className="mdt-press flex items-center gap-[6px] rounded-[8px] border border-border bg-surface-2 px-[11px] py-[6px] text-[12px] font-semibold text-muted hover:border-border-strong">
                   <Check className="h-[14px] w-[14px]" /> Clore l'avis
                 </button>
               )}
             </div>
           </div>
         </div>
-      ))}
 
-      {compose && <BoloCompose onClose={() => setCompose(false)} />}
+        {rows.length > 1 && (
+          <button onClick={() => go(1)} aria-label="Suivant" className="mdt-press flex w-[34px] flex-shrink-0 items-center justify-center rounded-[10px] border border-border bg-surface-2 text-muted hover:border-border-strong">
+            <ChevronRight className="h-[18px] w-[18px]" />
+          </button>
+        )}
+      </div>
+
+      {rows.length > 1 && (
+        <div className="flex items-center justify-center gap-[6px]">
+          {rows.map((r, i) => (
+            <button key={r._id} onClick={() => setIdx(i)} aria-label={`Avis ${i + 1}`}
+              className="h-[7px] rounded-full transition-all"
+              style={{ width: i === idx ? 18 : 7, background: i === idx ? "var(--danger)" : "var(--border-strong)" }} />
+          ))}
+        </div>
+      )}
+
+      {compose && <BoloCompose onClose={onCloseCompose} />}
     </div>
   );
 }

@@ -107,6 +107,8 @@ export function Dossier() {
   const rapports = useQuery(api.reports.byCitizen, citizenId && can("rapports.view") ? { citizenId } : "skip");
   const plaintes = useQuery(api.complaints.byCitizen, citizenId && can("plaintes.view") ? { citizenId } : "skip");
   const depositions = useQuery(api.depositions.byCitizen, citizenId && can("depositions.view") ? { citizenId } : "skip");
+  const bolos = useQuery(api.bolos.activeForCitizen, citizenId && can("bolo.view") ? { citizenId } : "skip");
+  const wanted = bolos ?? [];
   const logView = useMutation(api.citizens.logView);
   const removeMandat = useMutation(api.mandats.remove);
   const executeMandat = useMutation(api.mandats.execute);
@@ -174,6 +176,30 @@ export function Dossier() {
         <span>{c.prenom} {c.nom}</span>
       </div>
 
+      {/* Avis de recherche actif : fiche en rouge, bien visible. */}
+      {wanted.length > 0 && (
+        <div className="mdt-reveal mb-[16px] overflow-hidden rounded-card border-2" style={{ borderColor: "var(--danger)", background: "color-mix(in srgb, var(--danger) 12%, var(--surface))" }}>
+          <div className="flex items-center gap-[9px] px-[15px] py-[11px] text-white" style={{ background: "var(--danger)" }}>
+            <span className="text-[16px]">⚑</span>
+            <span className="text-[13px] font-bold uppercase tracking-[0.08em]">
+              Individu sous avis de recherche · {wanted.length} actif{wanted.length > 1 ? "s" : ""}
+            </span>
+          </div>
+          <div className="flex flex-col gap-[10px] p-[15px]">
+            {wanted.map((w) => (
+              <div key={w._id}>
+                <div className="flex flex-wrap items-center gap-[8px]">
+                  <span className="text-[14px] font-bold">{w.title}</span>
+                  {w.danger && <span className="rounded-[4px] px-[6px] py-[1px] text-[10px] font-bold uppercase tracking-[0.05em] text-white" style={{ background: "var(--danger)" }}>Armé et dangereux</span>}
+                  <span className="text-[11px] text-faint">émis le {new Date(w.at).toLocaleString("fr-FR")}</span>
+                </div>
+                {w.description && <p className="mt-[4px] mb-0 whitespace-pre-wrap text-[12.5px] leading-[1.5] text-muted">{w.description}</p>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {!cw && (
         <div className="mb-[16px] flex items-start gap-[10px] rounded-card border px-[15px] py-[12px] text-[13px]" style={{ borderColor: "color-mix(in srgb, var(--accent) 40%, transparent)", background: "var(--accent-soft)", color: "var(--text)" }}>
           <span className="text-accent">ⓘ</span>
@@ -181,8 +207,8 @@ export function Dossier() {
         </div>
       )}
 
-      {/* Header */}
-      <div className="mb-[18px] flex gap-5 rounded-card border border-border bg-surface p-5">
+      {/* Header (rouge si sous avis de recherche) */}
+      <div className="mb-[18px] flex gap-5 rounded-card border p-5" style={wanted.length > 0 ? { borderColor: "var(--danger)", background: "color-mix(in srgb, var(--danger) 6%, var(--surface))" } : { borderColor: "var(--border)", background: "var(--surface)" }}>
         <div className="flex flex-shrink-0 flex-col gap-[9px]">
           <div
             className="flex h-[140px] w-[118px] items-end justify-center overflow-hidden rounded-sm border border-border pb-2"
