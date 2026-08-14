@@ -234,10 +234,16 @@ export const myRangeStats = query({
         : await ctx.db.query(table).withIndex("by_at", (q) => q.gte("at", lo).lte("at", hi)).collect();
       return (rows as any[]).filter((r) => !r.deletedAt && r.status !== "ANNULEE");
     };
+    // Le compte owner sert de REPLI aux officiers d'import non reliés : on écarte
+    // donc les fiches qui ne lui reviennent que par ce repli (createdBy owner sans
+    // rôle d'officier réel ; contravention avec officerName = verbalisateur Nexus).
+    const isOwner = agent.isOwner;
     const casiers = (await inRange("casierEntries")).filter(
-      (e: any) => (e.officerIds ?? []).includes(agent._id) || e.createdBy === agent._id,
+      (e: any) => (e.officerIds ?? []).includes(agent._id) || (!isOwner && e.createdBy === agent._id),
     );
-    const citations = (await inRange("citations")).filter((c: any) => c.officerId === agent._id);
+    const citations = (await inRange("citations")).filter(
+      (c: any) => c.officerId === agent._id && (!isOwner || !c.officerName),
+    );
 
     // Rapports d'intervention rédigés (lead) sur la plage.
     const myReports = (await ctx.db.query("reports").withIndex("by_lead", (q) => q.eq("leadId", agent._id)).collect())

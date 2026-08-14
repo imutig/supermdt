@@ -120,7 +120,6 @@ const GROUPS: NavGroup[] = [
 ];
 
 export function NavRail() {
-  const { clock } = useApp();
   const { can, ready } = useCan();
   const { sidebarCollapsible: collapsible, sidebarHoverExpand } = usePrefs();
   // La section Administration s'ouvre à qui détient l'un de ses droits, et non
@@ -128,8 +127,6 @@ export function NavRail() {
   const canAdmin = can("rbac.manage") || can("audit.view") || can("effectif.validate") || can("invites.manage");
   const location = useLocation();
   const navigate = useNavigate();
-  // Sans permission, la requête lèverait et ferait tomber toute l'application.
-  const onlineCount = useQuery(api.agents.presence, can("effectif.view") ? {} : "skip")?.length ?? 0;
   const { navWidth, setNavWidth } = useApp();
   // Rail compact (icônes seules) : préférence utilisateur, ou automatiquement sur tablette (< lg).
   const [narrow, setNarrow] = useState(() => typeof window !== "undefined" && window.matchMedia("(max-width: 1023px)").matches);
@@ -285,20 +282,6 @@ export function NavRail() {
       })}
 
       <div className="flex-1" />
-
-      <div className="mt-[10px] rounded-sm border border-border bg-surface-2 p-[11px_12px]">
-        <div className="mb-[5px] text-[10px] font-bold uppercase tracking-[0.1em] text-faint">
-          Serveur
-        </div>
-        <div className="mb-[3px] flex justify-between text-[12px]">
-          <span className="text-muted">Agents en service</span>
-          <span className="font-data font-semibold">{onlineCount}</span>
-        </div>
-        <div className="flex justify-between text-[12px]">
-          <span className="text-muted">Heure</span>
-          <span className="font-data font-semibold">{clock}</span>
-        </div>
-      </div>
       </div>
 
       {/* Poignée de redimensionnement. La largeur est mémorisée : chacun règle
