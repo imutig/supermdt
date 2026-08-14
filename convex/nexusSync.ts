@@ -618,7 +618,7 @@ export const _citizenNexus = internalQuery({
     return c ? { nexusId: c.nexusId ?? null, nom: c.nom, prenom: c.prenom } : null;
   },
 });
-const DELETE_KIND = v.union(v.literal("casier"), v.literal("amende"), v.literal("plainte"), v.literal("deposition"));
+const DELETE_KIND = v.union(v.literal("casier"), v.literal("amende"), v.literal("plainte"), v.literal("deposition"), v.literal("arme"), v.literal("vehicule"));
 export const _recordNexusInfo = internalQuery({
   args: { kind: DELETE_KIND, localId: v.string() },
   handler: async (ctx, { kind, localId }) => {
@@ -633,6 +633,14 @@ export const _recordNexusInfo = internalQuery({
     if (kind === "plainte") {
       const p = await ctx.db.get(localId as Id<"complaints">);
       return p ? { nexusId: p.nexusId ?? null, arrestType: null as string | null } : null;
+    }
+    if (kind === "arme") {
+      const w = await ctx.db.get(localId as Id<"weapons">);
+      return w ? { nexusId: w.nexusId ?? null, arrestType: null as string | null } : null;
+    }
+    if (kind === "vehicule") {
+      const ve = await ctx.db.get(localId as Id<"vehicles">);
+      return ve ? { nexusId: ve.nexusId ?? null, arrestType: null as string | null } : null;
     }
     const d = await ctx.db.get(localId as Id<"depositions">);
     return d ? { nexusId: d.nexusId ?? null, arrestType: null as string | null } : null;
@@ -653,6 +661,8 @@ export const deleteRecord = action({
       if (kind === "casier") await ctx.runMutation(api.casier.remove, { entryId: localId as Id<"casierEntries"> });
       else if (kind === "amende") await ctx.runMutation(api.citations.remove, { citationId: localId as Id<"citations"> });
       else if (kind === "plainte") await ctx.runMutation(api.complaints.remove, { id: localId as Id<"complaints"> });
+      else if (kind === "arme") await ctx.runMutation(api.weapons.remove, { id: localId as Id<"weapons"> });
+      else if (kind === "vehicule") await ctx.runMutation(api.vehicles.remove, { id: localId as Id<"vehicles"> });
       else await ctx.runMutation(api.depositions.remove, { id: localId as Id<"depositions"> });
     };
 
@@ -664,6 +674,8 @@ export const deleteRecord = action({
     const path = kind === "amende" ? "/api/amendes"
       : kind === "plainte" ? "/api/plaintes"
       : kind === "deposition" ? "/api/depositions"
+      : kind === "arme" ? "/api/armes"
+      : kind === "vehicule" ? "/api/vehicules"
       : info.arrestType === "RAPPORT" ? "/api/rapports" : "/api/dossiers";
     let res: Response;
     try {
@@ -1000,4 +1012,210 @@ export const updateDeposition = action({
 export const _depositionCitizen = internalQuery({
   args: { id: v.id("depositions") },
   handler: async (ctx, { id }): Promise<Id<"citizens"> | null> => { const d = await ctx.db.get(id); return d ? d.citizenId : null; },
+});
+
+// ============================================================================
+// Armes & Véhicules — write-through (POST/PUT). Même invariant : si l'écriture
+// Nexus échoue, RIEN localement. DELETE via deleteRecord (kinds arme/vehicule).
+// ============================================================================
+const WEAPON_STATUS = v.union(v.literal("ACTIVE"), v.literal("ENREGISTREE"), v.literal("SAISIE"), v.literal("DETRUITE"));
+// Statut local -> libellé Nexus (français). ACTIVE = état neutre « Enregistrée ».
+function weaponStatutLabel(s: string): string {
+  return s === "SAISIE" ? "Saisie" : s === "DETRUITE" ? "Détruite" : "Enregistrée";
+}
+// "DD/MM HH:MM" en heure de Paris (format dateEnregistrement Nexus).
+function nowWeaponDate(): string {
+  const dtf = new Intl.DateTimeFormat("fr-FR", { timeZone: "Europe/Paris", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false });
+  const p: Record<string, string> = {};
+  for (const part of dtf.formatToParts(new Date())) p[part.type] = part.value;
+  return `${p.day}/${p.month} ${p.hour}:${p.minute}`;
+}
+
+export const _citizenNexusRef = internalQuery({
+  args: { citizenId: v.optional(v.id("citizens")) },
+  handler: async (ctx, { citizenId }) => {
+    if (!citizenId) return null;
+    const c = await ctx.db.get(citizenId);
+    return c ? { nexusId: c.nexusId ?? null, nom: `${c.prenom} ${c.nom}`.trim() } : null;
+  },
+});
+export const _weaponNexus = internalQuery({
+  args: { id: v.id("weapons") },
+  handler: async (ctx, { id }) => { const w = await ctx.db.get(id); return w ? { nexusId: w.nexusId ?? null } : null; },
+});
+export const _weaponTypeName = internalQuery({
+  args: { typeId: v.optional(v.id("weaponTypes")) },
+  handler: async (ctx, { typeId }) => { if (!typeId) return null; const t = await ctx.db.get(typeId); return t?.name ?? null; },
+});
+export const _insertWeaponFromWrite = internalMutation({
+  args: {
+    typeId: v.optional(v.id("weaponTypes")), typeName: v.optional(v.string()),
+    modele: v.string(), serial: v.string(), motif: v.optional(v.string()), origine: v.optional(v.string()),
+    ownerId: v.optional(v.id("citizens")), status: WEAPON_STATUS,
+    createdBy: v.id("agents"), nexusId: v.string(),
+  },
+  handler: async (ctx, a): Promise<Id<"weapons">> => {
+    const norm = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+    return await ctx.db.insert("weapons", {
+      typeId: a.typeId, typeName: a.typeName ?? undefined,
+      modele: a.modele, serial: a.serial, motif: a.motif, origine: a.origine, ownerId: a.ownerId,
+      status: a.status, at: Date.now(), createdBy: a.createdBy, nexusId: a.nexusId,
+      searchText: norm(`${a.typeName ?? ""} ${a.modele} ${a.serial}`),
+    });
+  },
+});
+
+function weaponPayload(a: { modele: string; serial: string; motif?: string; origine?: string; status: string }, owner: { nexusId: string | null; nom: string } | null) {
+  return {
+    entity: "lspd", dateEnregistrement: nowWeaponDate(),
+    origine: a.origine ?? "", modele: a.modele, numeroSerie: a.serial, motifs: a.motif ?? "",
+    utiliseDelit: false, statut: weaponStatutLabel(a.status),
+    citoyenLie: owner?.nexusId ? { id: owner.nexusId, nom: owner.nom } : null,
+  };
+}
+
+export const createWeapon = action({
+  args: {
+    typeId: v.optional(v.id("weaponTypes")), modele: v.string(), serial: v.string(),
+    motif: v.optional(v.string()), origine: v.optional(v.string()), ownerId: v.optional(v.id("citizens")), status: WEAPON_STATUS,
+  },
+  handler: async (ctx, a): Promise<Id<"weapons">> => {
+    const agentId = await ctx.runQuery(api.nexusSync.myAgentId, {});
+    if (!agentId) throw new Error("Non authentifié.");
+    const cred = await ctx.runQuery(internal.nexusSync._credFor, { agentId });
+    if (!cred) throw new Error("Synchronisation Nexus non configurée (voir Mon profil).");
+    const owner = await ctx.runQuery(internal.nexusSync._citizenNexusRef, { citizenId: a.ownerId });
+    const typeName = await ctx.runQuery(internal.nexusSync._weaponTypeName, { typeId: a.typeId });
+    const t0 = Date.now();
+    const token = await getToken(ctx, agentId, cred);
+    let res: Response;
+    try {
+      res = await fetch(`${BASE}/api/armes`, { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify(weaponPayload(a, owner)) });
+    } catch (e) {
+      await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: "arme", op: "POST", ok: false, durationMs: Date.now() - t0, agentId, error: e instanceof Error ? e.message : String(e) });
+      throw new Error("NexusMDT injoignable, arme non créée.");
+    }
+    if (!res.ok) {
+      const txt = await res.text().catch(() => "");
+      await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: "arme", op: "POST", ok: false, httpStatus: res.status, durationMs: Date.now() - t0, agentId, error: txt.slice(0, 160) });
+      throw new Error(`Création côté NexusMDT échouée (HTTP ${res.status}). ${txt.slice(0, 120)}`);
+    }
+    const j: any = await res.json();
+    const created = j.arme ?? j.data ?? j;
+    const id = await ctx.runMutation(internal.nexusSync._insertWeaponFromWrite, {
+      typeId: a.typeId, typeName: typeName ?? undefined, modele: a.modele, serial: a.serial,
+      motif: a.motif, origine: a.origine, ownerId: a.ownerId, status: a.status, createdBy: agentId, nexusId: String(created._id),
+    });
+    await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: "arme", op: "POST", ok: true, httpStatus: res.status, durationMs: Date.now() - t0, agentId, detail: `${a.modele} ${a.serial} · local ${id}` });
+    return id;
+  },
+});
+
+export const updateWeapon = action({
+  args: {
+    id: v.id("weapons"), typeId: v.optional(v.id("weaponTypes")), modele: v.string(), serial: v.string(),
+    motif: v.optional(v.string()), origine: v.optional(v.string()), ownerId: v.optional(v.id("citizens")), status: WEAPON_STATUS,
+  },
+  handler: async (ctx, a): Promise<void> => {
+    const agentId = await ctx.runQuery(api.nexusSync.myAgentId, {});
+    if (!agentId) throw new Error("Non authentifié.");
+    const cred = await ctx.runQuery(internal.nexusSync._credFor, { agentId });
+    const info = await ctx.runQuery(internal.nexusSync._weaponNexus, { id: a.id });
+    const owner = await ctx.runQuery(internal.nexusSync._citizenNexusRef, { citizenId: a.ownerId });
+    const { id, ...fields } = a;
+
+    if (!cred || !info?.nexusId) { await ctx.runMutation(api.weapons.update, { id, ...fields }); return; }
+
+    const t0 = Date.now();
+    const token = await getToken(ctx, agentId, cred);
+    const res = await fetch(`${BASE}/api/armes/${info.nexusId}`, { method: "PUT", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify(weaponPayload(a, owner)) });
+    if (!res.ok) {
+      const txt = await res.text().catch(() => "");
+      await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: "arme", op: "PUT", ok: false, httpStatus: res.status, durationMs: Date.now() - t0, agentId, error: txt.slice(0, 160) });
+      throw new Error(`Édition côté NexusMDT échouée (HTTP ${res.status}). Modification non enregistrée.`);
+    }
+    await ctx.runMutation(api.weapons.update, { id, ...fields });
+    await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: "arme", op: "PUT", ok: true, httpStatus: res.status, durationMs: Date.now() - t0, agentId, detail: `${a.modele} ${a.serial}` });
+  },
+});
+
+// ---------------------- Véhicules ----------------------
+export const _vehicleNexus = internalQuery({
+  args: { id: v.id("vehicles") },
+  handler: async (ctx, { id }) => { const w = await ctx.db.get(id); return w ? { nexusId: w.nexusId ?? null } : null; },
+});
+export const _stampVehicleNexus = internalMutation({
+  args: { id: v.id("vehicles"), nexusId: v.string() },
+  handler: async (ctx, { id, nexusId }) => { await ctx.db.patch(id, { nexusId }); },
+});
+
+function vehiclePayload(a: { plaque: string; modele?: string; couleur?: string; type?: string; notes?: string }, statut: string | undefined, owner: { nexusId: string | null; nom: string } | null) {
+  return {
+    entity: "lspd", plaque: a.plaque.trim().toUpperCase(), categorie: a.type ?? "",
+    modele: a.modele ?? "", couleur: a.couleur ?? "", statut: statut ?? "", notes: a.notes ?? "",
+    proprietaire: owner?.nexusId ? { id: owner.nexusId, nom: owner.nom } : null,
+  };
+}
+
+export const createVehicle = action({
+  args: {
+    plaque: v.string(), modele: v.optional(v.string()), couleur: v.optional(v.string()),
+    type: v.optional(v.string()), ownerId: v.id("citizens"), notes: v.optional(v.string()), photoUrl: v.optional(v.string()),
+  },
+  handler: async (ctx, a): Promise<Id<"vehicles">> => {
+    const agentId = await ctx.runQuery(api.nexusSync.myAgentId, {});
+    if (!agentId) throw new Error("Non authentifié.");
+    const cred = await ctx.runQuery(internal.nexusSync._credFor, { agentId });
+    if (!cred) throw new Error("Synchronisation Nexus non configurée (voir Mon profil).");
+    const owner = await ctx.runQuery(internal.nexusSync._citizenNexusRef, { citizenId: a.ownerId });
+    const t0 = Date.now();
+    const token = await getToken(ctx, agentId, cred);
+    let res: Response;
+    try {
+      res = await fetch(`${BASE}/api/vehicules`, { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify(vehiclePayload(a, undefined, owner)) });
+    } catch (e) {
+      await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: "vehicule", op: "POST", ok: false, durationMs: Date.now() - t0, agentId, error: e instanceof Error ? e.message : String(e) });
+      throw new Error("NexusMDT injoignable, véhicule non créé.");
+    }
+    if (!res.ok) {
+      const txt = await res.text().catch(() => "");
+      await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: "vehicule", op: "POST", ok: false, httpStatus: res.status, durationMs: Date.now() - t0, agentId, error: txt.slice(0, 160) });
+      throw new Error(`Création côté NexusMDT échouée (HTTP ${res.status}). ${txt.slice(0, 120)}`);
+    }
+    const j: any = await res.json();
+    const created = j.vehicule ?? j.data ?? j;
+    // Création locale (dédup par plaque) puis tamponnage du nexusId.
+    const id = await ctx.runMutation(api.vehicles.create, { plaque: a.plaque, modele: a.modele, couleur: a.couleur, type: a.type, ownerId: a.ownerId, notes: a.notes, photoUrl: a.photoUrl });
+    if (created?._id) await ctx.runMutation(internal.nexusSync._stampVehicleNexus, { id, nexusId: String(created._id) });
+    await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: "vehicule", op: "POST", ok: true, httpStatus: res.status, durationMs: Date.now() - t0, agentId, detail: `${a.plaque} · local ${id}` });
+    return id;
+  },
+});
+
+export const updateVehicle = action({
+  args: {
+    id: v.id("vehicles"), plaque: v.string(), modele: v.optional(v.string()), couleur: v.optional(v.string()),
+    type: v.optional(v.string()), ownerId: v.optional(v.id("citizens")), notes: v.optional(v.string()), photoUrl: v.optional(v.string()),
+  },
+  handler: async (ctx, a): Promise<void> => {
+    const agentId = await ctx.runQuery(api.nexusSync.myAgentId, {});
+    if (!agentId) throw new Error("Non authentifié.");
+    const cred = await ctx.runQuery(internal.nexusSync._credFor, { agentId });
+    const info = await ctx.runQuery(internal.nexusSync._vehicleNexus, { id: a.id });
+    const owner = await ctx.runQuery(internal.nexusSync._citizenNexusRef, { citizenId: a.ownerId });
+    const { id, ...fields } = a;
+
+    if (!cred || !info?.nexusId) { await ctx.runMutation(api.vehicles.update, { id, ...fields }); return; }
+
+    const t0 = Date.now();
+    const token = await getToken(ctx, agentId, cred);
+    const res = await fetch(`${BASE}/api/vehicules/${info.nexusId}`, { method: "PUT", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify(vehiclePayload(a, undefined, owner)) });
+    if (!res.ok) {
+      const txt = await res.text().catch(() => "");
+      await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: "vehicule", op: "PUT", ok: false, httpStatus: res.status, durationMs: Date.now() - t0, agentId, error: txt.slice(0, 160) });
+      throw new Error(`Édition côté NexusMDT échouée (HTTP ${res.status}). Modification non enregistrée.`);
+    }
+    await ctx.runMutation(api.vehicles.update, { id, ...fields });
+    await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: "vehicule", op: "PUT", ok: true, httpStatus: res.status, durationMs: Date.now() - t0, agentId, detail: a.plaque });
+  },
 });

@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { X, Trash2, Search } from "lucide-react";
-import { useMutation, useQuery, usePaginatedQuery } from "convex/react";
+import { X, Trash2, Search, Link2Off } from "lucide-react";
+import { useAction, useQuery, usePaginatedQuery } from "convex/react";
 import { api, type Id } from "@/lib/api";
 import { useCan } from "@/hooks/useCan";
 import { useToast } from "@/providers/toast";
@@ -20,6 +20,8 @@ const statusOf = (s: string) => STATUS.find((x) => x.value === s) ?? STATUS[1];
 
 export function Armes() {
   const { can } = useCan();
+  const nexusStatus = useQuery(api.nexusSync.myStatus);
+  const syncActive = !!nexusStatus?.configured && nexusStatus.status === "OK";
   const canCreate = can("armes.create");
   const canEdit = can("armes.edit");
   const canDelete = can("armes.delete");
@@ -39,7 +41,7 @@ export function Armes() {
       <div className="mb-[16px] flex items-center gap-3">
         <h1 className="m-0 text-[21px] font-bold tracking-tight">Registre des armes</h1>
         <div className="flex-1" />
-        {canCreate && <button onClick={() => setModal({})} className="mdt-press flex items-center gap-[7px] rounded-[9px] bg-accent px-[14px] py-[8px] text-[13px] font-semibold text-accent-contrast hover:brightness-[1.06]"><Clover color="#fff" size={17} /> Arme</button>}
+        {canCreate && syncActive && <button onClick={() => setModal({})} className="mdt-press flex items-center gap-[7px] rounded-[9px] bg-accent px-[14px] py-[8px] text-[13px] font-semibold text-accent-contrast hover:brightness-[1.06]"><Clover color="#fff" size={17} /> Arme</button>}
       </div>
 
       <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Rechercher (modèle, n° de série, type)…" className="mb-[14px] h-10 w-full max-w-[440px] rounded-sm border border-border bg-surface-2 px-3 text-[13px] outline-none focus:border-accent" />
@@ -73,15 +75,19 @@ export function Armes() {
 
 export function WeaponModal({ weaponId, canCreate, canEdit, canDelete: canDeleteAny, onClose }: { weaponId?: Id<"weapons">; canCreate: boolean; canEdit: boolean; canDelete: boolean; onClose: () => void }) {
   const isCreate = !weaponId;
-  const canWrite = isCreate ? canCreate : canEdit; // droit d'écriture selon création/édition
+  // Armes synchronisées au Nexus : écriture réservée aux comptes liés.
+  const canWriteBase = isCreate ? canCreate : canEdit;
   const existing = useQuery(api.weapons.list, weaponId ? {} : "skip");
   const w = weaponId && existing ? existing.find((x) => x._id === weaponId) : null;
   // L'agent qui a encodé l'arme peut la retirer sans détenir armes.delete.
   const canDelete = canDeleteAny || !!w?.mine;
   const opts = useQuery(api.configEditors.options);
-  const create = useMutation(api.weapons.create);
-  const update = useMutation(api.weapons.update);
-  const remove = useMutation(api.weapons.remove);
+  const createSynced = useAction(api.nexusSync.createWeapon);
+  const updateSynced = useAction(api.nexusSync.updateWeapon);
+  const delSynced = useAction(api.nexusSync.deleteRecord);
+  const nexusStatus = useQuery(api.nexusSync.myStatus);
+  const syncActive = !!nexusStatus?.configured && nexusStatus.status === "OK";
+  const canWrite = canWriteBase && syncActive;
   const toast = useToast();
   const navigate = useNavigate();
 
@@ -101,6 +107,7 @@ export function WeaponModal({ weaponId, canCreate, canEdit, canDelete: canDelete
   }
 
   async function save() {
+    if (!syncActive) { toast.error("Nécessite un compte NexusMDT lié (voir Mon profil)."); return; }
     if (!f.modele.trim() || !f.serial.trim()) { toast.error("Modèle et n° de série requis."); return; }
     setBusy(true);
     const payload = {
@@ -110,7 +117,8 @@ export function WeaponModal({ weaponId, canCreate, canEdit, canDelete: canDelete
       ownerId: owner ? (owner.id as Id<"citizens">) : undefined,
       status: f.status as "ACTIVE" | "ENREGISTREE" | "SAISIE" | "DETRUITE",
     };
-    const r = isCreate ? await toast.guard(create(payload), "Création impossible") : await toast.guard(update({ id: weaponId!, ...payload }), "Modification impossible");
+    // Write-through : d'abord côté NexusMDT, puis en local (rollback si échec).
+    const r = isCreate ? await toast.guard(createSynced(payload), "Création impossible") : await toast.guard(updateSynced({ id: weaponId!, ...payload }), "Modification impossible");
     setBusy(false);
     if (r !== undefined) { toast.success(isCreate ? "Arme encodée." : "Arme mise à jour."); onClose(); }
   }
@@ -152,13 +160,19 @@ export function WeaponModal({ weaponId, canCreate, canEdit, canDelete: canDelete
             ) : <div className="text-[13px] text-muted">-</div>}
           </L>
         </div>
-        {(canWrite || canDelete) && (
+        {(canWriteBase || canDelete) && !syncActive && nexusStatus !== undefined && (
+          <div className="flex flex-shrink-0 items-start gap-[9px] border-t border-border px-[18px] py-3 text-[12px]" style={{ background: "color-mix(in srgb, var(--warning) 9%, transparent)", color: "var(--warning)" }}>
+            <Link2Off className="mt-[1px] h-[15px] w-[15px] flex-shrink-0" />
+            <span>Le registre des armes est synchronisé avec le NexusMDT. Lie ton compte Nexus dans <b>Mon profil</b> pour encoder, modifier ou retirer une arme.</span>
+          </div>
+        )}
+        {syncActive && (canWrite || canDelete) && (
           <div className="flex flex-shrink-0 items-center gap-2 border-t border-border px-[18px] py-4">
             {!isCreate && canDelete && (confirm ? (
               <>
                 <span className="flex-1 text-[12.5px] text-muted">Supprimer ?</span>
                 <button onClick={() => setConfirm(false)} className="rounded-sm border border-border bg-surface-2 px-3 py-[9px] text-[12.5px] font-semibold">Annuler</button>
-                <button onClick={async () => { const r = await toast.guard(remove({ id: weaponId! }), "Suppression impossible"); if (r !== undefined) { toast.success("Supprimé."); onClose(); } }} className="rounded-sm px-3 py-[9px] text-[12.5px] font-semibold text-white" style={{ background: "var(--danger)" }}>Confirmer</button>
+                <button onClick={async () => { const r = await toast.guard(delSynced({ kind: "arme", localId: weaponId! }), "Suppression impossible"); if (r !== undefined) { toast.success("Supprimé."); onClose(); } }} className="rounded-sm px-3 py-[9px] text-[12.5px] font-semibold text-white" style={{ background: "var(--danger)" }}>Confirmer</button>
               </>
             ) : (
               <button onClick={() => setConfirm(true)} className="flex h-[38px] w-[38px] items-center justify-center rounded-sm border border-border bg-surface-2" style={{ color: "var(--danger)" }}><Trash2 className="h-4 w-4" /></button>

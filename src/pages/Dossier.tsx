@@ -353,7 +353,7 @@ export function Dossier() {
                   <span className="text-[10px] font-bold uppercase tracking-[0.08em] text-faint">
                     Véhicules rattachés
                   </span>
-                  {canCreateVehicle && (
+                  {canCreateVehicle && syncActive && (
                     <button
                       onClick={() => setVehicleModal({ mode: "create" })}
                       className="rounded-sm border border-border bg-surface-2 px-[11px] py-[6px] text-[12px] font-semibold text-text hover:border-border-strong"

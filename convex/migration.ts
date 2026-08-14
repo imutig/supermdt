@@ -141,6 +141,7 @@ function mapWeapon(w: any) {
     dateEnregistrement: (w.dateEnregistrement || "").trim() || undefined,
     status: mapWeaponStatus(w.statut),
     ownerName: w.citoyenLie?.nom || "",
+    nexusId: w._id ? String(w._id) : undefined,
   };
 }
 
@@ -155,6 +156,7 @@ function mapVehicle(v: any) {
     notes: (v.notes || "").trim() || undefined,
     nexusStatut: (v.statut || "").trim() || undefined,
     ownerName: (v.proprietaire?.nom || "").trim(),
+    nexusId: v._id ? String(v._id) : undefined,
   };
 }
 
@@ -419,8 +421,11 @@ export const _upsertWeapons = internalMutation({
       if (!s) continue;
       const exW = bySerial.get(s);
       if (exW || seen.has(s)) {
-        if (exW && !dryRun && exW.dateEnregistrement == null && w.dateEnregistrement) {
-          await ctx.db.patch(exW._id, { dateEnregistrement: w.dateEnregistrement }); enrichis++;
+        if (exW && !dryRun) {
+          const patch: Record<string, unknown> = {};
+          if (exW.dateEnregistrement == null && w.dateEnregistrement) patch.dateEnregistrement = w.dateEnregistrement;
+          if (exW.nexusId == null && w.nexusId) patch.nexusId = w.nexusId; // backfill pour edit/delete par id
+          if (Object.keys(patch).length) { await ctx.db.patch(exW._id, patch); enrichis++; }
         }
         continue;
       }
@@ -436,7 +441,7 @@ export const _upsertWeapons = internalMutation({
       if (dryRun) continue;
       await ctx.db.insert("weapons", {
         modele: w.modele, serial: w.serial, motif: w.motif, origine: w.origine, ownerId,
-        dateEnregistrement: w.dateEnregistrement,
+        dateEnregistrement: w.dateEnregistrement, nexusId: w.nexusId,
         status: w.status, at: Date.now(),
         searchText: norm(`${w.serial} ${w.modele} ${w.ownerName ?? ""}`),
       });
@@ -463,8 +468,11 @@ export const _upsertVehicles = internalMutation({
       if (!p) continue;
       const exV = byPlate.get(p);
       if (exV || seen.has(p)) {
-        if (exV && !dryRun && exV.nexusStatut == null && v0.nexusStatut) {
-          await ctx.db.patch(exV._id, { nexusStatut: v0.nexusStatut }); enrichis++;
+        if (exV && !dryRun) {
+          const patch: Record<string, unknown> = {};
+          if (exV.nexusStatut == null && v0.nexusStatut) patch.nexusStatut = v0.nexusStatut;
+          if (exV.nexusId == null && v0.nexusId) patch.nexusId = v0.nexusId; // backfill pour edit/delete par id
+          if (Object.keys(patch).length) { await ctx.db.patch(exV._id, patch); enrichis++; }
         }
         continue;
       }
@@ -475,7 +483,7 @@ export const _upsertVehicles = internalMutation({
       if (dryRun) continue;
       await ctx.db.insert("vehicles", {
         plaque: v0.plaque, modele: v0.modele, couleur: v0.couleur, type: v0.type, notes: v0.notes, ownerId,
-        nexusStatut: v0.nexusStatut,
+        nexusStatut: v0.nexusStatut, nexusId: v0.nexusId,
         photoStorageIds: [],
         searchText: norm(`${v0.plaque} ${v0.modele ?? ""} ${v0.couleur ?? ""} ${v0.type ?? ""}`),
       });

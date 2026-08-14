@@ -1181,10 +1181,13 @@ export default defineSchema({
     createdBy: v.optional(v.id("agents")),
     deletedAt: v.optional(v.number()),
     deletedBy: v.optional(v.id("agents")),
+    nexusId: v.optional(v.string()), // _id Mongo Nexus (edit/delete par id)
+    importRef: v.optional(v.string()),
   })
     .index("by_plaque", ["plaque"])
     .index("by_owner", ["ownerId"])
     .index("by_deleted", ["deletedAt"])
+    .index("by_import", ["importRef"])
     .searchIndex("search", { searchField: "searchText" }),
 
   vehicleFlagTypes: defineTable({
@@ -1785,10 +1788,13 @@ export default defineSchema({
     searchText: v.string(),
     deletedAt: v.optional(v.number()),
     deletedBy: v.optional(v.id("agents")),
+    nexusId: v.optional(v.string()), // _id Mongo Nexus (edit/delete par id)
+    importRef: v.optional(v.string()),
   })
     .index("by_owner", ["ownerId"])
     .index("by_serial", ["serial"])
     .index("by_deleted", ["deletedAt"])
+    .index("by_import", ["importRef"])
     .searchIndex("search", { searchField: "searchText" }),
 
   // ============ SYNCHRO NEXUS (write-through) ============

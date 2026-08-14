@@ -15,7 +15,9 @@ type Tab = "citoyens" | "flotte" | "sorties";
 
 export function Vehicules() {
   const { can } = useCan();
-  const canCreate = can("vehicules.create");
+  const nexusStatus = useQuery(api.nexusSync.myStatus);
+  const syncActive = !!nexusStatus?.configured && nexusStatus.status === "OK";
+  const canCreate = can("vehicules.create") && syncActive;
   const canEdit = can("vehicules.edit");
   const canFleet = can("flotte.view");
   const [tab, setTab] = useState<Tab>("citoyens");

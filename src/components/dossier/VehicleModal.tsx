@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { X, Trash2, Pencil, Search } from "lucide-react";
-import { useMutation, useQuery } from "convex/react";
+import { X, Trash2, Pencil, Search, Link2Off } from "lucide-react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { api, type Id } from "@/lib/api";
 import { ImageUpload } from "@/components/common/ImageUpload";
 import { useToast } from "@/providers/toast";
@@ -58,10 +58,14 @@ export function VehicleModal({ vehicleId, ownerId, ownerName, initialPlaque, can
   const vehicle = useQuery(api.vehicles.get, vehicleId ? { id: vehicleId } : "skip");
   // L'agent qui a enregistré le véhicule peut le modifier et le retirer sans
   // détenir vehicules.edit.
-  const canEdit = canEditAny || !!vehicle?.mine;
-  const create = useMutation(api.vehicles.create);
-  const update = useMutation(api.vehicles.update);
-  const remove = useMutation(api.vehicles.remove);
+  const canEditBase = canEditAny || !!vehicle?.mine;
+  const createSynced = useAction(api.nexusSync.createVehicle);
+  const updateSynced = useAction(api.nexusSync.updateVehicle);
+  const delSynced = useAction(api.nexusSync.deleteRecord);
+  const nexusStatus = useQuery(api.nexusSync.myStatus);
+  const syncActive = !!nexusStatus?.configured && nexusStatus.status === "OK";
+  // Véhicules synchronisés au Nexus : écriture réservée aux comptes liés.
+  const canEdit = canEditBase && syncActive;
 
   const [editing, setEditing] = useState(isCreate);
   const [busy, setBusy] = useState(false);
@@ -101,7 +105,7 @@ export function VehicleModal({ vehicleId, ownerId, ownerName, initialPlaque, can
         return;
       }
       const r = await toast.guard(
-        create({
+        createSynced({
           plaque: form.plaque.trim(),
           modele: form.modele.trim() || undefined,
           couleur: form.couleur.trim() || undefined,
@@ -119,7 +123,7 @@ export function VehicleModal({ vehicleId, ownerId, ownerName, initialPlaque, can
       }
     } else if (vehicleId) {
       const r = await toast.guard(
-        update({
+        updateSynced({
           id: vehicleId,
           plaque: form.plaque.trim(),
           modele: form.modele.trim() || undefined,
@@ -139,7 +143,7 @@ export function VehicleModal({ vehicleId, ownerId, ownerName, initialPlaque, can
   async function doDelete() {
     if (!vehicleId) return;
     setBusy(true);
-    const r = await toast.guard(remove({ id: vehicleId }), "Suppression impossible");
+    const r = await toast.guard(delSynced({ kind: "vehicule", localId: vehicleId }), "Suppression impossible");
     setBusy(false);
     if (r !== undefined) {
       toast.success("Véhicule supprimé.");
@@ -264,6 +268,12 @@ export function VehicleModal({ vehicleId, ownerId, ownerName, initialPlaque, can
           )}
         </div>
 
+        {canEditBase && !syncActive && nexusStatus !== undefined && (
+          <div className="flex flex-shrink-0 items-start gap-[9px] border-t border-border px-[18px] py-3 text-[12px]" style={{ background: "color-mix(in srgb, var(--warning) 9%, transparent)", color: "var(--warning)" }}>
+            <Link2Off className="mt-[1px] h-[15px] w-[15px] flex-shrink-0" />
+            <span>Les véhicules sont synchronisés avec le NexusMDT. Lie ton compte Nexus dans <b>Mon profil</b> pour enregistrer, modifier ou retirer un véhicule.</span>
+          </div>
+        )}
         {canEdit && (
           <div className="flex flex-shrink-0 items-center gap-2 border-t border-border px-[18px] py-4">
             {confirm ? (
