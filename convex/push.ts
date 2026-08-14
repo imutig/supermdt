@@ -11,9 +11,12 @@ import { internalAction } from "./_generated/server";
 export const notify = internalAction({
   args: {},
   handler: async (): Promise<void> => {
-    const base = process.env.BOT_PUSH_URL;
+    const raw = process.env.BOT_PUSH_URL;
     const secret = process.env.BOT_SECRET;
-    if (!base || !secret) return; // push non configuré : le poll de sécurité s'en charge.
+    if (!raw || !secret) return; // push non configuré : le poll de sécurité s'en charge.
+    // Tolère une URL sans schéma (ex. "superbot.up.railway.app") : fetch() exige
+    // http(s):// sinon il jette et le push est perdu.
+    const base = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
     const url = base.replace(/\/$/, "") + "/push";
     // 2 tentatives immédiates ; en cas d'échec, le poll de sécurité prendra le relais.
     for (let attempt = 0; attempt < 2; attempt++) {

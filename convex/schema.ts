@@ -1117,6 +1117,7 @@ export default defineSchema({
     .index("by_telephone", ["telephone"])
     .index("by_deleted", ["deletedAt"])
     .index("by_import", ["importRef"])
+    .index("by_nexus", ["nexusId"]) // id Mongo Nexus : clé STABLE (les numero se réutilisent)
     .searchIndex("search", { searchField: "searchText" }),
 
   // Liens de parenté entre citoyens enregistrés (arbre généalogique).

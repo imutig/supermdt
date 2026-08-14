@@ -349,10 +349,10 @@ export const removeCredential = mutation({
 // Un citoyen déjà importé localement (par son importRef nexus-citoyen:<numero>) ?
 // Sert à la récupération d'un POST 5xx : on ne « récupère » que des fiches
 // nouvelles pour nous, jamais un homonyme déjà présent.
-export const _citizenIdByImportRef = internalQuery({
-  args: { importRef: v.string() },
-  handler: async (ctx, { importRef }) => {
-    const row = await ctx.db.query("citizens").withIndex("by_import", (q) => q.eq("importRef", importRef)).first();
+export const _citizenIdByNexusId = internalQuery({
+  args: { nexusId: v.string() },
+  handler: async (ctx, { nexusId }) => {
+    const row = await ctx.db.query("citizens").withIndex("by_nexus", (q) => q.eq("nexusId", nexusId)).first();
     return row?._id ?? null;
   },
 });
@@ -371,7 +371,14 @@ export const _insertCitizenFromNexus = internalMutation({
   args: { raw: v.string(), createdBy: v.id("agents"), mugshotUrl: v.optional(v.string()) },
   handler: async (ctx, { raw, createdBy, mugshotUrl }): Promise<Id<"citizens">> => {
     const c = mapCitizen(JSON.parse(raw));
-    if (c.importRef) {
+    // Dédup par l'id Mongo Nexus (STABLE) en priorité. Les `numero` Nexus se
+    // réutilisent : dédupliquer sur importRef (nexus-citoyen:<numero>) renvoyait
+    // parfois un ANCIEN citoyen homonyme de numéro et la nouvelle fiche n'était
+    // jamais insérée (elle n'apparaissait qu'après une synchro manuelle).
+    if (c.nexusId) {
+      const dup = await ctx.db.query("citizens").withIndex("by_nexus", (q) => q.eq("nexusId", c.nexusId)).first();
+      if (dup) return dup._id;
+    } else if (c.importRef) {
       const dup = await ctx.db.query("citizens").withIndex("by_import", (q) => q.eq("importRef", c.importRef)).first();
       if (dup) return dup._id;
     }
@@ -443,11 +450,11 @@ export const createCitizen = action({
           .filter((c) => norm(String(c.prenom ?? "")) === wantP && norm(String(c.nom ?? "")) === wantN)
           .sort((x, y) => Number(y.numero ?? 0) - Number(x.numero ?? 0));
         for (const m of matches) {
-          const numero = m.numero ?? m._id;
-          const importRef = numero != null ? `nexus-citoyen:${numero}` : undefined;
-          if (importRef && await ctx.runQuery(internal.nexusSync._citizenIdByImportRef, { importRef })) continue; // déjà local : homonyme, pas notre fiche
+          const nexusId = String(m._id ?? m.id ?? "");
+          // Déjà en local (par id Mongo stable) : homonyme préexistant, pas notre fiche.
+          if (nexusId && await ctx.runQuery(internal.nexusSync._citizenIdByNexusId, { nexusId })) continue;
           const citizenId = await ctx.runMutation(internal.nexusSync._insertCitizenFromNexus, { raw: JSON.stringify(m), createdBy: agentId, mugshotUrl: a.mugshotUrl });
-          await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: "citoyen", op: "POST", ok: true, httpStatus: res.status, durationMs: Date.now() - t0, agentId, detail: `RECUP apres ${res.status} · ${a.prenom} ${a.nom} · Nexus n°${numero ?? "?"} · local ${citizenId}` });
+          await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: "citoyen", op: "POST", ok: true, httpStatus: res.status, durationMs: Date.now() - t0, agentId, detail: `RECUP apres ${res.status} · ${a.prenom} ${a.nom} · Nexus n°${m.numero ?? "?"} · local ${citizenId}` });
           return citizenId;
         }
       }
