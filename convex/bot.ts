@@ -382,7 +382,20 @@ export const config = query({
       rollcallPingEnabled: cfg?.botRollcallPingEnabled ?? false,
       sanctionsChannel: cfg?.botSanctionsChannel ?? null,
       sanctionsPingRole: cfg?.botSanctionsPingRole ?? null,
+      lastDailyRecap: cfg?.botLastDailyRecap ?? null,
     };
+  },
+});
+
+// Récap quotidien : marque la date (Paris) du dernier envoi pour éviter les
+// doublons (persistant, survit à un redéploiement du bot).
+export const markDailyRecapSent = mutation({
+  args: { secret: v.string(), day: v.string() },
+  handler: async (ctx, { secret, day }) => {
+    assertBot(secret);
+    const cfg = await ctx.db.query("integrationConfig").first();
+    if (cfg) await ctx.db.patch(cfg._id, { botLastDailyRecap: day });
+    else await ctx.db.insert("integrationConfig", { botLastDailyRecap: day, updatedAt: Date.now() });
   },
 });
 

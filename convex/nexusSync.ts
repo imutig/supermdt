@@ -99,25 +99,29 @@ export const _log = internalMutation({
     agentId: v.optional(v.id("agents")), detail: v.optional(v.string()), error: v.optional(v.string()),
   },
   handler: async (ctx, a) => {
-    await ctx.db.insert("nexusSyncLog", { at: Date.now(), ...a });
+    const now = Date.now();
+    await ctx.db.insert("nexusSyncLog", { at: now, ...a });
     if (a.ok) return;
-    // Alerte au 3e échec consécutif de la même direction (anti-spam : une seule
-    // alerte non envoyée à la fois).
-    const recent = await ctx.db.query("nexusSyncLog").withIndex("by_at").order("desc").take(6);
-    let consec = 0;
-    for (const r of recent) { if (r.direction !== a.direction) continue; if (!r.ok) consec++; else break; }
-    if (consec === 3) {
-      const pending = await ctx.db.query("nexusAlerts").withIndex("by_sent", (q) => q.eq("sent", false)).first();
-      if (!pending) {
-        await ctx.db.insert("nexusAlerts", {
-          at: Date.now(),
-          message: `⚠️ **Synchro NexusMDT** — ${consec} échecs consécutifs (${a.direction}).\nDernière erreur : ${a.error ?? a.httpStatus ?? "inconnue"}`,
-          targetDiscordId: process.env.NEXUS_ALERT_DISCORD_ID || "263679048712978432",
-          sent: false,
-        });
-        await ctx.scheduler.runAfter(0, internal.push.notify, {}); // prévient le bot (alerte synchro)
-      }
-    }
+    // Détection d'incident sur FENÊTRE TEMPORELLE (et non « 3 échecs consécutifs
+    // dans les 6 derniers logs », qui ratait les pannes en trafic mixte et
+    // n'alertait qu'une seule fois) : on alerte si ≥ 3 échecs de la même direction
+    // dans les 30 dernières minutes. Anti-spam : une seule alerte non envoyée à la
+    // fois, et un cooldown d'1 h entre deux alertes.
+    const WINDOW = 30 * 60_000, THRESHOLD = 3, COOLDOWN = 60 * 60_000;
+    const recent = await ctx.db.query("nexusSyncLog").withIndex("by_at", (q) => q.gte("at", now - WINDOW)).collect();
+    const failures = recent.filter((r) => r.direction === a.direction && !r.ok).length;
+    if (failures < THRESHOLD) return;
+    const alerts = await ctx.db.query("nexusAlerts").withIndex("by_sent").collect();
+    if (alerts.some((al) => !al.sent)) return; // une alerte est déjà en attente d'envoi
+    const lastAt = alerts.reduce((m, x) => Math.max(m, x.at), 0);
+    if (now - lastAt < COOLDOWN) return; // cooldown : pas de re-spam
+    await ctx.db.insert("nexusAlerts", {
+      at: now,
+      message: `⚠️ **Synchro NexusMDT** — ${failures} échecs (${a.direction}) en 30 min.\nDernière erreur : ${a.error ?? a.httpStatus ?? "inconnue"}`,
+      targetDiscordId: process.env.NEXUS_ALERT_DISCORD_ID || "263679048712978432",
+      sent: false,
+    });
+    await ctx.scheduler.runAfter(0, internal.push.notify, {}); // prévient le bot (alerte synchro)
   },
 });
 
@@ -444,7 +448,7 @@ export const createCitizen = action({
     const agentId = await ctx.runQuery(api.nexusSync.myAgentId, {});
     if (!agentId) throw new ConvexError("Non authentifié.");
     const cred = await ctx.runQuery(internal.nexusSync._credFor, { agentId });
-    if (!cred) throw new ConvexError("Synchronisation Nexus non configurée (voir Mon profil).");
+    if (!cred) throw new ConvexError("Compte NexusMDT non lié : reliez-le dans Mon profil > Paramètres pour créer des fiches (elles sont écrites en votre nom sur le NexusMDT).");
 
     const payload: Record<string, unknown> = {
       entity: "lspd",
@@ -543,7 +547,7 @@ export const createContravention = action({
     const agentId = await ctx.runQuery(api.nexusSync.myAgentId, {});
     if (!agentId) throw new ConvexError("Non authentifié.");
     const cred = await ctx.runQuery(internal.nexusSync._credFor, { agentId });
-    if (!cred) throw new ConvexError("Synchronisation Nexus non configurée (voir Mon profil).");
+    if (!cred) throw new ConvexError("Compte NexusMDT non lié : reliez-le dans Mon profil > Paramètres pour créer des fiches (elles sont écrites en votre nom sur le NexusMDT).");
 
     // 1) Création locale (calcul des amendes/charges par la logique existante).
     const citationId = await ctx.runMutation(api.citations.create, { citizenId: a.citizenId, vehicleId: a.vehicleId, charges: a.charges, notes: a.notes });
@@ -639,7 +643,7 @@ export const createCasier = action({
     const agentId = await ctx.runQuery(api.nexusSync.myAgentId, {});
     if (!agentId) throw new ConvexError("Non authentifié.");
     const cred = await ctx.runQuery(internal.nexusSync._credFor, { agentId });
-    if (!cred) throw new ConvexError("Synchronisation Nexus non configurée (voir Mon profil).");
+    if (!cred) throw new ConvexError("Compte NexusMDT non lié : reliez-le dans Mon profil > Paramètres pour créer des fiches (elles sont écrites en votre nom sur le NexusMDT).");
 
     const entryId = await ctx.runMutation(api.casier.addEntry, a);
     const info = await ctx.runQuery(internal.nexusSync._casierForPush, { entryId });
@@ -956,7 +960,7 @@ export const createComplaint = action({
     const agentId = await ctx.runQuery(api.nexusSync.myAgentId, {});
     if (!agentId) throw new ConvexError("Non authentifié.");
     const cred = await ctx.runQuery(internal.nexusSync._credFor, { agentId });
-    if (!cred) throw new ConvexError("Synchronisation Nexus non configurée (voir Mon profil).");
+    if (!cred) throw new ConvexError("Compte NexusMDT non lié : reliez-le dans Mon profil > Paramètres pour créer des fiches (elles sont écrites en votre nom sur le NexusMDT).");
     const cx = await ctx.runQuery(internal.nexusSync._complaintPushCtx, { plaignantId: a.plaignantId, defendantCitizenId: a.defendantCitizenId, defendantName: a.defendantName, agentIds: a.agentIds });
     if (!cx?.plaignant?.nexusId) throw new ConvexError("Le plaignant n'existe pas encore côté NexusMDT (resync nécessaire).");
 
@@ -1069,7 +1073,7 @@ export const createDeposition = action({
     const agentId = await ctx.runQuery(api.nexusSync.myAgentId, {});
     if (!agentId) throw new ConvexError("Non authentifié.");
     const cred = await ctx.runQuery(internal.nexusSync._credFor, { agentId });
-    if (!cred) throw new ConvexError("Synchronisation Nexus non configurée (voir Mon profil).");
+    if (!cred) throw new ConvexError("Compte NexusMDT non lié : reliez-le dans Mon profil > Paramètres pour créer des fiches (elles sont écrites en votre nom sur le NexusMDT).");
     if (!a.title.trim()) throw new ConvexError("L'objet de la déposition est requis.");
     const cx = await ctx.runQuery(internal.nexusSync._depositionPushCtx, { citizenId: a.citizenId, agentIds: a.agentIds });
     if (!cx?.citoyen?.nexusId) throw new ConvexError("Ce citoyen n'existe pas encore côté NexusMDT (resync nécessaire).");
@@ -1204,7 +1208,7 @@ export const createWeapon = action({
     const agentId = await ctx.runQuery(api.nexusSync.myAgentId, {});
     if (!agentId) throw new ConvexError("Non authentifié.");
     const cred = await ctx.runQuery(internal.nexusSync._credFor, { agentId });
-    if (!cred) throw new ConvexError("Synchronisation Nexus non configurée (voir Mon profil).");
+    if (!cred) throw new ConvexError("Compte NexusMDT non lié : reliez-le dans Mon profil > Paramètres pour créer des fiches (elles sont écrites en votre nom sur le NexusMDT).");
     const owner = await ctx.runQuery(internal.nexusSync._citizenNexusRef, { citizenId: a.ownerId });
     const typeName = await ctx.runQuery(internal.nexusSync._weaponTypeName, { typeId: a.typeId });
     const t0 = Date.now();
@@ -1285,7 +1289,7 @@ export const createVehicle = action({
     const agentId = await ctx.runQuery(api.nexusSync.myAgentId, {});
     if (!agentId) throw new ConvexError("Non authentifié.");
     const cred = await ctx.runQuery(internal.nexusSync._credFor, { agentId });
-    if (!cred) throw new ConvexError("Synchronisation Nexus non configurée (voir Mon profil).");
+    if (!cred) throw new ConvexError("Compte NexusMDT non lié : reliez-le dans Mon profil > Paramètres pour créer des fiches (elles sont écrites en votre nom sur le NexusMDT).");
     const owner = await ctx.runQuery(internal.nexusSync._citizenNexusRef, { citizenId: a.ownerId });
     const t0 = Date.now();
     let res: Response;

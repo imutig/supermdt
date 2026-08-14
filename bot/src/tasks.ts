@@ -110,7 +110,6 @@ export function startTasks(client: Client) {
 
     const now = new Date();
     const P = parisNow(now); // heure de Paris (indépendante du fuseau serveur)
-    const hhmm = P.hhmm;
     const today = P.date;
 
     // --- Roll call : ouverture, puis clôture à l'heure de fin ---
@@ -330,17 +329,27 @@ export function startTasks(client: Client) {
     } catch (err) { console.error("[ceremonie] publication :", err); }
 
     // --- Récapitulatif quotidien ---
-    if (cfg.dailyChannel && cfg.dailyAt === hhmm && lastDailySent !== today) {
-      lastDailySent = today;
+    // Logique de FENÊTRE (heure de passée) + anti-doublon PERSISTANT (Convex),
+    // et non plus une égalité stricte à la minute (fragile : un tick 5 min pouvait
+    // « sauter » la minute exacte) avec un état en mémoire (perdu au redéploiement).
+    if (
+      cfg.dailyChannel && cfg.dailyAt &&
+      P.min >= toMin(cfg.dailyAt) &&
+      cfg.lastDailyRecap !== today && lastDailySent !== today
+    ) {
       const chan = await channel(client, cfg.dailyChannel);
+      let sent = false;
       if (chan) {
         try {
           await chan.send({ embeds: [dailyEmbed(await mdt.dayStats())] });
+          sent = true;
           console.log("[tasks] récapitulatif quotidien envoyé.");
         } catch (err) {
           console.error("[daily] erreur :", err);
         }
       }
+      // On ne marque « envoyé » (mémoire + persistant) qu'après un envoi confirmé.
+      if (sent) { lastDailySent = today; await mdt.markDailyRecapSent(today).catch(() => {}); }
     }
   };
 

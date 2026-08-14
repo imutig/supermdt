@@ -181,7 +181,14 @@ export function mapAmende(a: any) {
     articleLoi: (String(pick(a, "articleLoi", "article") ?? "").trim()) || undefined,
     referenceJuridique: (String(pick(a, "referenceJuridique", "reference") ?? "").trim()) || undefined,
     statut: statut || undefined,
-    finePaid: /pay/i.test(statut),
+    // « payée » vs « NON payée » / « impayée » : un simple test /pay/i marquait à
+    // tort « Non payée » comme réglée. On normalise et on écarte explicitement les
+    // libellés négatifs.
+    finePaid: (() => {
+      const s = norm(statut);
+      if (/non\s*pay|impay|attente|a\s*regler|a\s*payer/.test(s)) return false;
+      return /paye|regle|paid|acquitt|solde/.test(s);
+    })(),
     annulee: /annul/i.test(statut),
     lieu: (String(pick(a, "lieuInfraction", "lieu", "adressePrecise") ?? "").trim()) || undefined,
     objet,

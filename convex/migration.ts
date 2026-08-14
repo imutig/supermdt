@@ -358,6 +358,9 @@ export const _upsertCitizens = internalMutation({
   handler: async (ctx, { rows, dryRun }): Promise<CitRep> => {
     const existing = await ctx.db.query("citizens").collect();
     const byKey = new Map(existing.map((c) => [norm(`${c.prenom}|${c.nom}|${c.dateNaissance ?? ""}`), c]));
+    // Dédup PRIORITAIRE par id Mongo Nexus (stable) : un citoyen renommé côté
+    // Nexus garde son nexusId, on le retrouve donc au lieu d'en créer un doublon.
+    const byNexus = new Map(existing.filter((c) => c.nexusId).map((c) => [c.nexusId as string, c]));
     const permis = (await ctx.db.query("licenseTypes").collect()).find((l) => norm(l.name).includes("permis de conduire"));
     // Champs de parité Nexus : on les rétro-remplit sur les fiches existantes,
     // sans écraser une valeur déjà renseignée côté SuperMDT.
@@ -367,8 +370,9 @@ export const _upsertCitizens = internalMutation({
     const seen = new Set<string>();
     for (const c of rows) {
       const key = norm(`${c.prenom}|${c.nom}|${c.dateNaissance ?? ""}`);
-      const ex = byKey.get(key);
-      if (ex || seen.has(key)) {
+      const nxKey = c.nexusId ? `nx:${c.nexusId}` : null;
+      const ex = (c.nexusId ? byNexus.get(c.nexusId) : undefined) ?? byKey.get(key);
+      if (ex || seen.has(key) || (nxKey && seen.has(nxKey))) {
         if (ex && !dryRun) {
           const patch: Record<string, unknown> = {};
           for (const f of parityFields) if ((ex as any)[f] == null && (c as any)[f] != null) patch[f] = (c as any)[f];
@@ -378,6 +382,7 @@ export const _upsertCitizens = internalMutation({
         continue;
       }
       seen.add(key);
+      if (nxKey) seen.add(nxKey);
       ajoutes++;
       if (c.permisConduire && permis) permisAjoutes++;
       if (dryRun) continue;

@@ -42,6 +42,7 @@ type BotConfig = {
   rollcallPingEnabled: boolean;
   sanctionsChannel: string | null;
   sanctionsPingRole: string | null;
+  lastDailyRecap: string | null;
 };
 
 export type SanctionAnnounce = {
@@ -76,6 +77,7 @@ export const mdt = {
   dayStats: () => client.query(anyApi.bot.dayStats, { secret: env.botSecret }) as Promise<DayStats>,
   overview: () => client.query(anyApi.bot.overview, { secret: env.botSecret }) as Promise<Overview>,
   config: () => client.query(anyApi.bot.config, { secret: env.botSecret }) as Promise<BotConfig>,
+  markDailyRecapSent: (day: string) => client.mutation(anyApi.bot.markDailyRecapSent, { secret: env.botSecret, day }) as Promise<void>,
   weeklyHours: (query: string) => client.query(anyApi.bot.agentWeeklyHours, { secret: env.botSecret, query }) as Promise<WeeklyHours>,
 
   rollcallToday: (date: string) => client.query(anyApi.bot.rollcallToday, { secret: env.botSecret, date }) as Promise<RollcallRef | null>,

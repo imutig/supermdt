@@ -1600,6 +1600,9 @@ export default defineSchema({
     botSanctionsPingRole: v.optional(v.string()),
     // Cérémonies : salon où poster l'annonce ET le résultat de cérémonie.
     botCeremonyChannel: v.optional(v.string()),
+    // Date (YYYY-MM-DD, Paris) du dernier récap quotidien envoyé : persiste
+    // l'anti-doublon au-delà d'un redéploiement du bot.
+    botLastDailyRecap: v.optional(v.string()),
     updatedBy: v.optional(v.id("agents")),
     updatedAt: v.number(),
   }),
