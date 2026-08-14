@@ -847,7 +847,10 @@ export default defineSchema({
   fleetVehicles: defineTable({
     modele: v.string(),
     plaque: v.string(),
-    roofNumber: v.string(), // numéro de toit complet (ex. "509")
+    // Type de véhicule : PATROUILLE | SWAT | METRO | DB (banalisé) | SUPERVISOR
+    // | COMMAND_STAFF | AUTRE. Optionnel (les fiches existantes = PATROUILLE).
+    type: v.optional(v.string()),
+    roofNumber: v.string(), // numéro de toit complet (ex. "509") ; vide pour un banalisé (DB)
     photoUrls: v.optional(v.array(v.string())),
     searchText: v.string(), // toit + plaque + modèle, normalisés (recherche)
     active: v.boolean(),

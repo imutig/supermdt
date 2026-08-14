@@ -8,6 +8,18 @@ import { EmptyState } from "@/components/common/EmptyState";
 import { SkeletonRows } from "@/components/common/Skeleton";
 import { ImageUpload } from "@/components/common/ImageUpload";
 
+// Types de véhicule LSPD. DB = banalisé : pas de numéro de toit.
+const FLEET_TYPES: { value: string; label: string }[] = [
+  { value: "PATROUILLE", label: "Patrouille classique" },
+  { value: "SWAT", label: "SWAT" },
+  { value: "METRO", label: "Metro" },
+  { value: "DB", label: "DB (Banalisé)" },
+  { value: "SUPERVISOR", label: "Supervisor" },
+  { value: "COMMAND_STAFF", label: "Command Staff" },
+  { value: "AUTRE", label: "Autre" },
+];
+const typeLabel = (t?: string) => FLEET_TYPES.find((x) => x.value === t)?.label ?? "Patrouille classique";
+
 // Registre des véhicules de service. Le numéro de toit détermine l'indicatif
 // de patrouille : ses deux derniers chiffres en forment le suffixe.
 export function FleetPanel() {
@@ -57,10 +69,13 @@ export function FleetPanel() {
                   ? <img src={v.photoUrl} alt="" className="h-[36px] w-[48px] rounded-[5px] border border-border object-cover" />
                   : <span className="flex h-[36px] w-[48px] items-center justify-center rounded-[5px] border border-dashed border-border text-faint"><Car className="h-[15px] w-[15px]" /></span>}
               </span>
-              <span className="font-data text-[14px] font-bold">{v.roofNumber}</span>
-              <span className="text-[13px]">{v.modele}</span>
+              <span className="font-data text-[14px] font-bold">{v.roofNumber || "n/a"}</span>
+              <span className="flex min-w-0 items-center gap-2 text-[13px]">
+                <span className="truncate">{v.modele}</span>
+                <span className="flex-shrink-0 rounded-[5px] border border-border bg-surface-2 px-[7px] py-[2px] text-[10px] font-semibold uppercase tracking-[0.04em] text-muted">{typeLabel(v.type)}</span>
+              </span>
               <span className="font-data text-[12.5px] text-muted">{v.plaque}</span>
-              <span className="font-data text-[12.5px]" style={{ color: "var(--accent)" }}>13x{v.number}{v.active ? "" : " · hors service"}</span>
+              <span className="font-data text-[12.5px]" style={{ color: "var(--accent)" }}>{v.number ? `13x${v.number}` : "Banalisé"}{v.active ? "" : " · hors service"}</span>
             </div>
           ))
         )}
@@ -81,26 +96,31 @@ function FleetVehicleModal({ id, canEdit, onClose }: { id?: Id<"fleetVehicles">;
   const toast = useToast();
 
   const [init, setInit] = useState(false);
-  const [f, setF] = useState({ modele: "", plaque: "", roofNumber: "", active: true });
+  const [f, setF] = useState({ modele: "", plaque: "", type: "PATROUILLE", roofNumber: "", active: true });
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState(false);
 
   if (!init && existing) {
     setInit(true);
-    setF({ modele: existing.modele, plaque: existing.plaque, roofNumber: existing.roofNumber, active: existing.active });
+    setF({ modele: existing.modele, plaque: existing.plaque, type: existing.type ?? "PATROUILLE", roofNumber: existing.roofNumber, active: existing.active });
     setPhotoUrl(existing.photoUrl);
   }
 
+  const banalise = f.type === "DB";
   const suffix = f.roofNumber.replace(/[^0-9]/g, "").slice(-2).padStart(2, "0");
 
   async function save() {
-    if (!f.modele.trim() || !f.plaque.trim() || !f.roofNumber.trim()) {
-      toast.error("Modèle, plaque et numéro de toit requis.");
+    if (!f.modele.trim() || !f.plaque.trim()) {
+      toast.error("Modèle et plaque requis.");
+      return;
+    }
+    if (!banalise && !f.roofNumber.trim()) {
+      toast.error("Numéro de toit requis (sauf véhicule banalisé).");
       return;
     }
     setBusy(true);
-    const payload = { modele: f.modele.trim(), plaque: f.plaque.trim(), roofNumber: f.roofNumber.trim(), photoUrl: photoUrl ?? undefined };
+    const payload = { modele: f.modele.trim(), plaque: f.plaque.trim(), type: f.type, roofNumber: banalise ? "" : f.roofNumber.trim(), photoUrl: photoUrl ?? undefined };
     const r = isCreate
       ? await toast.guard(create(payload), "Création impossible")
       : await toast.guard(update({ id: id!, ...payload, active: f.active }), "Modification impossible");
@@ -122,16 +142,29 @@ function FleetVehicleModal({ id, canEdit, onClose }: { id?: Id<"fleetVehicles">;
           <L label="Photo">
             <ImageUpload value={photoUrl} onChange={setPhotoUrl} aspect="wide" className="w-[220px]" disabled={!canEdit} />
           </L>
-          <div className="grid grid-cols-2 gap-3">
-            <L label="N° de toit">
-              <input value={f.roofNumber} onChange={(e) => setF({ ...f, roofNumber: e.target.value })} placeholder="509" disabled={!canEdit} className={`${F} font-data`} />
-            </L>
-            <L label="Indicatif de patrouille">
-              <div className="flex h-10 items-center rounded-sm border border-dashed border-border px-3 font-data text-[13px]" style={{ color: "var(--accent)" }}>
-                13x{suffix}
+          <L label="Type">
+            <select value={f.type} onChange={(e) => setF({ ...f, type: e.target.value })} disabled={!canEdit} className={F}>
+              {FLEET_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+            </select>
+          </L>
+          {banalise ? (
+            <L label="Numéro de toit">
+              <div className="flex h-10 items-center rounded-sm border border-dashed border-border px-3 text-[13px] text-muted">
+                Aucun (véhicule banalisé)
               </div>
             </L>
-          </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-3">
+              <L label="N° de toit">
+                <input value={f.roofNumber} onChange={(e) => setF({ ...f, roofNumber: e.target.value })} placeholder="509" disabled={!canEdit} className={`${F} font-data`} />
+              </L>
+              <L label="Indicatif de patrouille">
+                <div className="flex h-10 items-center rounded-sm border border-dashed border-border px-3 font-data text-[13px]" style={{ color: "var(--accent)" }}>
+                  13x{suffix}
+                </div>
+              </L>
+            </div>
+          )}
           <L label="Modèle"><input value={f.modele} onChange={(e) => setF({ ...f, modele: e.target.value })} placeholder="Bravado Buffalo" disabled={!canEdit} className={F} /></L>
           <L label="Plaque"><input value={f.plaque} onChange={(e) => setF({ ...f, plaque: e.target.value })} placeholder="LSPD 001" disabled={!canEdit} className={`${F} font-data uppercase`} /></L>
           {!isCreate && (

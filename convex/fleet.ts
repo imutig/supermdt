@@ -7,11 +7,20 @@ import { writeAudit } from "./lib/audit";
 
 const norm = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
+// Types de véhicule LSPD reconnus. DB = banalisé (pas de numéro de toit).
+const FLEET_TYPES = ["PATROUILLE", "SWAT", "METRO", "DB", "SUPERVISOR", "COMMAND_STAFF", "AUTRE"] as const;
+type FleetType = (typeof FLEET_TYPES)[number];
+function normType(t?: string): FleetType {
+  return (t && (FLEET_TYPES as readonly string[]).includes(t)) ? (t as FleetType) : "PATROUILLE";
+}
+// Un banalisé (DB) roule sans numéro de toit : celui-ci devient optionnel.
+export const isBanalise = (t?: string) => normType(t) === "DB";
+
 // Deux derniers chiffres du numéro de toit : suffixe de l'indicatif de
-// patrouille (toit « 509 » -> « 09 »).
+// patrouille (toit « 509 » -> « 09 »). Vide si pas de toit (banalisé).
 export function roofToNumber(roof: string): string {
   const digits = roof.replace(/[^0-9]/g, "");
-  return digits.slice(-2).padStart(2, "0");
+  return digits ? digits.slice(-2).padStart(2, "0") : "";
 }
 
 function searchText(v: { roofNumber: string; plaque: string; modele: string }) {
@@ -23,6 +32,7 @@ function shape(v: Doc<"fleetVehicles">) {
     _id: v._id,
     modele: v.modele,
     plaque: v.plaque,
+    type: normType(v.type),
     roofNumber: v.roofNumber,
     number: roofToNumber(v.roofNumber),
     photoUrl: v.photoUrls?.[0] ?? null,
@@ -80,18 +90,21 @@ export const create = mutation({
   args: {
     modele: v.string(),
     plaque: v.string(),
+    type: v.optional(v.string()),
     roofNumber: v.string(),
     photoUrl: v.optional(v.string()),
   },
   handler: async (ctx, a) => {
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "flotte.create");
+    const type = normType(a.type);
     const modele = a.modele.trim();
     const plaque = a.plaque.trim().toUpperCase();
     const roofNumber = a.roofNumber.trim();
-    if (!modele || !plaque || !roofNumber) throw new Error("Modèle, plaque et numéro de toit requis.");
+    if (!modele || !plaque) throw new Error("Modèle et plaque requis.");
+    if (!isBanalise(type) && !roofNumber) throw new Error("Numéro de toit requis (sauf véhicule banalisé).");
     const id = await ctx.db.insert("fleetVehicles", {
-      modele, plaque, roofNumber,
+      modele, plaque, type, roofNumber,
       photoUrls: a.photoUrl ? [a.photoUrl] : undefined,
       searchText: searchText({ modele, plaque, roofNumber }),
       active: true,
@@ -107,6 +120,7 @@ export const update = mutation({
     id: v.id("fleetVehicles"),
     modele: v.string(),
     plaque: v.string(),
+    type: v.optional(v.string()),
     roofNumber: v.string(),
     photoUrl: v.optional(v.string()),
     active: v.optional(v.boolean()),
@@ -116,12 +130,14 @@ export const update = mutation({
     await requirePermission(ctx, agent, "flotte.edit");
     const cur = await ctx.db.get(id);
     if (!cur) throw new Error("Véhicule introuvable.");
+    const type = normType(a.type);
     const modele = a.modele.trim();
     const plaque = a.plaque.trim().toUpperCase();
     const roofNumber = a.roofNumber.trim();
-    if (!modele || !plaque || !roofNumber) throw new Error("Modèle, plaque et numéro de toit requis.");
+    if (!modele || !plaque) throw new Error("Modèle et plaque requis.");
+    if (!isBanalise(type) && !roofNumber) throw new Error("Numéro de toit requis (sauf véhicule banalisé).");
     await ctx.db.patch(id, {
-      modele, plaque, roofNumber,
+      modele, plaque, type, roofNumber,
       photoUrls: a.photoUrl ? [a.photoUrl] : [],
       searchText: searchText({ modele, plaque, roofNumber }),
       active: a.active ?? cur.active,
