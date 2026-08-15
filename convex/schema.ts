@@ -677,6 +677,17 @@ export default defineSchema({
     updatedAt: v.number(),
   }).index("by_agent", ["agentId"]),
 
+  // Points bonus (ou malus si négatif) ajoutés au score total d'un cadet, en
+  // plus des critères. Un document par cadet.
+  cadetBonus: defineTable({
+    agentId: v.id("agents"),
+    points: v.number(),
+    reason: v.optional(v.string()),
+    updatedBy: v.id("agents"),
+    updatedByName: v.string(),
+    updatedAt: v.number(),
+  }).index("by_agent", ["agentId"]),
+
   // ---- FTO : formation terrain des Officiers 1 ----
   // Modèle de fiche FTO, configurable. SCALE = critère noté sur une échelle
   // (Très Bien … Exécrable) · CHECK_TP = case Théorie + case Pratique ·

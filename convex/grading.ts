@@ -96,6 +96,9 @@ export async function totalScoreFor(ctx: QueryCtx, agentId: Id<"agents">, items:
     if (r.eliminated) eliminated = true;
     if (r.filled) anyFilled = true;
   }
+  const bonus = (await ctx.db.query("cadetBonus").withIndex("by_agent", (q) => q.eq("agentId", agentId)).unique())?.points ?? 0;
+  total += bonus;
+  if (bonus !== 0) anyFilled = true;
   return { total: round1(total), eliminated, hasScore: anyFilled };
 }
 
@@ -278,6 +281,26 @@ export const removeNote = mutation({
   },
 });
 
+// Points bonus (négatif = malus) ajoutés au total du cadet, avec raison libre.
+export const setBonus = mutation({
+  args: { agentId: v.id("agents"), points: v.number(), reason: v.optional(v.string()) },
+  handler: async (ctx, { agentId, points, reason }) => {
+    const agent = await requireAgent(ctx);
+    await requirePermission(ctx, agent, "lspa.effectif.view");
+    const p = Math.round(points * 10) / 10;
+    const cleanReason = reason?.trim() || undefined;
+    const existing = await ctx.db.query("cadetBonus").withIndex("by_agent", (q) => q.eq("agentId", agentId)).unique();
+    // 0 point sans raison = pas de bonus : on retire le document.
+    if (p === 0 && !cleanReason) {
+      if (existing) await ctx.db.delete(existing._id);
+      return;
+    }
+    const data = { points: p, reason: cleanReason, updatedBy: agent._id, updatedByName: `${agent.prenomRP} ${agent.nomRP}`, updatedAt: Date.now() };
+    if (existing) await ctx.db.patch(existing._id, data);
+    else await ctx.db.insert("cadetBonus", { agentId, ...data });
+  },
+});
+
 export const setConclusion = mutation({
   args: { agentId: v.id("agents"), text: v.string() },
   handler: async (ctx, { agentId, text }) => {
@@ -333,6 +356,9 @@ export const cadetSheet = query({
       };
     });
     const maxTotal = items.reduce((s, i) => s + i.maxPoints, 0);
+    const bonusDoc = await ctx.db.query("cadetBonus").withIndex("by_agent", (q) => q.eq("agentId", agentId)).unique();
+    const bonus = bonusDoc?.points ?? 0;
+    total += bonus;
 
     const notes = (await ctx.db.query("cadetNotes").withIndex("by_agent", (q) => q.eq("agentId", agentId)).collect())
       .sort((a, b) => b.at - a.at)
@@ -344,6 +370,7 @@ export const cadetSheet = query({
       items: scored,
       total: round1(total),
       maxTotal,
+      bonus: bonusDoc ? { points: bonusDoc.points, reason: bonusDoc.reason ?? null, byName: bonusDoc.updatedByName, at: bonusDoc.updatedAt } : null,
       eliminated,
       notes,
       conclusion: conclusion ? { text: conclusion.text, byName: conclusion.updatedByName, at: conclusion.updatedAt } : null,

@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
-import { X, Trash2, Ban, ClipboardList, MessageSquarePlus, Send } from "lucide-react";
+import { X, Trash2, Ban, ClipboardList, MessageSquarePlus, Send, Sparkles } from "lucide-react";
 import { api } from "@/lib/api";
 import type { Id } from "convex/_generated/dataModel";
 import { SkeletonRows } from "@/components/common/Skeleton";
@@ -64,7 +64,11 @@ export function CadetSheetPanel({ agentId, onClose }: { agentId: Id<"agents">; o
                 <div className="font-data text-[20px] font-bold" style={{ color: data.eliminated ? "var(--danger)" : "var(--accent)" }}>
                   {data.eliminated ? "Éliminé" : `${data.total}`}
                 </div>
-                {!data.eliminated && <div className="text-[10.5px] text-faint">/ {data.maxTotal}</div>}
+                {!data.eliminated && (
+                  <div className="text-[10.5px] text-faint">
+                    / {data.maxTotal}{data.bonus ? ` · ${data.bonus.points > 0 ? "+" : ""}${data.bonus.points} bonus` : ""}
+                  </div>
+                )}
               </div>
             </>
           )}
@@ -100,6 +104,7 @@ export function CadetSheetPanel({ agentId, onClose }: { agentId: Id<"agents">; o
                 );
               })}
 
+              <BonusSection agentId={agentId} bonus={data.bonus} />
               <NotesSection agentId={agentId} notes={data.notes} />
               <ConclusionSection agentId={agentId} conclusion={data.conclusion} />
             </div>
@@ -165,6 +170,44 @@ function ItemRow({ agentId, it, onSave }: {
         </button>
       )}
     </div>
+  );
+}
+
+function BonusSection({ agentId, bonus }: {
+  agentId: Id<"agents">;
+  bonus: { points: number; reason: string | null; byName: string; at: number } | null;
+}) {
+  const setBonus = useMutation(api.grading.setBonus);
+  const ptsRef = useRef<HTMLInputElement>(null);
+  const reasonRef = useRef<HTMLInputElement>(null);
+  const save = () => {
+    const raw = (ptsRef.current?.value ?? "").trim();
+    const n = raw === "" ? 0 : Number(raw);
+    if (!Number.isFinite(n)) return;
+    void setBonus({ agentId, points: n, reason: reasonRef.current?.value.trim() || undefined });
+  };
+  return (
+    <section key={`b-${bonus?.at ?? 0}`}>
+      <div className="mb-[7px] flex items-center gap-[7px] text-[11px] font-bold uppercase tracking-[0.09em] text-faint"><Sparkles className="h-[12px] w-[12px]" /> Points bonus</div>
+      <div className="flex items-center gap-[8px] rounded-sm border border-border bg-surface-2 px-[12px] py-[9px]">
+        <input
+          ref={ptsRef}
+          type="number" step={0.5}
+          defaultValue={bonus ? String(bonus.points) : ""}
+          onBlur={save}
+          placeholder="0"
+          className="h-8 w-[72px] flex-shrink-0 rounded-sm border border-border bg-surface px-2 text-center font-data text-[13px] outline-none focus:border-accent"
+        />
+        <input
+          ref={reasonRef}
+          defaultValue={bonus?.reason ?? ""}
+          onBlur={save}
+          placeholder="Raison (optionnel) — ex. initiative exemplaire"
+          className="h-8 min-w-0 flex-1 rounded-sm border border-border bg-surface px-2 text-[13px] outline-none focus:border-accent"
+        />
+      </div>
+      <div className="mt-[4px] text-[10.5px] text-faint">Ajoutés au score total (valeur négative = malus).{bonus ? ` Dernière modification par ${bonus.byName}.` : ""}</div>
+    </section>
   );
 }
 
