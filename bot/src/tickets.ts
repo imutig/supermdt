@@ -12,16 +12,19 @@ import { baseEmbed, BRAND } from "./theme.js";
 
 // Statuts d'une candidature (cycle de vie). Le nom du salon est préfixé de
 // l'emoji pour lire le statut d'un coup d'œil dans la liste des salons.
-const STATUS_EMOJI: Record<IntegStatus, string> = { NEW: "🆕", VOTE: "🗳️", ACCEPTED: "📋", INTERVIEW: "📅", PASSED: "🎓", ACADEMY: "⭐", REJECTED: "❌" };
+const STATUS_EMOJI: Record<IntegStatus, string> = { NEW: "🆕", VOTE: "🗳️", ACCEPTED: "📋", INTERVIEW: "📅", PASSED: "🎓", ACADEMY: "⭐", PRESENT: "🏫", REJECTED: "❌" };
 const STATUS_LABEL: Record<IntegStatus, string> = {
   NEW: "Nouvelle candidature", VOTE: "Vote en cours", ACCEPTED: "Acceptée · en attente d'entretien",
   INTERVIEW: "Entretien programmé", PASSED: "Entretien réussi · en attente d'académie",
-  ACADEMY: "Retenu pour la prochaine académie", REJECTED: "Refusée / entretien raté",
+  ACADEMY: "Retenu pour la prochaine académie", PRESENT: "Présent à l'académie", REJECTED: "Refusée / entretien raté",
 };
-const STATUS_HEX: Record<IntegStatus, string> = { NEW: "#8a929c", VOTE: "#3b82f6", ACCEPTED: "#22b8cf", INTERVIEW: "#e0a030", PASSED: "#49a24a", ACADEMY: "#e6c84a", REJECTED: "#d94040" };
-const STATUS_ORDER: IntegStatus[] = ["NEW", "VOTE", "ACCEPTED", "INTERVIEW", "PASSED", "ACADEMY", "REJECTED"];
+const STATUS_HEX: Record<IntegStatus, string> = { NEW: "#8a929c", VOTE: "#3b82f6", ACCEPTED: "#22b8cf", INTERVIEW: "#e0a030", PASSED: "#49a24a", ACADEMY: "#e6c84a", PRESENT: "#2f8f5b", REJECTED: "#d94040" };
+const STATUS_ORDER: IntegStatus[] = ["NEW", "VOTE", "ACCEPTED", "INTERVIEW", "PASSED", "ACADEMY", "PRESENT", "REJECTED"];
+// Statuts qui donnent droit au rôle Cadet (piste académie). En sortir (ou fermer
+// le ticket) retire le rôle.
+const CADET_STATUSES = new Set<IntegStatus>(["PASSED", "PRESENT"]);
 // Code points des emojis de préfixe (actuels + anciens) à retirer du nom du salon.
-const PREFIX_CPS = new Set<string>([..."🆕🗳️📋📅🎓⭐❌🟡🔴🟠🟢️"]);
+const PREFIX_CPS = new Set<string>([..."🆕🗳️📋📅🎓⭐🏫❌🟡🔴🟠🟢️"]);
 const label = (s: IntegStatus | string | null): string => (s && STATUS_LABEL[s as IntegStatus]) || "-";
 const emoji = (s: IntegStatus | string | null): string => (s && STATUS_EMOJI[s as IntegStatus]) || "";
 
@@ -593,6 +596,25 @@ async function dmSay(user: User, color: ColorResolvable, desc: string, title?: s
   await user.send({ embeds: [e] }).catch(() => {});
 }
 
+// Cycle de vie du rôle Cadet : attribué quand le ticket est sur la piste
+// académie (PASSED/PRESENT), retiré sinon (autre statut, fermeture). Best-effort.
+async function syncCadetRole(guild: Guild, ownerId: string, status: IntegStatus | null, cfg: TicketConfig) {
+  if (!cfg.cadetRoleId) return;
+  const member = await guild.members.fetch(ownerId).catch(() => null);
+  if (!member) return;
+  try {
+    if (status && CADET_STATUSES.has(status)) await member.roles.add(cfg.cadetRoleId);
+    else await member.roles.remove(cfg.cadetRoleId);
+  } catch (err) { console.error("[cadet] gestion du rôle :", err); }
+}
+
+// Bouton « Fournir le compte SuperMDT » posté quand la présence est confirmée.
+function accountButtonRow() {
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId("tk|account").setLabel("Fournir le compte SuperMDT").setEmoji("🎫").setStyle(ButtonStyle.Success),
+  );
+}
+
 // Nom de fichier sûr pour une référence attachment:// (pas d'espace ni de
 // caractère spécial, sinon l'image ne s'affiche pas dans l'embed).
 function safeName(n: string, i: number): string {
@@ -787,6 +809,8 @@ async function softCloseTicket(interaction: ModalSubmitInteraction) {
   if (!ticket) { await interaction.reply({ content: "Ce salon n'est pas un ticket.", flags: EPH }); return; }
   // Le candidat perd l'accès (lecture + écriture).
   await (channel as TextChannel).permissionOverwrites.edit(ticket.ownerId, { ViewChannel: false, SendMessages: false }).catch(() => {});
+  // Ticket fermé : on retire le rôle Cadet.
+  if (interaction.guild) { const cfg = await mdt.ticketConfigGet(); await syncCadetRole(interaction.guild, ticket.ownerId, null, cfg); }
 
   const embed = baseEmbed(BRAND.muted).setTitle("🔒 Ticket fermé")
     .setDescription(`Fermé par <@${interaction.user.id}>.`)
@@ -807,6 +831,8 @@ export async function finalizeAutoClose(client: Client, channelId: string, owner
   if (!chan || chan.type !== ChannelType.GuildText) return;
   const tc = chan as TextChannel;
   await tc.permissionOverwrites.edit(ownerId, { ViewChannel: false, SendMessages: false }).catch(() => {});
+  // Fermeture auto : on retire le rôle Cadet.
+  try { const cfg = await mdt.ticketConfigGet(); await syncCadetRole(tc.guild, ownerId, null, cfg); } catch { /* best-effort */ }
   const embed = baseEmbed(BRAND.muted).setTitle("🔒 Ticket fermé automatiquement")
     .setDescription(`Faute de réponse dans le délai imparti, le ticket de **${label}** a été **fermé**.`)
     .setFooter({ text: "Réservé à l'encadrement : rouvrir ou archiver définitivement." });
@@ -1102,13 +1128,44 @@ async function applyStatusFromSelect(interaction: AnySelectMenuInteraction) {
   // sont fortement limitées par Discord et dépasseraient le délai de 3 s.
   await mdt.ticketSetStatus(channel.id, status, interaction.user.username);
   await interaction.update(statusPanel(status));
+  const cfg = await mdt.ticketConfigGet();
   try {
     await renameStatus(interaction.client, channel.id, status);
-    const cfg = await mdt.ticketConfigGet();
     await moveToStatusCategory(interaction.client, channel.id, status, cfg);
     if (status === "VOTE") await openVote(interaction.client, channel as TextChannel);
   } catch (err) { console.error("[status] finalisation :", err); }
-  // Le rôle Cadet n'est PLUS attribué automatiquement : il l'est via /validation.
+  // Cycle de vie du rôle Cadet : attribué en PASSED/PRESENT, retiré sinon.
+  const ticket = await mdt.ticketByChannel(channel.id);
+  if (ticket && interaction.guild) await syncCadetRole(interaction.guild, ticket.ownerId, status, cfg);
+  // « Présent à l'académie » : DM de confirmation + bouton de provisionnement.
+  if (status === "PRESENT" && ticket) {
+    const owner = await interaction.client.users.fetch(ticket.ownerId).catch(() => null);
+    if (owner) await dmSay(owner, BRAND.green, "Votre présence à l'académie est confirmée, vous recevrez bientôt votre compte.", "🏫 Présence confirmée");
+    await (channel as TextChannel).send({ embeds: [baseEmbed(BRAND.green).setTitle("🎫 Compte cadet").setDescription("Présence confirmée. Un instructeur peut désormais fournir le compte SuperMDT du cadet — prénom et nom sont pré-remplis, sans numéro de badge (attribué à la diplomation).")], components: [accountButtonRow()] }).catch(() => {});
+  }
+}
+
+// Bouton « Fournir le compte SuperMDT » : crée le compte cadet (pré-rempli,
+// sans matricule) et l'envoie en MP. Réservé à l'encadrement, statut PRESENT.
+async function provideAccount(interaction: ButtonInteraction) {
+  const cfg = await mdt.ticketConfigGet();
+  if (!isStaff(interaction) && !isRecruiter(interaction.member as GuildMember | null, cfg)) {
+    await interaction.reply({ content: "Réservé à l'encadrement.", flags: EPH }); return;
+  }
+  const channel = interaction.channel;
+  if (!channel || channel.type !== ChannelType.GuildText) { await interaction.reply({ content: "À utiliser dans un ticket.", flags: EPH }); return; }
+  await interaction.deferReply({ flags: EPH });
+  const res = await mdt.ticketProvisionAccount(channel.id, interaction.user.username);
+  if (res.ok) {
+    await interaction.editReply({ embeds: [baseEmbed(BRAND.green).setTitle("✅ Compte cadet créé").setDescription("Le lien d'inscription part en MP au cadet (prénom/nom pré-remplis, sans numéro de badge).")] });
+    await (channel as TextChannel).send({ embeds: [baseEmbed(BRAND.green).setDescription(`🎫 Compte SuperMDT fourni par <@${interaction.user.id}>. Le cadet reçoit son lien d'inscription en message privé.`)] }).catch(() => {});
+  } else {
+    const msg = res.reason === "linked" ? "Ce candidat a déjà un compte SuperMDT relié."
+      : res.reason === "notpresent" ? "Le compte ne peut être fourni qu'une fois le statut « Présent à l'académie » défini."
+      : res.reason === "nograde" ? "Aucun grade d'académie (Cadet) n'est configuré côté MDT."
+      : "Ce salon n'est pas un ticket de candidature.";
+    await interaction.editReply({ embeds: [baseEmbed(BRAND.danger).setDescription(msg)] });
+  }
 }
 
 // ---------- Entretien programmé (date + heure) ----------
@@ -1282,6 +1339,8 @@ async function handleInterviewModal(interaction: ModalSubmitInteraction) {
   // Discord) se font ensuite, hors du délai de l'interaction.
   const ticket = await mdt.ticketByChannel(channel.id);
   await mdt.ticketSetStatus(channel.id, "INTERVIEW", interaction.user.username, at, interaction.user.id);
+  // INTERVIEW n'est pas un statut « cadet » : on retire le rôle si présent.
+  if (ticket && interaction.guild) { const cfg = await mdt.ticketConfigGet(); await syncCadetRole(interaction.guild, ticket.ownerId, "INTERVIEW", cfg); }
   await interaction.reply({ content: `📅 Entretien programmé au **${parisStr(at, { dateStyle: "long", timeStyle: "short" })}** (heure de Paris). Le candidat a été prévenu en MP.`, flags: EPH });
   // Importants d'abord (rapides), puis renommage/déplacement (lents et limités
   // par Discord) en best-effort, chacun isolé pour ne pas se bloquer l'un l'autre.
@@ -1505,6 +1564,7 @@ export async function handleTicketInteraction(interaction: Interaction) {
       if (id.startsWith("tk|pres|")) { await handlePresence(interaction, true); return; }
       if (id.startsWith("tk|abs|")) { await handlePresence(interaction, false); return; }
       if (id === "tk|manage") { await openStatusPanel(interaction); return; }
+      if (id === "tk|account") { await provideAccount(interaction); return; }
       if (id.startsWith("tk|vote|")) { await handleVoteButton(interaction); return; }
       if (id === "tk|iresched") { await handleReschedule(interaction); return; }
       if (id === "tk|icancel") { await handleCancelInterview(interaction); return; }

@@ -165,6 +165,8 @@ export const mdt = {
   ticketVote: (channelId: string, discordUserId: string, discordName: string, choice: "FOR" | "AGAINST") => client.mutation(anyApi.bot.ticketVote, { secret: env.botSecret, channelId, discordUserId, discordName, choice }) as Promise<{ ok: boolean }>,
   ticketVoteState: (channelId: string) => client.query(anyApi.bot.ticketVoteState, { secret: env.botSecret, channelId }) as Promise<{ for: string[]; against: string[] } | null>,
   ticketSetPromotion: (channelId: string, promotionId: string) => client.mutation(anyApi.bot.ticketSetPromotion, { secret: env.botSecret, channelId, promotionId }) as Promise<void>,
+  openTicketOwners: () => client.query(anyApi.bot.openTicketOwners, { secret: env.botSecret }) as Promise<string[]>,
+  ticketProvisionAccount: (channelId: string, by?: string) => client.mutation(anyApi.bot.ticketProvisionAccount, { secret: env.botSecret, channelId, by }) as Promise<{ ok: true; code: string } | { ok: false; reason: "notfound" | "notpresent" | "linked" | "nograde" }>,
 
   promoUpsertByDate: (paDate: number, name: string | undefined, paTime: string | undefined, paPlace: string | undefined) =>
     client.mutation(anyApi.bot.promoUpsertByDate, { secret: env.botSecret, paDate, name, paTime, paPlace }) as Promise<{ promotionId: string; name: string; discordCategoryId: string | null; created: boolean }>,
@@ -185,7 +187,7 @@ export type TicketFull = {
   events: TicketEvent[]; createdAt: number;
 };
 
-export type IntegStatus = "NEW" | "VOTE" | "ACCEPTED" | "INTERVIEW" | "PASSED" | "ACADEMY" | "REJECTED";
+export type IntegStatus = "NEW" | "VOTE" | "ACCEPTED" | "INTERVIEW" | "PASSED" | "ACADEMY" | "PRESENT" | "REJECTED";
 export type EmbedField = { name: string; value: string; inline?: boolean };
 export type RichEmbed = {
   authorName?: string; authorIcon?: string;

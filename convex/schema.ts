@@ -497,7 +497,9 @@ export default defineSchema({
     maxUses: v.number(),
     usesCount: v.number(),
     expiresAt: v.optional(v.number()),
-    createdBy: v.id("agents"),
+    // Optionnel : les invitations de cadet créées par le bot (bouton du ticket)
+    // n'ont pas d'agent créateur.
+    createdBy: v.optional(v.id("agents")),
     revoked: v.boolean(),
     // Rattachement à une promo : à l'inscription, le compte devient cadet de
     // cette promo, actif d'emblée (voir agents.completeRegistration).
@@ -513,6 +515,8 @@ export default defineSchema({
     prefillNom: v.optional(v.string()),
     prefillMatricule: v.optional(v.number()),
     prefillPrenomInitial: v.optional(v.string()),
+    // Prénom complet pré-rempli (cadets : connu via le ticket de candidature).
+    prefillPrenom: v.optional(v.string()),
     // Grade détecté depuis le rôle Discord du membre (grades.discordRoleId) :
     // affecté automatiquement au compte créé.
     prefillGradeId: v.optional(v.id("grades")),
@@ -2113,7 +2117,7 @@ export default defineSchema({
     // (EVALUATING / FAILED / PASSED_ABSENT : anciennes valeurs, conservées pour l'existant.)
     integrationStatus: v.optional(v.union(
       v.literal("NEW"), v.literal("VOTE"), v.literal("ACCEPTED"), v.literal("INTERVIEW"),
-      v.literal("PASSED"), v.literal("ACADEMY"), v.literal("REJECTED"),
+      v.literal("PASSED"), v.literal("ACADEMY"), v.literal("PRESENT"), v.literal("REJECTED"),
       v.literal("EVALUATING"), v.literal("FAILED"), v.literal("PASSED_ABSENT"),
     )),
     interviewAt: v.optional(v.number()), // date/heure d'entretien (statut INTERVIEW), epoch UTC

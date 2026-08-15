@@ -1,5 +1,6 @@
 import { mutation, query } from "./_generated/server";
 import { v, ConvexError } from "convex/values";
+import { internal } from "./_generated/api";
 import type { QueryCtx, MutationCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 
@@ -1224,13 +1225,13 @@ export const ticketByOwner = query({
 const STATUS_LABELS: Record<string, string> = {
   NEW: "Nouvelle candidature", VOTE: "Vote en cours", ACCEPTED: "Acceptée · en attente d'entretien",
   INTERVIEW: "Entretien programmé", PASSED: "Entretien réussi · en attente d'académie",
-  ACADEMY: "Retenu pour la prochaine académie", REJECTED: "Refusée / entretien raté",
+  ACADEMY: "Retenu pour la prochaine académie", PRESENT: "Présent à l'académie", REJECTED: "Refusée / entretien raté",
   // Anciennes valeurs.
   EVALUATING: "En évaluation", FAILED: "Entretien raté", PASSED_ABSENT: "Réussi mais absent",
 };
 const TICKET_STATUS = v.union(
   v.literal("NEW"), v.literal("VOTE"), v.literal("ACCEPTED"), v.literal("INTERVIEW"),
-  v.literal("PASSED"), v.literal("ACADEMY"), v.literal("REJECTED"),
+  v.literal("PASSED"), v.literal("ACADEMY"), v.literal("PRESENT"), v.literal("REJECTED"),
 );
 export const ticketSetStatus = mutation({
   args: { secret: v.string(), channelId: v.string(), status: TICKET_STATUS, by: v.optional(v.string()), byId: v.optional(v.string()), interviewAt: v.optional(v.union(v.number(), v.null())) },
@@ -1251,6 +1252,67 @@ export const ticketSetStatus = mutation({
       await logEvent(ctx, t, { type: "status", label: `Statut : ${STATUS_LABELS[status] ?? status}${suffix}`, by });
     }
     return t ? { prenom: t.prenom, nom: t.nom } : null;
+  },
+});
+
+// Propriétaires (id Discord) de tous les tickets OUVERTS : sert au bot pour
+// retirer le rôle Cadet à quiconque n'a plus de ticket ouvert (réconciliation).
+export const openTicketOwners = query({
+  args: { secret: v.string() },
+  handler: async (ctx, { secret }) => {
+    assertBot(secret);
+    const tickets = await ctx.db.query("tickets").withIndex("by_status", (q) => q.eq("status", "OPEN")).collect();
+    return [...new Set(tickets.map((t) => t.ownerId))];
+  },
+});
+
+function genInviteCode(): string {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let s = "";
+  for (let i = 0; i < 8; i++) s += chars[Math.floor(Math.random() * chars.length)];
+  return s;
+}
+
+// Fournir un compte SuperMDT à un cadet depuis son ticket (bouton instructeur).
+// Crée une invitation pré-remplie (prénom/nom du ticket), grade Cadet (académie),
+// SANS matricule (attribué à la diplomation), poussée au bot pour le MP.
+export const ticketProvisionAccount = mutation({
+  args: { secret: v.string(), channelId: v.string(), by: v.optional(v.string()) },
+  handler: async (ctx, { secret, channelId, by }) => {
+    assertBot(secret);
+    const t = await ctx.db.query("tickets").withIndex("by_channel", (q) => q.eq("channelId", channelId)).first();
+    if (!t) return { ok: false as const, reason: "notfound" as const };
+    if (t.integrationStatus !== "PRESENT") return { ok: false as const, reason: "notpresent" as const };
+    const linked = await ctx.db.query("agents").withIndex("by_discord", (q) => q.eq("discordId", t.ownerId)).first();
+    if (linked) return { ok: false as const, reason: "linked" as const };
+    const cadetGrade = (await ctx.db.query("grades").collect())
+      .filter((g) => g.academyOnly === true)
+      .sort((a, b) => a.position - b.position)[0];
+    if (!cadetGrade) return { ok: false as const, reason: "nograde" as const };
+
+    // Réutilise une invitation en attente non consommée pour ce Discord.
+    const existing = (await ctx.db.query("invitations").withIndex("by_dm_pending", (q) => q.eq("dmPending", true)).collect())
+      .find((i) => i.discordId === t.ownerId && !i.revoked);
+    const fields = {
+      discordId: t.ownerId, discordUsername: t.ownerName, dmPending: true, dmSentAt: undefined,
+      prefillNom: t.nom, prefillPrenom: t.prenom, prefillMatricule: undefined,
+      prefillGradeId: cadetGrade._id, autoActivate: true,
+    };
+    let code: string;
+    if (existing) {
+      await ctx.db.patch(existing._id, fields);
+      code = existing.code;
+    } else {
+      code = genInviteCode();
+      while (await ctx.db.query("invitations").withIndex("by_code", (q) => q.eq("code", code)).first()) code = genInviteCode();
+      await ctx.db.insert("invitations", {
+        code, type: "SINGLE", maxUses: 1, usesCount: 0, revoked: false,
+        expiresAt: Date.now() + 7 * 24 * 3600 * 1000, ...fields,
+      });
+    }
+    await logEvent(ctx, t, { type: "status", label: "Compte SuperMDT (cadet) fourni", by });
+    await ctx.scheduler.runAfter(0, internal.push.notify, {}); // MP d'invitation immédiat
+    return { ok: true as const, code };
   },
 });
 

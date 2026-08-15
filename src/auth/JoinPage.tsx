@@ -45,6 +45,7 @@ export function JoinPage() {
   // Pré-remplissage une fois l'aperçu chargé (sans écraser une saisie en cours).
   useEffect(() => {
     if (seeded || !preview || preview.status !== "ok") return;
+    if (preview.prefillPrenom) setPrenom(preview.prefillPrenom);
     if (preview.prefillNom) setNom(preview.prefillNom);
     if (preview.prefillMatricule != null) setMatricule(String(preview.prefillMatricule));
     setSeeded(true);
@@ -162,15 +163,24 @@ export function JoinPage() {
           </div>
         </div>
 
-        <label className="mb-[7px] mt-4 block text-[11px] font-bold uppercase tracking-[0.08em] text-faint">
-          N° de badge <span className="font-medium normal-case tracking-normal text-faint">· pré-rempli, modifiable</span>
-        </label>
-        <input
-          value={matricule}
-          onChange={(e) => setMatricule(e.target.value.replace(/[^0-9]/g, "").slice(0, 5))}
-          placeholder="Détecté depuis ton pseudo"
-          className={`${inputCls} font-data tracking-[0.06em]`}
-        />
+        {preview.cadet ? (
+          <div className="mt-4 flex items-center gap-[8px] rounded-[9px] border border-border bg-surface-2 px-[13px] py-[10px] text-[12px] text-muted">
+            <BadgeCheck className="h-[15px] w-[15px] text-accent" />
+            <span>Compte <b className="text-text">Cadet</b> : pas de numéro de badge pour l'instant, il te sera attribué à ta <b className="text-text">diplomation</b>.</span>
+          </div>
+        ) : (
+          <>
+            <label className="mb-[7px] mt-4 block text-[11px] font-bold uppercase tracking-[0.08em] text-faint">
+              N° de badge <span className="font-medium normal-case tracking-normal text-faint">· pré-rempli, modifiable</span>
+            </label>
+            <input
+              value={matricule}
+              onChange={(e) => setMatricule(e.target.value.replace(/[^0-9]/g, "").slice(0, 5))}
+              placeholder="Détecté depuis ton pseudo"
+              className={`${inputCls} font-data tracking-[0.06em]`}
+            />
+          </>
+        )}
 
         {preview.prefillGradeName && (
           <div className="mt-[10px] flex items-center gap-[8px] rounded-[9px] border border-border bg-surface-2 px-[13px] py-[10px] text-[12px] text-muted">

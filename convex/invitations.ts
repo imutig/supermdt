@@ -67,9 +67,13 @@ export const previewByCode = query({
     return {
       status: "ok" as const,
       prefillNom: invite.prefillNom ?? null,
+      prefillPrenom: invite.prefillPrenom ?? null,
       prefillMatricule: invite.prefillMatricule ?? null,
       prefillPrenomInitial: invite.prefillPrenomInitial ?? null,
       prefillGradeName: grade?.name ?? null,
+      // Cadet d'académie : pas de numéro de badge à la création (attribué à la
+      // diplomation). L'UI masque le champ matricule.
+      cadet: grade?.academyOnly === true,
       discordUsername: invite.discordUsername ?? null,
     };
   },
@@ -83,7 +87,7 @@ export const list = query({
     const rows = await ctx.db.query("invitations").order("desc").take(50);
     const out = [];
     for (const r of rows) {
-      const creator = await ctx.db.get(r.createdBy);
+      const creator = r.createdBy ? await ctx.db.get(r.createdBy) : null;
       const expired = r.expiresAt != null && r.expiresAt < Date.now();
       const usable = !r.revoked && !expired && r.usesCount < r.maxUses;
       out.push({

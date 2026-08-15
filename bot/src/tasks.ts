@@ -56,6 +56,7 @@ export function startTasks(client: Client) {
   // et surtout une rafale d'opcode 8 quand le bot est redéployé plusieurs fois
   // de suite (Discord throttle alors l'opcode 8 -> GatewayRateLimitError).
   let lastMemberSync = Date.now() - 8 * 60_000;
+  let lastCadetReconcile = Date.now() - 8 * 60_000;
 
   // Verrou anti-chevauchement : le tick est déclenché par l'intervalle de sécurité
   // ET par les « push » de Convex. On empêche deux passages simultanés (sinon un
@@ -256,6 +257,29 @@ export function startTasks(client: Client) {
         }
       }
     } catch (err) { console.error("[discord] montées en grade :", err); }
+
+    // --- Réconciliation du rôle Cadet (toutes les ~10 min) ---
+    // Filet de sécurité : retire le rôle Cadet à quiconque n'a plus AUCUN ticket
+    // de candidature ouvert (ticket supprimé, bot hors ligne au moment de la
+    // fermeture, rôle posé à la main…). L'attribution/retrait fin est faite en
+    // direct au changement de statut (tickets.ts).
+    if (Date.now() - lastCadetReconcile > 10 * 60_000) {
+      lastCadetReconcile = Date.now();
+      try {
+        const tcfg = await mdt.ticketConfigGet();
+        const guild = client.guilds.cache.first();
+        if (tcfg.cadetRoleId && guild) {
+          const owners = new Set(await mdt.openTicketOwners());
+          const role = guild.roles.cache.get(tcfg.cadetRoleId) ?? await guild.roles.fetch(tcfg.cadetRoleId).catch(() => null);
+          if (role) {
+            await guild.members.fetch().catch(() => {}); // peupler role.members
+            for (const member of role.members.values()) {
+              if (!owners.has(member.id)) await member.roles.remove(tcfg.cadetRoleId, "Cadet sans ticket ouvert").catch(() => {});
+            }
+          }
+        }
+      } catch (err) { console.error("[cadet] réconciliation :", err); }
+    }
 
     // --- Publication des absences dans le salon configuré ---
     if (cfg.absenceChannel) {
