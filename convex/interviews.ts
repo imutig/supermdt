@@ -165,7 +165,11 @@ export const create = mutation({
     const active = (await ctx.db.query("interviewItems").withIndex("by_position").collect()).filter((i) => i.active !== false);
     const questions: ItemSnap[] = active.filter((i) => i.kind === "QUESTION").map((i) => ({ text: i.text, explanation: i.explanation }));
     const scenarios = active.filter((i) => i.kind === "SCENARIO");
-    const picked = scenarios.length ? scenarios[Math.floor(Math.random() * scenarios.length)] : null;
+    // Tirage au sort robuste : on mélange Math.random ET Date.now (les deux
+    // varient à chaque création) pour éviter tout biais éventuel de l'un ou
+    // l'autre — sinon on retombait toujours sur la même mise en situation.
+    const rnd = Math.floor(Math.random() * 1_000_000) + Date.now();
+    const picked = scenarios.length ? scenarios[rnd % scenarios.length] : null;
     const scenario: ItemSnap | undefined = picked ? { text: picked.text, explanation: picked.explanation } : undefined;
     const id = await ctx.db.insert("interviews", {
       prenom: prenom.trim(), nom: nom.trim(), dateNaissance: dateNaissance?.trim() || undefined,
