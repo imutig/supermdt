@@ -50,12 +50,58 @@ function stem(w: string): string {
   return w.length > 4 ? w.replace(/(s|x)$/, "") : w;
 }
 
+// Lexique du jargon « terrain » → racines juridiques présentes dans les textes.
+// Permet à une question familière (« braquage de supérette ») de retrouver les
+// bons articles (« vol à main armée », « vol aggravé »…). Clés = sous-chaînes
+// détectées dans la question ; valeurs = racines recherchées dans le code.
+const SYNONYMS: { match: string; add: string[] }[] = [
+  { match: "braqu", add: ["vol", "arme", "aggrav", "main armee"] },
+  { match: "hold-up", add: ["vol", "arme", "aggrav"] },
+  { match: "cambriol", add: ["vol", "effraction", "domicile"] },
+  { match: "supperette", add: ["vol", "commerce"] },
+  { match: "superette", add: ["vol", "commerce"] },
+  { match: "magasin", add: ["vol", "commerce"] },
+  { match: "boutique", add: ["vol", "commerce"] },
+  { match: "etalage", add: ["vol"] },
+  { match: "vol a la roulotte", add: ["vol", "vehicule"] },
+  { match: "agress", add: ["violence", "coups", "blessure"] },
+  { match: "bagarre", add: ["violence", "coups", "rixe"] },
+  { match: "rixe", add: ["violence", "coups"] },
+  { match: "meurtre", add: ["homicide", "meurtre"] },
+  { match: "tuer", add: ["homicide", "meurtre"] },
+  { match: "assassin", add: ["homicide", "assassinat"] },
+  { match: "viol", add: ["sexuel", "viol", "agression"] },
+  { match: "drogue", add: ["stupefiant"] },
+  { match: "stup", add: ["stupefiant"] },
+  { match: "dealer", add: ["stupefiant", "trafic"] },
+  { match: "deal", add: ["stupefiant", "trafic"] },
+  { match: "alcool", add: ["alcool", "ivresse", "conduite"] },
+  { match: "bourr", add: ["alcool", "ivresse"] },
+  { match: "ivre", add: ["alcool", "ivresse"] },
+  { match: "sans permis", add: ["permis", "conduite"] },
+  { match: "exces de vitesse", add: ["vitesse", "limitation"] },
+  { match: "outrage", add: ["outrage"] },
+  { match: "rebellion", add: ["rebellion"] },
+  { match: "refus d", add: ["refus", "obtemperer"] },
+  { match: "otage", add: ["sequestration", "enlevement"] },
+  { match: "kidnapping", add: ["sequestration", "enlevement"] },
+  { match: "menace", add: ["menace"] },
+  { match: "arme", add: ["arme", "port"] },
+  { match: "flag", add: ["flagrant"] },
+];
+
 function keywords(q: string): string[] {
-  return norm(q)
+  const nq = norm(q);
+  const base = nq
     .replace(/[^a-z0-9\s]/g, " ")
     .split(/\s+/)
     .filter((w) => w.length >= 3 && !STOP.has(w))
     .map(stem);
+  const out = new Set(base);
+  for (const { match, add } of SYNONYMS) {
+    if (nq.includes(match)) for (const a of add) a.split(/\s+/).forEach((w) => out.add(stem(w)));
+  }
+  return [...out];
 }
 
 // ---------- Ingestion (via HTTP, voir http.ts) ----------
@@ -152,7 +198,7 @@ export const _guardAndRecord = internalMutation({
 });
 
 // ---------- Assistant juridique ----------
-const CHAR_BUDGET = 80000; // ~24k tokens : large (les questions « liste tout » ont besoin de beaucoup de contexte), reste très loin du plafond 250k tokens/min du free tier
+const CHAR_BUDGET = 120000; // ~35k tokens : permet d'injecter tout le Tableau des peines + Code pénal en filet de sécurité, tout en restant sous le plafond 250k tokens/min du free tier
 const MAX_QUESTION = 600;
 
 type Retrieved = { code: string; sourceUrl: string | null; passages: string[] };
@@ -166,47 +212,64 @@ function retrieve(
   question: string,
 ): { context: string; sources: { code: string; sourceUrl: string | null }[] } {
   const kws = [...new Set(keywords(question))];
-  if (kws.length === 0) return { context: "", sources: [] };
 
   type Scored = { code: string; sourceUrl: string | null; block: string; score: number };
   const scored: Scored[] = [];
-  for (const s of sections) {
-    const codeMatch = kws.some((k) => norm(s.code).includes(k));
-    for (const block of splitBlocks(s.body)) {
-      const nb = norm(block);
-      let coverage = 0, hits = 0;
-      for (const k of kws) {
-        let idx = nb.indexOf(k);
-        if (idx === -1) continue;
-        coverage++;
-        let c = 0;
-        while (idx !== -1 && c < 6) { hits++; c++; idx = nb.indexOf(k, idx + k.length); }
+  if (kws.length) {
+    for (const s of sections) {
+      const codeMatch = kws.some((k) => norm(s.code).includes(k));
+      for (const block of splitBlocks(s.body)) {
+        const nb = norm(block);
+        let coverage = 0, hits = 0;
+        for (const k of kws) {
+          let idx = nb.indexOf(k);
+          if (idx === -1) continue;
+          coverage++;
+          let c = 0;
+          while (idx !== -1 && c < 6) { hits++; c++; idx = nb.indexOf(k, idx + k.length); }
+        }
+        if (coverage === 0) continue;
+        const score = coverage * 100 + Math.min(hits, 20) + (codeMatch ? 15 : 0);
+        scored.push({ code: s.code, sourceUrl: s.sourceUrl, block, score });
       }
-      if (coverage === 0) continue;
-      const score = coverage * 100 + Math.min(hits, 20) + (codeMatch ? 15 : 0);
-      scored.push({ code: s.code, sourceUrl: s.sourceUrl, block, score });
     }
   }
-  if (scored.length === 0) return { context: "", sources: [] };
 
-  // Ne conserver que les codes vraiment liés à la question.
-  const bestByCode = new Map<string, number>();
-  for (const b of scored) bestByCode.set(b.code, Math.max(bestByCode.get(b.code) ?? 0, b.score));
-  const ranked = [...bestByCode.entries()].sort((a, b) => b[1] - a[1]);
-  const topScore = ranked[0][1];
-  const keep = new Set(ranked.filter(([, s]) => s >= topScore * 0.4).slice(0, 5).map(([c]) => c));
-
-  const pool = scored.filter((b) => keep.has(b.code)).sort((a, b) => b.score - a.score);
   const byCode = new Map<string, Retrieved>();
   let used = 0;
-  for (const b of pool) {
-    if (used + b.block.length > CHAR_BUDGET) continue;
-    used += b.block.length;
-    if (!byCode.has(b.code)) byCode.set(b.code, { code: b.code, sourceUrl: b.sourceUrl, passages: [] });
-    byCode.get(b.code)!.passages.push(b.block);
+  if (scored.length) {
+    // Ne conserver que les codes vraiment liés à la question.
+    const bestByCode = new Map<string, number>();
+    for (const b of scored) bestByCode.set(b.code, Math.max(bestByCode.get(b.code) ?? 0, b.score));
+    const ranked = [...bestByCode.entries()].sort((a, b) => b[1] - a[1]);
+    const topScore = ranked[0][1];
+    const keep = new Set(ranked.filter(([, s]) => s >= topScore * 0.4).slice(0, 5).map(([c]) => c));
+    const pool = scored.filter((b) => keep.has(b.code)).sort((a, b) => b.score - a.score);
+    for (const b of pool) {
+      if (used + b.block.length > CHAR_BUDGET) continue;
+      used += b.block.length;
+      if (!byCode.has(b.code)) byCode.set(b.code, { code: b.code, sourceUrl: b.sourceUrl, passages: [] });
+      byCode.get(b.code)!.passages.push(b.block);
+    }
+  }
+
+  // Filet de sécurité : si la recherche par mots-clés n'a presque rien remonté
+  // (terme familier hors lexique, question conceptuelle…), on fournit le
+  // catalogue des charges (Tableau des peines + Code pénal) pour que l'IA puisse
+  // RAISONNER et rattacher le terme à la bonne qualification juridique.
+  if (used < 6000) {
+    for (const wanted of ["Tableau des peines", "Code pénal"]) {
+      if (used >= CHAR_BUDGET) break;
+      const s = sections.find((x) => x.code === wanted);
+      if (!s || byCode.has(s.code)) continue;
+      const slice = s.body.slice(0, CHAR_BUDGET - used);
+      used += slice.length;
+      byCode.set(s.code, { code: s.code, sourceUrl: s.sourceUrl, passages: [slice] });
+    }
   }
 
   const groups = [...byCode.values()];
+  if (groups.length === 0) return { context: "", sources: [] };
   const context = groups.map((g) => `### ${g.code}\n${g.passages.join("\n\n")}`).join("\n\n");
   return { context, sources: groups.map((g) => ({ code: g.code, sourceUrl: g.sourceUrl })) };
 }
@@ -221,6 +284,7 @@ const SYSTEM = `Tu es l'assistant juridique interne de la LSPD (Los Santos Polic
 # Règles de fond
 - N'invente RIEN : appuie-toi UNIQUEMENT sur les extraits fournis, sans connaissance juridique extérieure.
 - EXPLOITE AU MAXIMUM les extraits. S'ils contiennent des éléments de réponse — même partiels, même dispersés, même une énumération à compiler — réponds avec ce qui est présent. Pour une demande de liste (« liste des contraventions », « les droits du citoyen », « les catégories d'armes »…), énumère TOUT ce qui figure dans les extraits.
+- RAISONNE en juriste. Si la question emploie un terme familier ou une situation concrète (ex. « braquage de supérette », « accident en état d'ivresse », « bagarre »), rattache-la à la ou aux qualifications juridiques correspondantes présentes dans les extraits (ex. braquage → « vol à main armée » / « vol aggravé ») et donne le chef d'inculpation. Explique brièvement le lien. Ne refuse pas sous prétexte que le mot exact n'apparaît pas : cherche l'infraction équivalente dans les extraits.
 - Ne réponds « Le State Code ne couvre pas ce point. » QUE si les extraits ne contiennent réellement AUCUN élément pertinent. Ne refuse jamais simplement parce que l'info est éparpillée ou que la liste semble longue. Si la couverture est partielle, réponds avec ce que tu as et signale que la liste peut être incomplète.
 - Cite les articles précis (ex. « Article 1-6 », « Article CA. 13-2 »).
 - Donne les sanctions exactes (amende, durée de peine) quand elles figurent dans les extraits.
