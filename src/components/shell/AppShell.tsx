@@ -4,6 +4,7 @@ import { useApp } from "@/providers/app-state";
 import { LoadingScreen } from "@/components/common/Loader";
 import { TopBar } from "./TopBar";
 import { FicheBanner } from "./FicheBanner";
+import { ServiceWeaponBanner } from "@/components/armes/ServiceWeaponBanner";
 import { NavRail } from "./NavRail";
 import { PermPreviewBar } from "./PermPreviewBar";
 import { PrefsBridge } from "./PrefsBridge";
@@ -26,6 +27,7 @@ export function AppShell() {
     <div className="relative flex h-full flex-col overflow-hidden">
       <div className="flex min-h-0 flex-1 flex-col">
         {!focus && <TopBar />}
+        {!focus && <ServiceWeaponBanner />}
         {!focus && FEATURES.ficheRenseignement && <FicheBanner />}
         <div className="flex min-h-0 flex-1">
           {!focus && <NavRail />}

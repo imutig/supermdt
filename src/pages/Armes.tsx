@@ -4,11 +4,12 @@ import { useAction, useQuery, usePaginatedQuery } from "convex/react";
 import { api, type Id } from "@/lib/api";
 import { useCan } from "@/hooks/useCan";
 import { useToast } from "@/providers/toast";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { EmptyState } from "@/components/common/EmptyState";
 import { SkeletonRows } from "@/components/common/Skeleton";
 import { Clover } from "@/components/common/Clover";
 import { LoadMore } from "@/components/common/Pagination";
+import { ArmesLspd } from "@/components/armes/ArmesLspd";
 
 const STATUS = [
   { value: "ACTIVE", label: "Active", color: "var(--success)" },
@@ -35,15 +36,32 @@ export function Armes() {
   const weapons = searching ? (searchRes ?? []) : paged.results;
   const loadingFirst = searching ? searchRes === undefined : paged.status === "LoadingFirstPage";
   const [modal, setModal] = useState<{ id?: Id<"weapons"> } | null>(null);
+  const [params] = useSearchParams();
+  const [tab, setTab] = useState<"registre" | "lspd">(params.get("section") === "lspd" ? "lspd" : "registre");
 
   return (
     <div className="p-[22px_26px]" style={{ animation: "mdtFade .2s ease" }}>
-      <div className="mb-[16px] flex items-center gap-3">
-        <h1 className="m-0 text-[21px] font-bold tracking-tight">Registre des armes</h1>
+      <div className="mb-[14px] flex items-center gap-3">
+        <h1 className="m-0 text-[21px] font-bold tracking-tight">Armes</h1>
         <div className="flex-1" />
-        {canCreate && syncActive && <button onClick={() => setModal({})} className="mdt-press flex items-center gap-[7px] rounded-[9px] bg-accent px-[14px] py-[8px] text-[13px] font-semibold text-accent-contrast hover:brightness-[1.06]"><Clover color="#fff" size={17} /> Arme</button>}
+        {tab === "registre" && canCreate && syncActive && <button onClick={() => setModal({})} className="mdt-press flex items-center gap-[7px] rounded-[9px] bg-accent px-[14px] py-[8px] text-[13px] font-semibold text-accent-contrast hover:brightness-[1.06]"><Clover color="#fff" size={17} /> Arme</button>}
       </div>
 
+      <div className="mb-[16px] flex gap-[2px] rounded-card border border-border bg-surface p-[5px]" style={{ width: "fit-content" }}>
+        {([["registre", "Registre citoyen"], ["lspd", "Armes LSPD"]] as const).map(([key, label]) => (
+          <button
+            key={key}
+            onClick={() => setTab(key)}
+            className="rounded-[7px] px-[14px] py-[7px] text-[12.5px] font-semibold hover:bg-surface-2"
+            style={tab === key ? { background: "var(--accent)", color: "#fff" } : { color: "var(--muted)" }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "lspd" ? <ArmesLspd /> : (
+      <>
       <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Rechercher (modèle, n° de série, type)…" className="mb-[14px] h-10 w-full max-w-[440px] rounded-sm border border-border bg-surface-2 px-3 text-[13px] outline-none focus:border-accent" />
 
       <div className="overflow-hidden rounded-card border border-border bg-surface">
@@ -67,6 +85,8 @@ export function Armes() {
         })}
         {!searching && <LoadMore status={paged.status} onLoadMore={() => paged.loadMore(20)} count={weapons.length} label="armes" />}
       </div>
+      </>
+      )}
 
       {modal && <WeaponModal weaponId={modal.id} canCreate={canCreate} canEdit={canEdit} canDelete={canDelete} onClose={() => setModal(null)} />}
     </div>

@@ -343,6 +343,9 @@ export function AgentModal({ agentId, onClose }: { agentId: Id<"agents">; onClos
                 </div>
               </div>
 
+              {/* Armes de service enregistrées par l'agent */}
+              <AgentServiceWeapons agentId={agentId} />
+
               {/* Formations & spécialités : purement déclaratives, elles n'ouvrent aucun droit. */}
               <div>
                 <div className="mb-[6px] text-[10.5px] font-bold uppercase tracking-[0.09em] text-faint">Formations & spécialités</div>
@@ -698,6 +701,33 @@ function AccountSection({
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// Armes de service enregistrées par l'agent (lecture seule sur la fiche Effectif).
+function AgentServiceWeapons({ agentId }: { agentId: Id<"agents"> }) {
+  const weapons = useQuery(api.serviceWeapons.byAgent, { agentId });
+  return (
+    <div>
+      <div className="mb-[6px] text-[10.5px] font-bold uppercase tracking-[0.09em] text-faint">Armes de service</div>
+      {weapons === undefined ? (
+        <div className="text-[12.5px] text-faint">Chargement…</div>
+      ) : weapons.length === 0 ? (
+        <div className="text-[12.5px] text-faint">Aucune arme enregistrée.</div>
+      ) : (
+        <div className="flex flex-wrap gap-[10px]">
+          {weapons.map((w) => (
+            <a key={w._id} href={w.photoUrl} target="_blank" rel="noreferrer" className="w-[150px] overflow-hidden rounded-sm border border-border bg-surface-2 hover:border-border-strong">
+              <img src={w.photoUrl} alt="" className="h-[90px] w-full object-cover" />
+              <div className="px-[9px] py-[7px]">
+                <div className="truncate text-[12.5px] font-semibold">{w.model}</div>
+                <div className="font-data text-[11px] text-muted">N° {w.serial}</div>
+              </div>
+            </a>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

@@ -2176,6 +2176,23 @@ export default defineSchema({
     .index("by_owner", ["ownerId"])
     .index("by_archivedAt", ["archivedAt"]),
 
+  // Armes de service LSPD : chaque agent enregistre sa/ses arme(s) (photo avec
+  // n° de série visible, n° de série, modèle). Distinct du registre citoyen
+  // (table `weapons`, synchronisé Nexus). Une même série peut être enregistrée
+  // par deux agents différents (arme réattribuée après un licenciement) : pas
+  // d'unicité globale du numéro de série. Soft-delete (`deletedAt`).
+  serviceWeapons: defineTable({
+    agentId: v.id("agents"),
+    serial: v.string(),
+    model: v.string(),
+    photoUrl: v.string(),
+    createdBy: v.id("agents"),
+    createdAt: v.number(),
+    deletedAt: v.optional(v.number()),
+  })
+    .index("by_agent", ["agentId"])
+    .index("by_serial", ["serial"]),
+
   // State Code du serveur RP (source : site officiel), importé pour l'assistant
   // juridique. Une ligne = une section (un « code »). Recherche par mots-clés
   // côté action ; pas de wiki, c'est la base de connaissance de l'assistant.
