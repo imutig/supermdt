@@ -1255,14 +1255,18 @@ export const ticketSetStatus = mutation({
   },
 });
 
-// Propriétaires (id Discord) de tous les tickets OUVERTS : sert au bot pour
-// retirer le rôle Cadet à quiconque n'a plus de ticket ouvert (réconciliation).
-export const openTicketOwners = query({
+// Propriétaires (id Discord) des tickets OUVERTS sur la piste académie
+// (statuts PASSED / ACADEMY / PRESENT) : le bot leur GARANTIT le rôle Cadet et
+// le retire à tous les autres (réconciliation authoritative).
+const CADET_TICKET_STATUSES = new Set(["PASSED", "ACADEMY", "PRESENT"]);
+export const cadetRoleOwners = query({
   args: { secret: v.string() },
   handler: async (ctx, { secret }) => {
     assertBot(secret);
     const tickets = await ctx.db.query("tickets").withIndex("by_status", (q) => q.eq("status", "OPEN")).collect();
-    return [...new Set(tickets.map((t) => t.ownerId))];
+    return [...new Set(
+      tickets.filter((t) => t.integrationStatus && CADET_TICKET_STATUSES.has(t.integrationStatus)).map((t) => t.ownerId),
+    )];
   },
 });
 

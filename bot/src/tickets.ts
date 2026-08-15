@@ -20,9 +20,10 @@ const STATUS_LABEL: Record<IntegStatus, string> = {
 };
 const STATUS_HEX: Record<IntegStatus, string> = { NEW: "#8a929c", VOTE: "#3b82f6", ACCEPTED: "#22b8cf", INTERVIEW: "#e0a030", PASSED: "#49a24a", ACADEMY: "#e6c84a", PRESENT: "#2f8f5b", REJECTED: "#d94040" };
 const STATUS_ORDER: IntegStatus[] = ["NEW", "VOTE", "ACCEPTED", "INTERVIEW", "PASSED", "ACADEMY", "PRESENT", "REJECTED"];
-// Statuts qui donnent droit au rôle Cadet (piste académie). En sortir (ou fermer
-// le ticket) retire le rôle.
-const CADET_STATUSES = new Set<IntegStatus>(["PASSED", "PRESENT"]);
+// Statuts qui donnent droit au rôle Cadet (piste académie) : réussi/en attente,
+// retenu pour l'académie, présent à l'académie. En sortir (ou fermer le ticket)
+// retire le rôle.
+const CADET_STATUSES = new Set<IntegStatus>(["PASSED", "ACADEMY", "PRESENT"]);
 // Code points des emojis de préfixe (actuels + anciens) à retirer du nom du salon.
 const PREFIX_CPS = new Set<string>([..."🆕🗳️📋📅🎓⭐🏫❌🟡🔴🟠🟢️"]);
 const label = (s: IntegStatus | string | null): string => (s && STATUS_LABEL[s as IntegStatus]) || "-";

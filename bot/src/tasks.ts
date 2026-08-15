@@ -258,23 +258,29 @@ export function startTasks(client: Client) {
       }
     } catch (err) { console.error("[discord] montées en grade :", err); }
 
-    // --- Réconciliation du rôle Cadet (toutes les ~10 min) ---
-    // Filet de sécurité : retire le rôle Cadet à quiconque n'a plus AUCUN ticket
-    // de candidature ouvert (ticket supprimé, bot hors ligne au moment de la
-    // fermeture, rôle posé à la main…). L'attribution/retrait fin est faite en
-    // direct au changement de statut (tickets.ts).
+    // --- Réconciliation du rôle Cadet (toutes les ~10 min), AUTHORITATIVE ---
+    // Source de vérité : les propriétaires de tickets OUVERTS sur la piste
+    // académie (PASSED/ACADEMY/PRESENT). On AJOUTE le rôle à ceux qui devraient
+    // l'avoir et on le RETIRE à tous les autres. Se répare tout seul (rôle perdu
+    // à tort, ticket supprimé, bot hors ligne, rôle posé à la main…).
     if (Date.now() - lastCadetReconcile > 10 * 60_000) {
       lastCadetReconcile = Date.now();
       try {
         const tcfg = await mdt.ticketConfigGet();
         const guild = client.guilds.cache.first();
         if (tcfg.cadetRoleId && guild) {
-          const owners = new Set(await mdt.openTicketOwners());
+          const owners = new Set(await mdt.cadetRoleOwners());
           const role = guild.roles.cache.get(tcfg.cadetRoleId) ?? await guild.roles.fetch(tcfg.cadetRoleId).catch(() => null);
           if (role) {
-            await guild.members.fetch().catch(() => {}); // peupler role.members
+            await guild.members.fetch().catch(() => {}); // peupler role.members + cache
+            // Retirer à ceux qui ne devraient plus l'avoir.
             for (const member of role.members.values()) {
-              if (!owners.has(member.id)) await member.roles.remove(tcfg.cadetRoleId, "Cadet sans ticket ouvert").catch(() => {});
+              if (!owners.has(member.id)) await member.roles.remove(tcfg.cadetRoleId, "Cadet : plus sur la piste académie").catch(() => {});
+            }
+            // (Re)mettre à ceux qui devraient l'avoir mais ne l'ont pas.
+            for (const ownerId of owners) {
+              const m = guild.members.cache.get(ownerId) ?? await guild.members.fetch(ownerId).catch(() => null);
+              if (m && !m.roles.cache.has(tcfg.cadetRoleId)) await m.roles.add(tcfg.cadetRoleId, "Cadet (ticket sur la piste académie)").catch(() => {});
             }
           }
         }
