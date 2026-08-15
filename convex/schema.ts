@@ -2187,4 +2187,11 @@ export default defineSchema({
   })
     .index("by_slug", ["slug"])
     .index("by_order", ["order"]),
+
+  // Journal des questions à l'assistant State Code : sert au rate-limiting par
+  // agent (anti-boucle / épuisement de tokens).
+  stateCodeAsks: defineTable({
+    agentId: v.id("agents"),
+    at: v.number(),
+  }).index("by_agent", ["agentId", "at"]),
 });
