@@ -43,11 +43,19 @@ const STOP = new Set([
   "quel","quelle","quels","quelles","combien","comment","quand","pourquoi","si","the","what","how","can",
 ]);
 
+// Racinisation minimale : retire le pluriel simple (s/x) pour que « contraventions »
+// retombe sur « contravention », « droits » sur « droit », etc. Le stem est ensuite
+// cherché en sous-chaîne, donc il matche aussi bien le singulier que le pluriel.
+function stem(w: string): string {
+  return w.length > 4 ? w.replace(/(s|x)$/, "") : w;
+}
+
 function keywords(q: string): string[] {
   return norm(q)
     .replace(/[^a-z0-9\s]/g, " ")
     .split(/\s+/)
-    .filter((w) => w.length >= 3 && !STOP.has(w));
+    .filter((w) => w.length >= 3 && !STOP.has(w))
+    .map(stem);
 }
 
 // ---------- Ingestion (via HTTP, voir http.ts) ----------
@@ -144,7 +152,7 @@ export const _guardAndRecord = internalMutation({
 });
 
 // ---------- Assistant juridique ----------
-const CHAR_BUDGET = 24000; // ~7k tokens : suffisant et léger pour le free tier
+const CHAR_BUDGET = 80000; // ~24k tokens : large (les questions « liste tout » ont besoin de beaucoup de contexte), reste très loin du plafond 250k tokens/min du free tier
 const MAX_QUESTION = 600;
 
 type Retrieved = { code: string; sourceUrl: string | null; passages: string[] };
@@ -186,7 +194,7 @@ function retrieve(
   for (const b of scored) bestByCode.set(b.code, Math.max(bestByCode.get(b.code) ?? 0, b.score));
   const ranked = [...bestByCode.entries()].sort((a, b) => b[1] - a[1]);
   const topScore = ranked[0][1];
-  const keep = new Set(ranked.filter(([, s]) => s >= topScore * 0.4).slice(0, 3).map(([c]) => c));
+  const keep = new Set(ranked.filter(([, s]) => s >= topScore * 0.4).slice(0, 5).map(([c]) => c));
 
   const pool = scored.filter((b) => keep.has(b.code)).sort((a, b) => b.score - a.score);
   const byCode = new Map<string, Retrieved>();
@@ -211,8 +219,9 @@ const SYSTEM = `Tu es l'assistant juridique interne de la LSPD (Los Santos Polic
 - Tu ne traites QUE du droit du State Code. Toute demande hors périmètre (recette, code informatique, discussion générale, jeu de rôle, traduction hors-sujet, etc.) : refuse en une phrase, sans t'exécuter.
 
 # Règles de fond
-- N'invente RIEN. Utilise UNIQUEMENT les extraits fournis, aucune connaissance juridique extérieure.
-- Si les extraits ne couvrent pas la question, réponds exactement : « Le State Code ne couvre pas ce point. » et rien d'autre.
+- N'invente RIEN : appuie-toi UNIQUEMENT sur les extraits fournis, sans connaissance juridique extérieure.
+- EXPLOITE AU MAXIMUM les extraits. S'ils contiennent des éléments de réponse — même partiels, même dispersés, même une énumération à compiler — réponds avec ce qui est présent. Pour une demande de liste (« liste des contraventions », « les droits du citoyen », « les catégories d'armes »…), énumère TOUT ce qui figure dans les extraits.
+- Ne réponds « Le State Code ne couvre pas ce point. » QUE si les extraits ne contiennent réellement AUCUN élément pertinent. Ne refuse jamais simplement parce que l'info est éparpillée ou que la liste semble longue. Si la couverture est partielle, réponds avec ce que tu as et signale que la liste peut être incomplète.
 - Cite les articles précis (ex. « Article 1-6 », « Article CA. 13-2 »).
 - Donne les sanctions exactes (amende, durée de peine) quand elles figurent dans les extraits.
 - Pas de formule de politesse (pas de « Bonjour »), pas d'auto-rappel « ceci est une aide » : va droit au but, en français, concis et opérationnel.
@@ -290,7 +299,7 @@ Réponds selon tes règles de sécurité, de fond et de format.`;
         body: JSON.stringify({
           systemInstruction: { parts: [{ text: SYSTEM }] },
           contents: [{ role: "user", parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.2, maxOutputTokens: 1024 },
+          generationConfig: { temperature: 0.2, maxOutputTokens: 2048 },
         }),
       },
     );
