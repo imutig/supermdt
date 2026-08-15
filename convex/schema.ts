@@ -2171,4 +2171,20 @@ export default defineSchema({
   })
     .index("by_owner", ["ownerId"])
     .index("by_archivedAt", ["archivedAt"]),
+
+  // State Code du serveur RP (source : site officiel), importé pour l'assistant
+  // juridique. Une ligne = une section (un « code »). Recherche par mots-clés
+  // côté action ; pas de wiki, c'est la base de connaissance de l'assistant.
+  stateCodeSections: defineTable({
+    slug: v.string(), // identifiant stable pour l'upsert (ex. "code-de-l-armement")
+    code: v.string(), // nom du code (ex. "Code de l'armement")
+    title: v.string(), // titre de la section (souvent = code)
+    order: v.number(),
+    body: v.string(), // texte juridique intégral
+    searchText: v.string(), // normalisé (sans accents, minuscule) pour le scoring
+    sourceUrl: v.optional(v.string()),
+    updatedAt: v.number(),
+  })
+    .index("by_slug", ["slug"])
+    .index("by_order", ["order"]),
 });

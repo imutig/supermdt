@@ -1,9 +1,11 @@
-import { Search, Sun, Moon, ArrowLeftRight } from "lucide-react";
+import { useState } from "react";
+import { Search, Sun, Moon, ArrowLeftRight, Scale } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useApp } from "@/providers/app-state";
 import { useService } from "@/hooks/useService";
 import { usePortals } from "@/hooks/usePortals";
 import { ServiceToggle } from "@/components/common/ServiceToggle";
+import { StateCodeAssistant } from "@/components/statecode/StateCodeAssistant";
 import { DispatchStatus } from "./DispatchStatus";
 import { ProfileMenu } from "./ProfileMenu";
 import { FEATURES } from "@/lib/features";
@@ -16,6 +18,7 @@ export function TopBar() {
   const { onDuty, toggle: toggleDuty } = useService();
   const { canLspa } = usePortals();
   const navigate = useNavigate();
+  const [scOpen, setScOpen] = useState(false);
 
   return (
     <div className="z-[5] flex h-[50px] flex-shrink-0 items-center gap-[10px] border-b border-border bg-surface px-[14px]">
@@ -66,6 +69,16 @@ export function TopBar() {
         </button>
       )}
 
+      {/* Assistant juridique : répond aux questions sur le State Code du serveur. */}
+      <button
+        onClick={() => setScOpen(true)}
+        title="Assistant State Code"
+        aria-label="Assistant State Code"
+        className="mdt-press flex h-[32px] w-[32px] flex-shrink-0 items-center justify-center rounded-[9px] border border-border bg-surface-2 text-muted hover:border-accent hover:text-accent"
+      >
+        <Scale className="h-[15px] w-[15px]" />
+      </button>
+
       <button
         onClick={toggleMode}
         title={mode === "dark" ? "Passer en clair" : "Passer en sombre"}
@@ -75,6 +88,8 @@ export function TopBar() {
       </button>
 
       <ProfileMenu />
+
+      <StateCodeAssistant open={scOpen} onClose={() => setScOpen(false)} />
     </div>
   );
 }
