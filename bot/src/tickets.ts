@@ -854,16 +854,23 @@ async function reopenTicket(interaction: ButtonInteraction) {
   await (channel as TextChannel).send({ content: `<@${t.ownerId}>`, embeds: [baseEmbed(BRAND.green).setDescription("Ton ticket a été réouvert par l'encadrement.")] }).catch(() => {});
 }
 
-// Sérialise un message pour l'archive (contenu + embeds condensés).
-function messageContent(m: { content: string; embeds: { title: string | null; description: string | null }[] }): string {
+// Sérialise un message pour l'archive : contenu brut + embeds DÉTAILLÉS (auteur,
+// titre, description, TOUS les champs, pied de page). Sans ça, les embeds à
+// champs (dossier, identité, relais candidat/recruteur) n'affichaient qu'« Embed ».
+type ArchiveEmbed = { author: string | null; title: string | null; description: string | null; fields: { name: string; value: string }[]; footer: string | null };
+function messageContent(m: { content: string; embeds: ArchiveEmbed[] }): string {
   const parts: string[] = [];
   if (m.content) parts.push(m.content);
   for (const e of m.embeds) {
-    const bits = [e.title, e.description].filter(Boolean).join(" - ");
-    if (bits) parts.push(`[embed] ${bits}`);
-    else parts.push("[embed]");
+    const lines: string[] = [];
+    const head = [e.author, e.title].filter(Boolean).join(" · ");
+    if (head) lines.push(head);
+    if (e.description) lines.push(e.description);
+    for (const f of e.fields) lines.push(`${f.name} : ${f.value}`);
+    if (e.footer) lines.push(e.footer);
+    parts.push(lines.length ? lines.join("\n") : "[embed]");
   }
-  return parts.join("\n");
+  return parts.join("\n\n");
 }
 
 async function fetchAllMessages(channel: TextChannel): Promise<ArchiveMessage[]> {
@@ -873,9 +880,16 @@ async function fetchAllMessages(channel: TextChannel): Promise<ArchiveMessage[]>
     const batch = await channel.messages.fetch({ limit: 100, ...(before ? { before } : {}) }).catch(() => null);
     if (!batch || batch.size === 0) break;
     for (const m of batch.values()) {
+      const embeds: ArchiveEmbed[] = m.embeds.map((e) => ({
+        author: e.author?.name ?? null,
+        title: e.title ?? null,
+        description: e.description ?? null,
+        fields: (e.fields ?? []).map((f) => ({ name: f.name, value: f.value })),
+        footer: e.footer?.text ?? null,
+      }));
       out.push({
         authorId: m.author.id, authorName: m.author.username, bot: m.author.bot,
-        content: messageContent({ content: m.content, embeds: m.embeds.map((e) => ({ title: e.title, description: e.description })) }),
+        content: messageContent({ content: m.content, embeds }),
         at: m.createdTimestamp,
         attachments: m.attachments.size ? [...m.attachments.values()].map((a) => a.url) : undefined,
       });

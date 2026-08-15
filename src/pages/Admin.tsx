@@ -17,7 +17,6 @@ const TABS = [
   { key: "invitations", label: "Invitations" },
   { key: "permissions", label: "Permissions" },
   { key: "discord", label: "Commandes Discord" },
-  { key: "grades", label: "Grades" },
   { key: "defcon", label: "DEFCON" },
   { key: "audit", label: "Journal d'audit" },
 ] as const;
@@ -48,7 +47,6 @@ export function Admin() {
       {tab === "invitations" && <InvitationsTab />}
       {tab === "permissions" && <PermissionsTab />}
       {tab === "discord" && <DiscordCommandsTab />}
-      {tab === "grades" && <GradesTab />}
       {tab === "defcon" && <DefconTab />}
       {tab === "audit" && <AuditTab />}
     </div>
@@ -87,61 +85,6 @@ function NexusSyncButton() {
       <RefreshCw className={`h-[15px] w-[15px] ${busy ? "animate-spin" : ""}`} />
       {busy ? "Synchronisation…" : "Synchroniser les données depuis le Nexus"}
     </button>
-  );
-}
-
-/* ============ Grades (dont grades extérieurs, item 8) ============ */
-const CORPS_OPTS = [
-  { value: "OPERATIONNEL", label: "Corps opérationnel" },
-  { value: "SUPERVISION", label: "Supervision" },
-  { value: "ETAT_MAJOR", label: "État-Major" },
-] as const;
-function GradesTab() {
-  const grades = useQuery(api.config.listGradesAdmin);
-  const create = useMutation(api.config.createGrade);
-  const update = useMutation(api.config.updateGradeMeta);
-  const remove = useMutation(api.config.removeGrade);
-  const [name, setName] = useState("");
-  const [corps, setCorps] = useState<(typeof CORPS_OPTS)[number]["value"]>("OPERATIONNEL");
-  const [external, setExternal] = useState(true);
-
-  return (
-    <div className="flex flex-col gap-4">
-      <div className="rounded-card border border-border bg-surface p-4">
-        <div className="mb-2 text-[10.5px] font-bold uppercase tracking-[0.09em] text-faint">Créer un grade</div>
-        <div className="flex flex-wrap items-end gap-2">
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nom du grade (ex. DOJ - Procureur)" className="h-9 min-w-[220px] flex-1 rounded-sm border border-border bg-surface-2 px-3 text-[13px] outline-none focus:border-accent" />
-          <select value={corps} onChange={(e) => setCorps(e.target.value as typeof corps)} className="h-9 rounded-sm border border-border bg-surface-2 px-2 text-[13px]">
-            {CORPS_OPTS.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
-          </select>
-          <label className="flex h-9 items-center gap-[6px] rounded-sm border border-border bg-surface-2 px-3 text-[12.5px] font-semibold"><input type="checkbox" checked={external} onChange={(e) => setExternal(e.target.checked)} className="h-4 w-4 accent-[var(--accent)]" /> Extérieur</label>
-          <button onClick={async () => { if (!name.trim()) return; await create({ name, corps, external }); setName(""); }} className="mdt-press h-9 rounded-[9px] bg-accent px-4 text-[13px] font-semibold text-accent-contrast hover:brightness-[1.06]">Ajouter</button>
-        </div>
-        <div className="mt-2 text-[11.5px] text-muted">Un grade <b>extérieur</b> (ex. DOJ) peut se connecter avec ses permissions mais n'apparaît ni dans l'effectif ni dans l'organigramme.</div>
-      </div>
-
-      <div className="overflow-hidden rounded-card border border-border bg-surface">
-        <div className="grid grid-cols-[2fr_1.4fr_.8fr_.9fr_auto] gap-3 border-b border-border px-4 py-[11px] text-[10px] font-bold uppercase tracking-[0.08em] text-faint">
-          <span>Grade</span><span>Corps</span><span>Agents</span><span>Extérieur</span><span></span>
-        </div>
-        {grades === undefined && <div className="p-4"><SkeletonRows rows={5} /></div>}
-        {(grades ?? []).map((g) => (
-          <div key={g._id} className="grid grid-cols-[2fr_1.4fr_.8fr_.9fr_auto] items-center gap-3 border-b border-border px-4 py-[10px]">
-            <span className="text-[13px] font-semibold">{g.name}</span>
-            <span className="text-[12.5px] text-muted">{CORPS_OPTS.find((c) => c.value === g.corps)?.label ?? g.corps}</span>
-            <span className="font-data text-[12.5px] text-muted">{g.holders}</span>
-            <button
-              onClick={() => update({ gradeId: g._id as Id<"grades">, external: !g.external })}
-              className="rounded-[6px] border px-[10px] py-[5px] text-[11.5px] font-semibold"
-              style={g.external ? { background: "var(--accent-soft)", borderColor: "var(--accent)", color: "var(--accent)" } : { background: "var(--surface-2)", borderColor: "var(--border)", color: "var(--muted)" }}
-            >
-              {g.external ? "Extérieur" : "Interne"}
-            </button>
-            <button onClick={() => { if (g.holders === 0) void remove({ gradeId: g._id as Id<"grades"> }); }} disabled={g.holders > 0} className="text-[12px] text-faint hover:text-danger disabled:opacity-30" title={g.holders > 0 ? "Grade attribué" : "Supprimer"}>Supprimer</button>
-          </div>
-        ))}
-      </div>
-    </div>
   );
 }
 

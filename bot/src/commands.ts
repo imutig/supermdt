@@ -43,6 +43,8 @@ export const commands = [
     .addSubcommand((s) => s.setName("list").setDescription("Lister les templates")),
   new SlashCommandBuilder().setName("integrer").setDescription("Intégrer le candidat de ce ticket à la Police Academy")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages),
+  new SlashCommandBuilder().setName("statut").setDescription("Changer le statut de la candidature de ce ticket")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages),
   new SlashCommandBuilder().setName("validation").setDescription("Valider le candidat de ce ticket : lui attribuer le rôle Cadet")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages),
 ].map((c) => c.toJSON());
@@ -99,7 +101,7 @@ export async function handleCommand(interaction: ChatInputCommandInteraction) {
       else await renderTemplatesCmd(interaction);
       return;
     }
-    if (interaction.commandName === "integrer") { await integrer(interaction); return; }
+    if (interaction.commandName === "integrer" || interaction.commandName === "statut") { await integrer(interaction); return; }
     if (interaction.commandName === "validation") { await validation(interaction); return; }
     if (interaction.commandName === "plaque") {
       await interaction.deferReply();

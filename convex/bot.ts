@@ -1297,6 +1297,9 @@ export const ticketProvisionAccount = mutation({
       discordId: t.ownerId, discordUsername: t.ownerName, dmPending: true, dmSentAt: undefined,
       prefillNom: t.nom, prefillPrenom: t.prenom, prefillMatricule: undefined,
       prefillGradeId: cadetGrade._id, autoActivate: true,
+      // Rattache le cadet à la promotion du ticket (s'il en a une) : à l'inscription
+      // il devient membre de la promo → diplômable ensuite via promotions.graduate.
+      promotionId: t.promotionId ?? undefined,
     };
     let code: string;
     if (existing) {
