@@ -183,6 +183,28 @@ export const search = query({
   },
 });
 
+// Derniers citoyens encodés (accueil) : les fiches créées le plus récemment.
+export const recent = query({
+  args: { limit: v.optional(v.number()) },
+  handler: async (ctx, { limit }) => {
+    const agent = await requireAgent(ctx);
+    await requirePermission(ctx, agent, "citoyens.view");
+    const n = Math.min(limit ?? 6, 12);
+    const rows = await ctx.db.query("citizens").order("desc").take(n * 3);
+    return rows
+      .filter((c) => !c.deletedAt && c.status === "ACTIVE")
+      .slice(0, n)
+      .map((c) => ({
+        _id: c._id,
+        prenom: c.prenom,
+        nom: c.nom,
+        dateNaissance: c.dateNaissance ?? null,
+        mugshotUrl: c.mugshotUrl ?? null,
+        at: c._creationTime,
+      }));
+  },
+});
+
 // Champs partagés du dossier citoyen (item 8). Empreinte retirée.
 const CITIZEN_FIELDS = {
   nom: v.string(),

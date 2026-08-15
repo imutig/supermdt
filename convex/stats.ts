@@ -35,6 +35,30 @@ export const overview = query({
   },
 });
 
+// Compteurs légers pour l'accueil : lit le même instantané mais SANS exiger
+// `stats.view` (l'accueil est visible par tous les agents). Ne renvoie que des
+// totaux non sensibles (citoyens / véhicules / armes synchronisés).
+export const counts = query({
+  args: {},
+  handler: async (ctx): Promise<{ citizensCount: number; vehiclesCount: number; weaponsCount: number } | null> => {
+    await requireAgent(ctx);
+    const snap = await ctx.db.query("statsSnapshot").first();
+    if (!snap) return null;
+    const c = (snap.data as StatsData).counts;
+    return { citizensCount: c.citizensCount, vehiclesCount: c.vehiclesCount, weaponsCount: c.weaponsCount };
+  },
+});
+
+// Amorce l'instantané pour un agent quelconque (l'accueil l'appelle) : sans ça,
+// un agent sans `stats.view` ne verrait jamais les compteurs sur une base neuve.
+export const ensureSnapshot = mutation({
+  args: {},
+  handler: async (ctx) => {
+    await requireAgent(ctx);
+    await touchStats(ctx);
+  },
+});
+
 // Demande un recalcul, ignorée si l'instantané est encore frais. Appelée par
 // les mutations qui modifient les données agrégées : le coût réel est donc
 // borné à un calcul par fenêtre, quel que soit le volume d'écritures.

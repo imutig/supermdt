@@ -1,5 +1,6 @@
+import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { useQuery } from "convex/react";
+import { useQuery, useMutation } from "convex/react";
 import { api } from "@/lib/api";
 import { useCan } from "@/hooks/useCan";
 import { useApp } from "@/providers/app-state";
@@ -37,15 +38,20 @@ export function Dashboard() {
   const { onDuty, toggle: toggleDuty, dutySince } = useService();
   const me = useMe();
   const { can } = useCan();
-  const mandatsQ = useQuery(api.mandats.active, can("mandats.view") ? {} : "skip");
+  const countsQ = useQuery(api.stats.counts, {});
+  const recentQ = useQuery(api.citizens.recent, can("citoyens.view") ? { limit: 6 } : "skip");
+  const ensureSnapshot = useMutation(api.stats.ensureSnapshot);
   const presenceQ = useQuery(api.agents.presence, can("effectif.view") ? {} : "skip");
   const feedQ = useQuery(api.activity.home, can("casier.view") || can("contraventions.view") || can("rapports.view") ? {} : "skip");
   const upcomingQ = useQuery(api.calendar.upcoming, can("calendrier.view") ? {} : "skip");
-  const mandats = mandatsQ ?? [];
+  const recent = recentQ ?? [];
   const presenceList = presenceQ ?? [];
   const feed = feedQ ?? [];
   const upcoming = upcomingQ ?? [];
   const navigate = useNavigate();
+
+  // Amorce l'instantané de compteurs (citoyens/véhicules) pour tout agent.
+  useEffect(() => { ensureSnapshot().catch(() => {}); }, [ensureSnapshot]);
 
   const first = me?.agent.prenomRP ?? "";
   const gradeName = me?.agent.isOwner ? "Owner" : (me?.grade?.name ?? "-");
@@ -60,12 +66,11 @@ export function Dashboard() {
     : me?.grade
       ? (CORPS[me.grade.corps] ?? "")
       : "";
-  const cards = [
-    { label: "Grade", value: gradeName, sub: corpsLabel, danger: false },
-    { label: "Divisions", value: String(me?.divisions.length ?? 0), sub: divLabel, danger: false },
-    { label: "Mandats actifs", value: String(mandats.length), sub: "sur le serveur", danger: mandats.length > 0 },
-    // Compteur « en service » masqué tant que la prise de service MDT est off.
-    ...(FEATURES.service ? [{ label: "Agents en service", value: String(presenceList.length), sub: "temps réel", danger: false }] : []),
+  const cards: { label: string; value: string; sub: string; danger?: boolean; onClick?: () => void }[] = [
+    { label: "Grade", value: gradeName, sub: corpsLabel },
+    { label: "Divisions", value: String(me?.divisions.length ?? 0), sub: divLabel },
+    { label: "Citoyens", value: countsQ ? countsQ.citizensCount.toLocaleString("fr-FR") : "—", sub: "fiches synchronisées", onClick: openSearch },
+    { label: "Véhicules", value: countsQ ? countsQ.vehiclesCount.toLocaleString("fr-FR") : "—", sub: "immatriculés", onClick: can("vehicules.view") ? () => navigate("/vehicules") : undefined },
   ];
 
   const today = new Date().toLocaleDateString("fr-FR", {
@@ -96,7 +101,11 @@ export function Dashboard() {
           {/* Stat cards */}
           <div className="grid grid-cols-2 gap-px overflow-hidden rounded-card border border-border bg-border md:grid-cols-4">
             {cards.map((c) => (
-              <div key={c.label} className="bg-surface px-[15px] py-[14px]">
+              <div
+                key={c.label}
+                onClick={c.onClick}
+                className={`bg-surface px-[15px] py-[14px] ${c.onClick ? "cursor-pointer hover:bg-surface-2" : ""}`}
+              >
                 <div className="mb-[7px] text-[10.5px] font-bold uppercase tracking-[0.09em] text-faint">
                   {c.label}
                 </div>
@@ -111,61 +120,41 @@ export function Dashboard() {
             ))}
           </div>
 
-          {/* Mandats actifs (LIVE) */}
-          <div className="overflow-hidden rounded-card border border-border bg-surface">
-            <div className="flex items-center gap-[9px] border-b border-border px-4 py-[13px]">
-              <span
-                className="h-[7px] w-[7px] rounded-full"
-                style={{ background: "#dc2626", animation: "mdtPulse 1.6s ease-in-out infinite" }}
-              />
-              <h2 className="m-0 text-[13.5px] font-bold">Mandats actifs</h2>
-              <span className="text-[11px] text-faint">temps réel · qui est recherché</span>
-              <div className="flex-1" />
-              <span className="font-data text-[12px] font-semibold text-muted">{mandats.length}</span>
-            </div>
-            <div className="grid grid-cols-[1.4fr_1.7fr_.9fr_.7fr] gap-3 border-b border-border px-4 py-2 text-[10px] font-bold uppercase tracking-[0.08em] text-faint">
-              <span>Individu</span>
-              <span>Motif</span>
-              <span>Type</span>
-              <span>Émis</span>
-            </div>
-            {mandatsQ === undefined && <div className="p-4"><SkeletonRows rows={3} /></div>}
-            {mandatsQ !== undefined && mandats.length === 0 && (
-              <EmptyState compact title="Aucun mandat actif" message="La chance est de votre côté aujourd'hui." />
-            )}
-            {mandats.map((m) => (
-              <div
-                key={m._id}
-                onClick={() => navigate(`/citoyen/${m.citizenId}`)}
-                className="grid cursor-pointer grid-cols-[1.4fr_1.7fr_.9fr_.7fr] gap-3 border-b border-border px-4 py-[11px] hover:bg-surface-2"
-              >
-                <div className="flex min-w-0 items-center gap-[10px]">
-                  <div
-                    className="h-[30px] w-[30px] flex-shrink-0 rounded-[7px]"
-                    style={{
-                      background:
-                        "repeating-linear-gradient(135deg,var(--surface-2),var(--surface-2) 5px,var(--border) 5px,var(--border) 6px)",
-                    }}
-                  />
-                  <div className="overflow-hidden text-ellipsis whitespace-nowrap text-[13px] font-semibold">
-                    {m.citizenName}
-                  </div>
-                </div>
-                <div className="self-center overflow-hidden text-ellipsis whitespace-nowrap text-[12.5px] text-muted">
-                  {m.motif}
-                </div>
-                <div className="self-center">
-                  <span
-                    className="rounded-[5px] px-[7px] py-[2px] text-[10px] font-semibold"
-                    style={{ background: "var(--accent-soft)", color: "var(--accent)" }}
-                  >
-                    {m.typeName}
-                  </span>
-                </div>
-                <div className="self-center text-[11.5px] text-muted">{relTime(m.issuedAt)}</div>
+          {/* Derniers citoyens encodés (données synchronisées du NexusMDT) */}
+          {can("citoyens.view") && (
+            <div className="overflow-hidden rounded-card border border-border bg-surface">
+              <div className="flex items-center gap-[9px] border-b border-border px-4 py-[13px]">
+                <h2 className="m-0 text-[13.5px] font-bold">Derniers citoyens</h2>
+                <span className="text-[11px] text-faint">fiches récemment encodées</span>
+                <div className="flex-1" />
+                <span onClick={openSearch} className="cursor-pointer text-[11px] text-accent hover:underline">Rechercher</span>
               </div>
-            ))}
-          </div>
+              {recentQ === undefined && <div className="p-4"><SkeletonRows rows={3} /></div>}
+              {recentQ !== undefined && recent.length === 0 && (
+                <EmptyState compact title="Aucun citoyen" message="Les fiches encodées apparaîtront ici." />
+              )}
+              {recent.map((c) => (
+                <div
+                  key={c._id}
+                  onClick={() => navigate(`/citoyen/${c._id}`)}
+                  className="flex cursor-pointer items-center gap-[11px] border-b border-border px-4 py-[10px] hover:bg-surface-2"
+                >
+                  {c.mugshotUrl ? (
+                    <img src={c.mugshotUrl} alt="" className="h-[34px] w-[34px] flex-shrink-0 rounded-[7px] object-cover" />
+                  ) : (
+                    <div className="flex h-[34px] w-[34px] flex-shrink-0 items-center justify-center rounded-[7px] border border-border bg-surface-2 text-[11px] font-bold text-faint">
+                      {(c.prenom[0] ?? "").toUpperCase()}{(c.nom[0] ?? "").toUpperCase()}
+                    </div>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-[13px] font-semibold">{c.prenom} {c.nom}</div>
+                    <div className="truncate text-[11.5px] text-muted">{c.dateNaissance ?? "Date de naissance inconnue"}</div>
+                  </div>
+                  <span className="font-data text-[11px] text-faint">{relTime(c.at)}</span>
+                </div>
+              ))}
+            </div>
+          )}
 
           {/* Activité récente : casier + rapports (§14) */}
           <div className="overflow-hidden rounded-card border border-border bg-surface">
