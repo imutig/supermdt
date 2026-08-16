@@ -21,7 +21,7 @@ export const MDT_ENABLED = import.meta.env.VITE_MDT_ENABLED !== "false";
 // seule) : seule l'écriture bascule vers le NexusMDT.
 export const FEATURES = {
   service: false,
-  dispatch: false,
+  dispatch: true,
   citizenWrite: false,
   judicialWrite: false,
   ficheRenseignement: false,
