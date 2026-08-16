@@ -473,12 +473,14 @@ export const addEntry = mutation({
     // n'en modifieront ensuite que le statut. Pas d'amende si aucun montant dû.
     if (totalFine > 0) {
       const { date, heure } = parisInfractionStamp();
+      // Si l'amende est déjà réglée à l'arrestation, l'amende naît « Payée ».
+      const amendeStatut = args.finePaid ? "Payée" : "Notifiée";
       const amendeId = await ctx.db.insert("amendes", {
         citizenId: args.citizenId,
         sourceType: "CASIER",
         casierEntryId: entryId,
         typeAmende: "Amende de police",
-        statut: "Notifiée",
+        statut: amendeStatut,
         objet: snaps.map((s) => s.snapshot.name).join(" + ") || undefined,
         montant: totalFine,
         dateInfraction: date,
@@ -498,7 +500,7 @@ export const addEntry = mutation({
         color: NOTIFY_COLOR.warning,
         fields: [
           { name: "Montant", value: `$${totalFine.toLocaleString("fr-FR")}`, inline: true },
-          { name: "Statut", value: "Notifiée", inline: true },
+          { name: "Statut", value: amendeStatut, inline: true },
         ],
         url: await deepLink(ctx, `/citoyen/${args.citizenId}`),
         footer: `Émise par ${agent.prenomRP} ${agent.nomRP}`,
