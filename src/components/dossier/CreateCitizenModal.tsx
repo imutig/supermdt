@@ -82,6 +82,13 @@ export function CreateCitizenModal({
       {(list ?? []).map((o) => <option key={o._id} value={o.name}>{o.name}</option>)}
     </select>
   );
+  // Champ à saisie libre avec suggestions (datalist) — pour l'appartenance.
+  const combo = (list: { _id: string; name: string }[] | undefined, k: keyof Form, listId: string) => (
+    <>
+      <input value={String(f[k] ?? "")} onChange={set(k)} className={FIELD} list={listId} placeholder="Texte libre ou choisir…" />
+      <datalist id={listId}>{(list ?? []).map((o) => <option key={o._id} value={o.name} />)}</datalist>
+    </>
+  );
 
   // Création possible seulement si la synchro Nexus est active (ou flag natif).
   if (!canWrite) {
@@ -133,7 +140,7 @@ export function CreateCitizenModal({
 
             <Group title="Situation">
               <L label="Adresse"><input value={f.adresse} onChange={set("adresse")} className={FIELD} /></L>
-              <L label="Groupe / appartenance">{sel(opts?.citizenGroups, "groupe")}</L>
+              <L label="Groupe / appartenance">{combo(opts?.citizenGroups, "groupe", "grp-create")}</L>
               <L label="Emploi"><input value={f.metier} onChange={set("metier")} className={FIELD} /></L>
             </Group>
           </div>
