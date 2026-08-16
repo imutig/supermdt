@@ -1,4 +1,4 @@
-import { internalAction, internalMutation, action, query } from "./_generated/server";
+import { internalAction, internalMutation, internalQuery, action, query } from "./_generated/server";
 import { internal, api } from "./_generated/api";
 import { v, ConvexError } from "convex/values";
 import { getAuthUserId } from "@convex-dev/auth/server";
@@ -56,14 +56,26 @@ function mapWeaponStatus(s: string): "ACTIVE" | "ENREGISTREE" | "SAISIE" | "DETR
 }
 
 // Gravités (= catégories, l'ancien MDT n'ayant pas de catégories distinctes).
+// Les quatre — et seulement quatre — catégories/gravités canoniques du code
+// pénal. Toute charge importée est rangée dans l'une d'elles (voir canonSeverity).
 const SEVERITIES = [
   { name: "Contravention", color: "#6b7280", sensitive: false },
   { name: "Délit mineur", color: "#eab308", sensitive: false },
   { name: "Délit majeur", color: "#f97316", sensitive: true },
   { name: "Crime", color: "#ef4444", sensitive: true },
-  { name: "Délit d'entreprise", color: "#3b82f6", sensitive: false },
 ];
 const sevOrder = new Map(SEVERITIES.map((s, i) => [s.name, i]));
+
+// Replie n'importe quel `type` Nexus vers l'une des 4 gravités canoniques.
+// « Délit d'entreprise » (amendes administratives, sans prison) et tout type
+// inconnu retombent sur « Délit mineur » pour ne jamais perdre une charge.
+function canonSeverity(raw: string): string {
+  const n = norm(raw);
+  if (n.includes("contravention")) return "Contravention";
+  if (n.includes("crime")) return "Crime";
+  if (n.includes("majeur")) return "Délit majeur";
+  return "Délit mineur";
+}
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -614,6 +626,66 @@ export const _upsertSaisies = internalMutation({
   },
 });
 
+// Inspection en lecture seule des `type` renvoyés par Nexus /api/charges :
+// on veut connaître la distribution exacte avant une reconstruction.
+export const inspectNexusCharges = internalAction({
+  args: { token: v.optional(v.string()) },
+  handler: async (ctx, { token }): Promise<{ total: number; types: { type: string; count: number }[] }> => {
+    const tk = token || process.env.VIZU_TOKEN;
+    if (!tk) throw new ConvexError("Aucun token VIZU_TOKEN.");
+    const charges = await apiGet("/api/charges?entity=lspd", tk).then((j: any) => j.charges || []);
+    const tally = new Map<string, number>();
+    for (const c of charges) {
+      const t = (c.type || "(vide)").trim() || "(vide)";
+      tally.set(t, (tally.get(t) ?? 0) + 1);
+    }
+    return {
+      total: charges.length,
+      types: [...tally.entries()].sort((a, b) => b[1] - a[1]).map(([type, count]) => ({ type, count })),
+    };
+  },
+});
+
+// Export lisible du code pénal (charges + catégories + gravités) avant toute
+// reconstruction destructive. Renvoie du JSON prêt à archiver/fournir.
+export const exportPenal = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    const cats = await ctx.db.query("penalCategories").collect();
+    const sevs = await ctx.db.query("severityLevels").collect();
+    const catName = new Map(cats.map((c) => [c._id, c.name]));
+    const sevName = new Map(sevs.map((s) => [s._id, s.name]));
+    const charges = await ctx.db.query("penalCharges").collect();
+    const byCat = new Map<string, number>();
+    for (const c of charges) {
+      const k = (c.categoryId && catName.get(c.categoryId)) || "(sans catégorie)";
+      byCat.set(k, (byCat.get(k) ?? 0) + 1);
+    }
+    return {
+      counts: { charges: charges.length, categories: cats.length, severities: sevs.length },
+      chargesParCategorie: [...byCat.entries()].sort((a, b) => b[1] - a[1]).map(([name, count]) => ({ name, count })),
+      categories: cats.map((c) => ({ name: c.name, position: c.position, sensitive: c.sensitive })).sort((a, b) => a.position - b.position),
+      severities: sevs.map((s) => ({ name: s.name, position: s.position, color: s.color })).sort((a, b) => a.position - b.position),
+      charges: charges
+        .map((c) => ({
+          name: c.name,
+          categorie: (c.categoryId && catName.get(c.categoryId)) || null,
+          gravite: (c.severityId && sevName.get(c.severityId)) || null,
+          chargeType: c.chargeType ?? null,
+          fine: c.fine,
+          jailSeconds: c.jailSeconds ?? null,
+          pointsPermis: c.pointsPermis ?? null,
+          dojRequest: c.dojRequest ?? null,
+          instruction: c.instruction ?? null,
+          description: c.description ?? null,
+          active: c.active ?? null,
+          position: c.position ?? null,
+        }))
+        .sort((a, b) => (a.position ?? 0) - (b.position ?? 0)),
+    };
+  },
+});
+
 export const _upsertCharges = internalMutation({
   args: { rows: v.array(v.any()), dryRun: v.optional(v.boolean()), reset: v.optional(v.boolean()) },
   handler: async (ctx, { rows, dryRun, reset }): Promise<ChRep> => {
@@ -627,7 +699,7 @@ export const _upsertCharges = internalMutation({
       charges.push(c);
     }
     charges.sort((a, b) => {
-      const so = (sevOrder.get(a.severity) ?? 99) - (sevOrder.get(b.severity) ?? 99);
+      const so = (sevOrder.get(canonSeverity(a.severity)) ?? 99) - (sevOrder.get(canonSeverity(b.severity)) ?? 99);
       return so !== 0 ? so : a.name.localeCompare(b.name, "fr");
     });
 
@@ -668,10 +740,11 @@ export const _upsertCharges = internalMutation({
       }
       ajoutes++;
       if (dryRun) continue;
-      const categoryId = catByName.get(c.severity);
+      const sev = canonSeverity(c.severity);
+      const categoryId = catByName.get(sev);
       if (!categoryId) continue;
       await ctx.db.insert("penalCharges", {
-        categoryId, severityId: sevByName.get(c.severity), name: c.name, fine: c.fine,
+        categoryId, severityId: sevByName.get(sev), name: c.name, fine: c.fine,
         recidiveDays: undefined, jailSeconds: c.jailSeconds, jailOnDecision: false,
         dojRequest: false, sanctionIds: [], description: c.description, active: true, position: pos++,
         pointsPermis: c.pointsPermis, chargeType: c.chargeType, instruction: c.instruction,
