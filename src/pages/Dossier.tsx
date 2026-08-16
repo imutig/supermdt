@@ -195,7 +195,6 @@ export function Dossier() {
 
   const c = data.citizen;
   const age = ageFrom(c.dateNaissance);
-  const activeMandatsCount = (mandats ?? []).filter((m) => m.effectiveActive).length;
   const headFacts = [
     { label: "Sexe", value: sexeLabel(c.sexe) },
     { label: "Taille", value: c.taille ?? "-" },
@@ -332,14 +331,6 @@ export function Dossier() {
                   ⚑ Recherché
                 </span>
               )}
-              {activeMandatsCount > 0 && (
-                <span
-                  className="rounded-[6px] px-[10px] py-[4px] text-[11.5px] font-semibold"
-                  style={{ background: "color-mix(in srgb, var(--danger) 14%, transparent)", color: "var(--danger)" }}
-                >
-                  {activeMandatsCount} mandat{activeMandatsCount > 1 ? "s" : ""} actif{activeMandatsCount > 1 ? "s" : ""}
-                </span>
-              )}
               {data.flags.map((f) => (
                 <span
                   key={f.name}
@@ -388,7 +379,7 @@ export function Dossier() {
       <div className="grid grid-cols-[1fr_300px] items-start gap-[18px]">
         <div className="min-w-0">
           <div className="mb-[14px] flex flex-wrap gap-[2px] rounded-card border border-border bg-surface p-[5px]">
-            {TABS.filter((t) => t.key !== "plaintes" || FEATURES.plaintes).map((t) => (
+            {TABS.filter((t) => t.key !== "mandats").filter((t) => t.key !== "plaintes" || FEATURES.plaintes).map((t) => (
               <button
                 key={t.key}
                 onClick={() => setTab(t.key)}

@@ -247,7 +247,6 @@ function SettingsTab() {
         <Toggle label="Thème sombre" hint="Bascule entre le thème clair et sombre du MDT." on={mode === "dark"} onToggle={toggleMode} />
         <Toggle label="Barre latérale réductible" hint="Réduit la barre de navigation à ses icônes." on={prefs.sidebarCollapsible} onToggle={() => setPref("sidebarCollapsible", !prefs.sidebarCollapsible)} />
         <Toggle label="Déploiement au survol" hint="La barre réduite s'élargit quand la souris la survole." on={prefs.sidebarHoverExpand} disabled={!prefs.sidebarCollapsible} onToggle={() => setPref("sidebarHoverExpand", !prefs.sidebarHoverExpand)} />
-        <Toggle label="Dispatch compact" hint="Resserre les cartes de patrouille en hauteur." on={prefs.dispatchCompact} onToggle={() => setPref("dispatchCompact", !prefs.dispatchCompact)} />
       </div>
     </div>
   );
