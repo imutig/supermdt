@@ -6,6 +6,7 @@ import { api, type Id } from "@/lib/api";
 import { useCan } from "@/hooks/useCan";
 import { useToast } from "@/providers/toast";
 import { ImageUpload } from "@/components/common/ImageUpload";
+import { Modal } from "@/components/common/Modal";
 
 // Bandeau des avis de recherche actifs : élément principal de l'accueil dès qu'un avis est ouvert.
 export function BoloBanner() {
@@ -168,15 +169,19 @@ function BoloCompose({ onClose }: { onClose: () => void }) {
   const field = "w-full rounded-[9px] border border-border bg-surface-2 px-[11px] py-[9px] text-[13px] outline-none focus:border-accent";
 
   return (
-    <div onClick={onClose} className="fixed inset-0 z-[85] flex items-center justify-center p-4" style={{ background: "var(--scrim)", backdropFilter: "blur(6px)" }}>
-      <div onClick={(e) => e.stopPropagation()} className="mdt-pop flex max-h-[86vh] w-[560px] max-w-[94vw] flex-col rounded-card border border-border-strong bg-elev shadow-[0_24px_70px_rgba(0,0,0,.4)]">
-        <div className="flex flex-shrink-0 items-center gap-2 border-b border-border px-5 py-4">
-          <AlertTriangle className="h-[17px] w-[17px]" style={{ color: "var(--danger)" }} />
-          <h2 className="m-0 flex-1 text-[15px] font-bold">Émettre un avis de recherche</h2>
-          <button onClick={onClose} className="flex h-[28px] w-[28px] items-center justify-center rounded-sm border border-border bg-surface-2 text-muted hover:border-border-strong"><X className="h-4 w-4" /></button>
-        </div>
-
-        <div className="flex min-h-0 flex-1 flex-col gap-[14px] overflow-y-auto p-5">
+    <Modal
+      title="Émettre un avis de recherche"
+      icon={<AlertTriangle className="h-[17px] w-[17px]" style={{ color: "var(--danger)" }} />}
+      onClose={onClose}
+      width={520}
+      footer={
+        <>
+          <button onClick={onClose} className="mdt-press rounded-[9px] border border-border bg-surface-2 px-4 py-[9px] text-[13px] font-semibold text-muted hover:border-border-strong">Annuler</button>
+          <button onClick={submit} className="mdt-press rounded-[9px] px-4 py-[9px] text-[13px] font-bold text-white" style={{ background: "var(--danger)" }}>Émettre l'avis</button>
+        </>
+      }
+    >
+        <div className="flex flex-col gap-[14px]">
           <div className="flex gap-2">
             {(["PERSONNE", "VEHICULE"] as const).map((k) => (
               <button
@@ -240,12 +245,6 @@ function BoloCompose({ onClose }: { onClose: () => void }) {
             Armé et dangereux (avis prioritaire)
           </label>
         </div>
-
-        <div className="flex flex-shrink-0 justify-end gap-2 border-t border-border px-5 py-4">
-          <button onClick={onClose} className="mdt-press rounded-[9px] border border-border bg-surface-2 px-4 py-[9px] text-[13px] font-semibold text-muted hover:border-border-strong">Annuler</button>
-          <button onClick={submit} className="mdt-press rounded-[9px] px-4 py-[9px] text-[13px] font-bold text-white" style={{ background: "var(--danger)" }}>Émettre l'avis</button>
-        </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
