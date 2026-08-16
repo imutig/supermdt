@@ -26,3 +26,6 @@ data-source
 
 # Exports HAR (peuvent contenir des identifiants) - ne jamais committer
 *.har
+
+# Exports/sauvegardes locales (ne pas versionner)
+exports/
