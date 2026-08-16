@@ -649,6 +649,26 @@ export const inspectNexusCharges = internalAction({
   },
 });
 
+// Garantit la présence des statuts de plainte réellement utilisés par NexusMDT
+// (en plus de ceux déjà configurés), pour que les plaintes créées soient
+// cohérentes avec le NexusMDT. Idempotent.
+export const ensureNexusComplaintStatuses = internalMutation({
+  args: {},
+  handler: async (ctx): Promise<{ added: string[] }> => {
+    const NEXUS = ["En cours", "Transmise au DOJ"];
+    const existing = await ctx.db.query("complaintStatuses").collect();
+    const have = new Set(existing.map((s) => norm(s.name)));
+    let pos = existing.reduce((m, s) => Math.max(m, s.position), -1) + 1;
+    const added: string[] = [];
+    for (const name of NEXUS) {
+      if (have.has(norm(name))) continue;
+      await ctx.db.insert("complaintStatuses", { name, position: pos++, active: true });
+      added.push(name);
+    }
+    return { added };
+  },
+});
+
 // Inspection des plaintes Nexus : distribution réelle des `statut` (pour vérifier
 // que les statuts proposés côté SuperMDT correspondent bien à ceux acceptés).
 export const inspectNexusPlaintes = internalAction({
