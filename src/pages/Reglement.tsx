@@ -15,7 +15,7 @@ export function Reglement() {
   const canManage = can("rbac.manage");
 
   return (
-    <div className="flex h-full flex-col p-[22px_26px]" style={{ animation: "mdtFade .2s ease" }}>
+    <div className="flex min-h-0 flex-1 flex-col p-[22px_26px]" style={{ animation: "mdtFade .2s ease" }}>
       <div className="mb-[14px] flex items-center gap-3">
         <h1 className="m-0 text-[21px] font-bold tracking-tight">Règlement</h1>
         {doc && <span className="text-[12.5px] text-muted">{doc.fileName} · mis à jour le {new Date(doc.uploadedAt).toLocaleDateString("fr-FR")}</span>}
