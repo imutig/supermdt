@@ -28,6 +28,7 @@ type Section =
   | "saisieObjectTypes"
   | "weaponOrigins"
   | "dispatchSectors"
+  | "reportTypes"
   | "webhooks"
   | "reglement"
   | "penal";
@@ -76,6 +77,10 @@ const GROUPS: { group: string; items: { key: Section; label: string }[] }[] = [
     ],
   },
   {
+    group: "Rapports",
+    items: [{ key: "reportTypes", label: "Types de rapport" }],
+  },
+  {
     group: "Documentation",
     items: [
       { key: "resourceCategories", label: "Catégories Ressources" },
@@ -112,6 +117,10 @@ const TIER = [
   { value: "PRINCIPALE", label: "Principale" },
   { value: "SECONDAIRE", label: "Secondaire" },
 ];
+const REPORT_CATEGORY = [
+  { value: "OPERATION", label: "Opération" },
+  { value: "PERSONNEL", label: "Personnel" },
+];
 
 export function Configuration() {
   const [section, setSection] = useState<Section>("grades");
@@ -137,6 +146,9 @@ export function Configuration() {
   const defconCreate = useMutation(api.configEditors.defconCreate);
   const defconUpdate = useMutation(api.configEditors.defconUpdate);
   const defconRemove = useMutation(api.configEditors.defconRemove);
+  const reportTypeCreate = useMutation(api.configEditors.reportTypeCreate);
+  const reportTypeUpdate = useMutation(api.configEditors.reportTypeUpdate);
+  const reportTypeRemove = useMutation(api.configEditors.reportTypeRemove);
 
   // Wrappers pour les tables "named" génériques.
   const named = (table: string) => ({
@@ -318,6 +330,21 @@ export function Configuration() {
               onCreate={(v) => defconCreate(v as { name: string; color?: string; fineMultiplier: number; sensitiveFineMultiplier: number })}
               onUpdate={(id, v) => defconUpdate({ id: id as never, ...(v as { name: string; color?: string; fineMultiplier: number; sensitiveFineMultiplier: number }) })}
               onRemove={(id) => defconRemove({ id: id as never })}
+            />
+          )}
+          {section === "reportTypes" && (
+            <ListEditor
+              title="Types de rapport"
+              description="Familles de rapport proposées à la création. « Opération » = rapports collaboratifs d'opérations ; « Personnel » = rapports individuels (usage de la force, tirs…), visibles de leur seul auteur."
+              rows={data?.reportTypes.map((t) => ({ ...t, category: t.category ?? "OPERATION" }))}
+              columns={[
+                { key: "name", label: "Nom", width: "1.6fr" },
+                { key: "category", label: "Catégorie", type: "select", options: REPORT_CATEGORY, width: "1fr" },
+                { key: "active", label: "Actif", type: "bool", width: ".5fr" },
+              ]}
+              onCreate={(v) => reportTypeCreate({ name: v.name as string, category: v.category as "OPERATION" | "PERSONNEL" })}
+              onUpdate={(id, v) => reportTypeUpdate({ id: id as never, name: v.name as string, category: v.category as "OPERATION" | "PERSONNEL", active: !!v.active })}
+              onRemove={(id) => reportTypeRemove({ id: id as never })}
             />
           )}
           {section === "penal" && (

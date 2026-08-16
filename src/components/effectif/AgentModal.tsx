@@ -346,6 +346,9 @@ export function AgentModal({ agentId, onClose }: { agentId: Id<"agents">; onClos
               {/* Armes de service enregistrées par l'agent */}
               <AgentServiceWeapons agentId={agentId} />
 
+              {/* Rapports personnels de l'agent (lecture seule) */}
+              <AgentPersonalReports agentId={agentId} onOpen={onClose} />
+
               {/* Formations & spécialités : purement déclaratives, elles n'ouvrent aucun droit. */}
               <div>
                 <div className="mb-[6px] text-[10.5px] font-bold uppercase tracking-[0.09em] text-faint">Formations & spécialités</div>
@@ -700,6 +703,41 @@ function AccountSection({
             ))}
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+// Rapports personnels de l'agent (lecture seule) : liens vers l'éditeur, où le
+// backend applique l'accès en lecture seule.
+const REPORT_STATUS: Record<string, { label: string; color: string }> = {
+  BROUILLON: { label: "Brouillon", color: "var(--muted)" },
+  SOUMIS: { label: "Soumis", color: "var(--warning)" },
+  VALIDE: { label: "Validé", color: "var(--success)" },
+};
+function AgentPersonalReports({ agentId, onOpen }: { agentId: Id<"agents">; onOpen: () => void }) {
+  const reports = useQuery(api.reports.byAgentPersonal, { agentId });
+  const navigate = useNavigate();
+  if (!reports || reports.length === 0) return null;
+  return (
+    <div>
+      <div className="mb-[6px] text-[10.5px] font-bold uppercase tracking-[0.09em] text-faint">Rapports personnels</div>
+      <div className="flex flex-col gap-[7px]">
+        {reports.map((r) => {
+          const s = REPORT_STATUS[r.status];
+          return (
+            <button
+              key={r._id}
+              onClick={() => { onOpen(); navigate(`/rapport/${r._id}`); }}
+              className="flex items-center gap-2 rounded-sm border border-border bg-surface-2 px-[12px] py-[9px] text-left hover:border-border-strong"
+            >
+              <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold">{r.title}</span>
+              <span className="flex-shrink-0 text-[11px] text-muted">{r.typeName}</span>
+              {s && <span className="flex-shrink-0 text-[11px] font-semibold" style={{ color: s.color }}>{s.label}</span>}
+              <span className="flex-shrink-0 font-data text-[11px] text-faint">{new Date(r.at).toLocaleDateString("fr-FR")}</span>
+            </button>
+          );
+        })}
       </div>
     </div>
   );

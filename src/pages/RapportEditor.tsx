@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { X, Search, Trash2, FileText } from "lucide-react";
-import { useMutation, useQuery } from "convex/react";
+import { X, Search, Trash2, FileText, Plus, Pencil, Link2 } from "lucide-react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { useTiptapSync } from "@convex-dev/prosemirror-sync/tiptap";
 import { EditorContent, useEditor } from "@tiptap/react";
 import { api, type Id } from "@/lib/api";
@@ -12,9 +12,25 @@ import { RichTextEditor, RichTextToolbar, richTextExtensions } from "@/component
 import { AgentTag } from "@/components/common/AgentTag";
 import { AgentSelect } from "@/components/common/AgentSelect";
 import { ImageGallery } from "@/components/common/ImageGallery";
+import { ImageUpload } from "@/components/common/ImageUpload";
 import { LosSantosMap } from "@/components/carte/LosSantosMap";
 import { CasingsEditor, type Casing } from "@/components/dossier/CasingsEditor";
 import { LoadingScreen } from "@/components/common/Loader";
+import { parisWallToEpoch } from "@/lib/paris";
+
+// Conversion epoch <-> valeur d'un input datetime-local, en heure de Paris.
+function epochToLocalInput(ms: number | null): string {
+  if (ms == null) return "";
+  const dtf = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Paris", hour12: false, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+  const p: Record<string, string> = {};
+  for (const part of dtf.formatToParts(new Date(ms))) p[part.type] = part.value;
+  const hour = p.hour === "24" ? "00" : p.hour;
+  return `${p.year}-${p.month}-${p.day}T${hour}:${p.minute}`;
+}
+function localInputToEpoch(str: string): number | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(str);
+  return m ? parisWallToEpoch(+m[1], +m[2], +m[3], +m[4], +m[5], 0, 0) : null;
+}
 
 const STATUS: Record<string, { label: string; color: string }> = {
   BROUILLON: { label: "Brouillon", color: "var(--muted)" },
@@ -46,6 +62,12 @@ export function RapportEditor() {
   const setVehicles = useMutation(api.reports.setVehicles);
   const setWeapons = useMutation(api.reports.setWeapons);
   const setCasings = useMutation(api.reports.setCasings);
+  const setFacts = useMutation(api.reports.setFacts);
+  const addHostage = useMutation(api.reports.addHostage);
+  const updateHostage = useMutation(api.reports.updateHostage);
+  const removeHostage = useMutation(api.reports.removeHostage);
+  const setHostageDeposition = useMutation(api.reports.setHostageDeposition);
+  const createDeposition = useAction(api.nexusSync.createDeposition);
   const [doc, setDoc] = useState(false);
 
   useEffect(() => {
@@ -69,7 +91,8 @@ export function RapportEditor() {
   const bodyText = () => document.querySelector<HTMLElement>(".ProseMirror")?.innerText ?? "";
 
   const s = STATUS[report.status];
-  const editable = report.status !== "VALIDE" && can("rapports.contribute");
+  const editable = report.canWrite;
+  const personal = report.category === "PERSONNEL";
 
   return (
     <div className="p-[22px_26px]" style={{ animation: "mdtFade .2s ease" }}>
@@ -111,81 +134,117 @@ export function RapportEditor() {
 
       <div className="grid grid-cols-1 items-start gap-[18px] lg:grid-cols-[1fr_330px]">
         <div className="flex min-w-0 flex-col gap-[18px]">
-          {/* Corps du rapport : rédaction collaborative et notes de terrain */}
-          <ReportBody reportId={reportId} editable={editable} />
+          {/* Corps du rapport : rédaction collaborative (+ notes de terrain pour les opérations) */}
+          <ReportBody reportId={reportId} editable={editable} personal={personal} />
 
-          {/* Galerie */}
-          <Section title="Galerie">
+          {/* Preuves / Galerie */}
+          <Section title={personal ? "Preuves (images)" : "Galerie"}>
             <ImageGallery urls={report.imageUrls} onChange={editable ? (urls) => toast.guard(setGallery({ reportId, imageUrls: urls }), "Mise à jour impossible") : undefined} emptyLabel="Aucune image." />
           </Section>
 
-          {/* Douilles ramassées (item 9) */}
-          <Section title="Douilles ramassées">
-            <CasingsEditor
-              value={report.casings as Casing[]}
-              editable={editable}
-              onChange={editable ? (v) => toast.guard(setCasings({ reportId, casings: v }), "Mise à jour impossible") : undefined}
-            />
-          </Section>
+          {/* Douilles ramassées (opérations uniquement) */}
+          {!personal && (
+            <Section title="Douilles ramassées">
+              <CasingsEditor
+                value={report.casings as Casing[]}
+                editable={editable}
+                onChange={editable ? (v) => toast.guard(setCasings({ reportId, casings: v }), "Mise à jour impossible") : undefined}
+              />
+            </Section>
+          )}
         </div>
 
         {/* Rail droit */}
         <div className="flex flex-col gap-[18px]">
-          <Section title="Lieu de l'incident">
-            <LieuInput value={report.lieu} editable={editable} onSave={(v) => setLieu({ reportId, lieu: v })} />
-            {carte && (
-              <div className="mt-2">
-                <LosSantosMap
-                  imageUrl={carte.imageUrl}
-                  markers={carte.locations}
-                  pin={report.mapX != null && report.mapY != null ? { x: report.mapX, y: report.mapY } : null}
-                  onPick={editable ? (x, y) => setMapPos({ reportId, x, y }) : undefined}
-                  height={180}
+          {personal ? (
+            <>
+              <Section title="Faits">
+                <FactsPanel
+                  factsAt={report.factsAt}
+                  bodycamUrl={report.bodycamUrl}
+                  editable={editable}
+                  onFactsAt={(ms) => toast.guard(setFacts({ reportId, factsAt: ms ?? undefined }), "Mise à jour impossible")}
+                  onBodycam={(url) => toast.guard(setFacts({ reportId, bodycamUrl: url }), "Mise à jour impossible")}
                 />
-                {editable && <div className="mt-1 text-[11px] text-faint">Cliquez sur la carte pour situer l'incident.</div>}
-              </div>
-            )}
-          </Section>
+              </Section>
 
-          <Section title="Rôles">
-            <div className="flex flex-col gap-[10px]">
-              <RoleSelect label="Lead opé" value={report.leadId} roster={roster ?? []} editable={editable} onChange={(a) => toast.guard(setRole({ reportId, role: "lead", agentId: a as Id<"agents"> }), "Action impossible")} required />
-              <RoleSelect label="Scribe" value={report.scribeId} roster={roster ?? []} editable={editable} onChange={(a) => toast.guard(setRole({ reportId, role: "scribe", agentId: a ? (a as Id<"agents">) : undefined }), "Action impossible")} />
-              <RoleSelect label="Négociateur" value={report.negotiatorId} roster={roster ?? []} editable={editable} onChange={(a) => toast.guard(setRole({ reportId, role: "negotiator", agentId: a ? (a as Id<"agents">) : undefined }), "Action impossible")} />
-            </div>
-          </Section>
+              <Section title="Citoyens liés">
+                <Suspects report={report} editable={editable} onAdd={(cid) => addSuspect({ reportId, citizenId: cid })} onRemove={(cid) => removeSuspect({ reportId, citizenId: cid })} />
+              </Section>
+            </>
+          ) : (
+            <>
+              <Section title="Lieu de l'incident">
+                <LieuInput value={report.lieu} editable={editable} onSave={(v) => setLieu({ reportId, lieu: v })} />
+                {carte && (
+                  <div className="mt-2">
+                    <LosSantosMap
+                      imageUrl={carte.imageUrl}
+                      markers={carte.locations}
+                      pin={report.mapX != null && report.mapY != null ? { x: report.mapX, y: report.mapY } : null}
+                      onPick={editable ? (x, y) => setMapPos({ reportId, x, y }) : undefined}
+                      height={180}
+                    />
+                    {editable && <div className="mt-1 text-[11px] text-faint">Cliquez sur la carte pour situer l'incident.</div>}
+                  </div>
+                )}
+              </Section>
 
-          <Section title="Suspects impliqués">
-            <Suspects report={report} editable={editable} onAdd={(cid) => addSuspect({ reportId, citizenId: cid })} onRemove={(cid) => removeSuspect({ reportId, citizenId: cid })} />
-          </Section>
+              <Section title="Rôles">
+                <div className="flex flex-col gap-[10px]">
+                  <RoleSelect label="Lead opé" value={report.leadId} roster={roster ?? []} editable={editable} onChange={(a) => toast.guard(setRole({ reportId, role: "lead", agentId: a as Id<"agents"> }), "Action impossible")} required />
+                  <RoleSelect label="Scribe" value={report.scribeId} roster={roster ?? []} editable={editable} onChange={(a) => toast.guard(setRole({ reportId, role: "scribe", agentId: a ? (a as Id<"agents">) : undefined }), "Action impossible")} />
+                  <RoleSelect label="Négociateur" value={report.negotiatorId} roster={roster ?? []} editable={editable} onChange={(a) => toast.guard(setRole({ reportId, role: "negotiator", agentId: a ? (a as Id<"agents">) : undefined }), "Action impossible")} />
+                </div>
+              </Section>
 
-          <Section title="Agents impliqués" subtitle="Auto + ajout manuel">
-            <Involved
-              contributors={report.contributors}
-              roster={roster ?? []}
-              editable={editable}
-              onAdd={(aid) => toast.guard(addContributor({ reportId, agentId: aid }), "Ajout impossible")}
-              onRemove={(aid) => toast.guard(removeContributor({ reportId, agentId: aid }), "Retrait impossible")}
-            />
-          </Section>
+              <Section title="Suspects impliqués">
+                <Suspects report={report} editable={editable} onAdd={(cid) => addSuspect({ reportId, citizenId: cid })} onRemove={(cid) => removeSuspect({ reportId, citizenId: cid })} />
+              </Section>
 
-          <Section title="Véhicules impliqués">
-            <LinkPicker
-              kind="vehicle"
-              selected={report.vehicles}
-              editable={editable}
-              onChange={(ids) => toast.guard(setVehicles({ reportId, vehicleIds: ids as Id<"vehicles">[] }), "Mise à jour impossible")}
-            />
-          </Section>
+              <Section title="Otages">
+                <Hostages
+                  hostages={report.hostages}
+                  reportTitle={report.title}
+                  leadId={report.leadId}
+                  editable={editable}
+                  onAdd={(v) => addHostage({ reportId, ...v })}
+                  onUpdate={(hostageId, v) => updateHostage({ hostageId, ...v })}
+                  onRemove={(hostageId) => removeHostage({ hostageId })}
+                  onCreateDeposition={createDeposition}
+                  onSetDeposition={(hostageId, depositionNexusId) => setHostageDeposition({ hostageId, depositionNexusId })}
+                />
+              </Section>
 
-          <Section title="Armes utilisées">
-            <LinkPicker
-              kind="weapon"
-              selected={report.weapons}
-              editable={editable}
-              onChange={(ids) => toast.guard(setWeapons({ reportId, weaponIds: ids as Id<"weapons">[] }), "Mise à jour impossible")}
-            />
-          </Section>
+              <Section title="Agents impliqués" subtitle="Auto + ajout manuel">
+                <Involved
+                  contributors={report.contributors}
+                  roster={roster ?? []}
+                  editable={editable}
+                  onAdd={(aid) => toast.guard(addContributor({ reportId, agentId: aid }), "Ajout impossible")}
+                  onRemove={(aid) => toast.guard(removeContributor({ reportId, agentId: aid }), "Retrait impossible")}
+                />
+              </Section>
+
+              <Section title="Véhicules impliqués">
+                <LinkPicker
+                  kind="vehicle"
+                  selected={report.vehicles}
+                  editable={editable}
+                  onChange={(ids) => toast.guard(setVehicles({ reportId, vehicleIds: ids as Id<"vehicles">[] }), "Mise à jour impossible")}
+                />
+              </Section>
+
+              <Section title="Armes utilisées">
+                <LinkPicker
+                  kind="weapon"
+                  selected={report.weapons}
+                  editable={editable}
+                  onChange={(ids) => toast.guard(setWeapons({ reportId, weaponIds: ids as Id<"weapons">[] }), "Mise à jour impossible")}
+                />
+              </Section>
+            </>
+          )}
         </div>
       </div>
 
@@ -208,9 +267,10 @@ function Section({ title, subtitle, children }: { title: string; subtitle?: stri
 
 // Onglets du corps du rapport. Les notes de chacun restent consultables par
 // tous : c'est la matière première dont le Lead a besoin pour rédiger.
-function ReportBody({ reportId, editable }: { reportId: Id<"reports">; editable: boolean }) {
+function ReportBody({ reportId, editable, personal }: { reportId: Id<"reports">; editable: boolean; personal: boolean }) {
   const [tab, setTab] = useState<"details" | "notes">("details");
-  const notes = useQuery(api.reports.allNotes, { reportId });
+  // Les rapports personnels n'ont pas de notes de terrain collectives.
+  const notes = useQuery(api.reports.allNotes, personal ? "skip" : { reportId });
   const count = notes?.length ?? 0;
 
   const Tab = ({ id, label }: { id: "details" | "notes"; label: string }) => (
@@ -225,22 +285,68 @@ function ReportBody({ reportId, editable }: { reportId: Id<"reports">; editable:
     </button>
   );
 
+  const showNotes = !personal && tab === "notes";
+
   return (
     <div className="rounded-card border border-border bg-surface">
       <div className="flex items-center gap-1 border-b border-border p-[10px]">
-        <Tab id="details" label="Détails" />
-        <Tab id="notes" label={count > 0 ? `Notes (${count})` : "Notes"} />
+        {personal ? (
+          <span className="px-[13px] py-[7px] text-[12.5px] font-semibold" style={{ color: "var(--accent)" }}>Récit des faits</span>
+        ) : (
+          <>
+            <Tab id="details" label="Détails" />
+            <Tab id="notes" label={count > 0 ? `Notes (${count})` : "Notes"} />
+          </>
+        )}
         <div className="flex-1" />
         <span className="pr-2 text-[11.5px] text-faint">
-          {tab === "details" ? "Édition collaborative en temps réel" : "Notes de terrain de tous les agents"}
+          {showNotes ? "Notes de terrain de tous les agents" : "Édition collaborative en temps réel"}
         </span>
       </div>
       <div className="p-[14px]">
-        {tab === "details" ? (
-          <CollabSection docId={reportId} editable={editable} />
-        ) : (
+        {showNotes ? (
           <CollectiveNotes reportId={reportId} editable={editable} notes={notes} />
+        ) : (
+          <CollabSection docId={reportId} editable={editable} />
         )}
+      </div>
+    </div>
+  );
+}
+
+function FactsPanel({
+  factsAt, bodycamUrl, editable, onFactsAt, onBodycam,
+}: {
+  factsAt: number | null;
+  bodycamUrl: string;
+  editable: boolean;
+  onFactsAt: (ms: number | null) => void;
+  onBodycam: (url: string) => void;
+}) {
+  const [bodycam, setBodycam] = useState<string | null>(null);
+  const bodycamVal = bodycam ?? bodycamUrl;
+  return (
+    <div className="flex flex-col gap-[12px]">
+      <div>
+        <div className="mb-[5px] text-[11px] text-muted">Date et heure des faits</div>
+        <input
+          type="datetime-local"
+          value={epochToLocalInput(factsAt)}
+          disabled={!editable}
+          onChange={(e) => onFactsAt(localInputToEpoch(e.target.value))}
+          className="h-9 w-full rounded-sm border border-border bg-surface-2 px-3 font-data text-[13px] outline-none focus:border-accent disabled:opacity-60"
+        />
+      </div>
+      <div>
+        <div className="mb-[5px] text-[11px] text-muted">Lien bodycam</div>
+        <input
+          value={bodycamVal}
+          disabled={!editable}
+          onChange={(e) => setBodycam(e.target.value)}
+          onBlur={() => bodycam !== null && bodycam !== bodycamUrl && onBodycam(bodycam)}
+          placeholder="https://…"
+          className="h-9 w-full rounded-sm border border-border bg-surface-2 px-3 text-[13px] outline-none focus:border-accent disabled:opacity-60"
+        />
       </div>
     </div>
   );
@@ -397,6 +503,260 @@ function Suspects({
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+type HostageRow = {
+  _id: string;
+  citizenId: string | null;
+  name: string;
+  phone: string;
+  dob: string;
+  deposition: string;
+  frisk: string;
+  photoUrl: string | null;
+  friskPhotoUrl: string | null;
+  depositionLinked: boolean;
+};
+type HostagePayload = {
+  name: string;
+  citizenId?: Id<"citizens">;
+  phone?: string;
+  dob?: string;
+  deposition?: string;
+  frisk?: string;
+  photoUrl?: string;
+  friskPhotoUrl?: string;
+};
+type HostageDraft = {
+  name: string;
+  citizenId: Id<"citizens"> | null;
+  phone: string;
+  dob: string;
+  deposition: string;
+  frisk: string;
+  photoUrl: string | null;
+  friskPhotoUrl: string | null;
+};
+
+const emptyHostage: HostageDraft = { name: "", citizenId: null, phone: "", dob: "", deposition: "", frisk: "", photoUrl: null, friskPhotoUrl: null };
+
+// Section « Otages » (opérations) : liste + formulaire d'ajout/édition, et
+// création d'une déposition sur la fiche du citoyen (write-through NexusMDT).
+function Hostages({
+  hostages,
+  reportTitle,
+  leadId,
+  editable,
+  onAdd,
+  onUpdate,
+  onRemove,
+  onCreateDeposition,
+  onSetDeposition,
+}: {
+  hostages: HostageRow[];
+  reportTitle: string;
+  leadId: string | null;
+  editable: boolean;
+  onAdd: (v: HostagePayload) => Promise<unknown>;
+  onUpdate: (hostageId: Id<"reportHostages">, v: HostagePayload) => Promise<unknown>;
+  onRemove: (hostageId: Id<"reportHostages">) => Promise<unknown>;
+  onCreateDeposition: (a: { citizenId: Id<"citizens">; title: string; body: string; agentIds: Id<"agents">[] }) => Promise<unknown>;
+  onSetDeposition: (hostageId: Id<"reportHostages">, depositionNexusId: string) => Promise<unknown>;
+}) {
+  const toast = useToast();
+  const [form, setForm] = useState<{ id: Id<"reportHostages"> | null; draft: HostageDraft } | null>(null);
+  const [confirmDel, setConfirmDel] = useState<string | null>(null);
+  const [busyDepo, setBusyDepo] = useState<string | null>(null);
+
+  const toPayload = (d: HostageDraft): HostagePayload => ({
+    name: d.name.trim(),
+    citizenId: d.citizenId ?? undefined,
+    phone: d.phone.trim() || undefined,
+    dob: d.dob.trim() || undefined,
+    deposition: d.deposition.trim() || undefined,
+    frisk: d.frisk.trim() || undefined,
+    photoUrl: d.photoUrl ?? undefined,
+    friskPhotoUrl: d.friskPhotoUrl ?? undefined,
+  });
+
+  async function save() {
+    if (!form || !form.draft.name.trim()) return;
+    const payload = toPayload(form.draft);
+    const r = form.id
+      ? await toast.guard(onUpdate(form.id, payload), "Enregistrement impossible")
+      : await toast.guard(onAdd(payload), "Ajout impossible");
+    if (r !== undefined) {
+      toast.success(form.id ? "Otage mis à jour." : "Otage ajouté.");
+      setForm(null);
+    }
+  }
+
+  async function createDepo(h: HostageRow) {
+    if (!h.citizenId || !h.deposition.trim()) return;
+    setBusyDepo(h._id);
+    const id = await toast.guard(
+      onCreateDeposition({
+        citizenId: h.citizenId as Id<"citizens">,
+        title: `Prise d'otage — ${reportTitle}`,
+        body: h.deposition,
+        agentIds: leadId ? [leadId as Id<"agents">] : [],
+      }),
+      "Création de la déposition impossible",
+    );
+    if (id !== undefined) {
+      const r = await toast.guard(onSetDeposition(h._id as Id<"reportHostages">, String(id)), "Liaison impossible");
+      if (r !== undefined) toast.success("Déposition créée sur la fiche de l'otage.");
+    }
+    setBusyDepo(null);
+  }
+
+  return (
+    <div>
+      {hostages.length === 0 ? (
+        <div className="text-[12.5px] text-faint">Aucun otage.</div>
+      ) : (
+        <div className="flex flex-col gap-[6px]">
+          {hostages.map((h) => (
+            <div key={h._id} className="rounded-sm border border-border bg-surface-2 px-[10px] py-[8px]">
+              <div className="flex items-center gap-2">
+                <span className="min-w-0 flex-1 truncate text-[13px] font-semibold">{h.name || "Otage sans nom"}</span>
+                {h.depositionLinked && (
+                  <span className="flex items-center gap-[4px] rounded-[4px] border border-border px-[5px] py-px text-[9px] font-bold uppercase tracking-[0.05em] text-accent">
+                    <Link2 className="h-[11px] w-[11px]" /> Déposition liée
+                  </span>
+                )}
+                {editable && (
+                  <>
+                    <button onClick={() => setForm({ id: h._id as Id<"reportHostages">, draft: { name: h.name, citizenId: h.citizenId as Id<"citizens"> | null, phone: h.phone, dob: h.dob, deposition: h.deposition, frisk: h.frisk, photoUrl: h.photoUrl, friskPhotoUrl: h.friskPhotoUrl } })} className="text-faint hover:text-accent" title="Modifier"><Pencil className="h-[14px] w-[14px]" /></button>
+                    {confirmDel === h._id ? (
+                      <button onClick={async () => { const r = await toast.guard(onRemove(h._id as Id<"reportHostages">), "Suppression impossible"); setConfirmDel(null); if (r !== undefined) toast.success("Otage retiré."); }} className="rounded-[4px] px-[6px] py-[2px] text-[10px] font-semibold text-white" style={{ background: "var(--danger)" }}>Ok</button>
+                    ) : (
+                      <button onClick={() => setConfirmDel(h._id)} className="text-faint hover:text-danger" title="Retirer"><Trash2 className="h-[14px] w-[14px]" /></button>
+                    )}
+                  </>
+                )}
+              </div>
+              {editable && h.citizenId && h.deposition.trim() && !h.depositionLinked && (
+                <button
+                  onClick={() => createDepo(h)}
+                  disabled={busyDepo === h._id}
+                  className="mt-[7px] flex w-full items-center justify-center gap-[6px] rounded-sm border border-border bg-surface px-[10px] py-[7px] text-[12px] font-semibold text-muted hover:border-accent hover:text-accent disabled:opacity-50"
+                >
+                  <Link2 className="h-[13px] w-[13px]" /> {busyDepo === h._id ? "Création…" : "Créer la déposition sur la fiche du citoyen"}
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {editable && !form && (
+        <button onClick={() => setForm({ id: null, draft: { ...emptyHostage } })} className="mt-2 flex w-full items-center justify-center gap-[6px] rounded-sm border border-dashed border-border px-[10px] py-[8px] text-[12.5px] font-semibold text-muted hover:border-border-strong">
+          <Plus className="h-[14px] w-[14px]" /> Ajouter un otage
+        </button>
+      )}
+
+      {editable && form && (
+        <HostageForm
+          draft={form.draft}
+          editing={form.id != null}
+          onChange={(draft) => setForm({ ...form, draft })}
+          onCancel={() => setForm(null)}
+          onSave={save}
+        />
+      )}
+    </div>
+  );
+}
+
+function HostageForm({
+  draft, editing, onChange, onCancel, onSave,
+}: {
+  draft: HostageDraft;
+  editing: boolean;
+  onChange: (d: HostageDraft) => void;
+  onCancel: () => void;
+  onSave: () => void;
+}) {
+  const { can } = useCan();
+  const [q, setQ] = useState("");
+  const [open, setOpen] = useState(false);
+  const results = useQuery(api.citizens.search, open && q.trim() && can("citoyens.view") ? { q } : "skip");
+  const L = "mb-[5px] text-[11px] text-muted";
+  const F = "h-9 w-full rounded-sm border border-border bg-surface-2 px-3 text-[13px] outline-none focus:border-accent";
+
+  return (
+    <div className="mt-2 flex flex-col gap-[10px] rounded-sm border border-border bg-surface-2 p-[12px]">
+      <div className="text-[10.5px] font-bold uppercase tracking-[0.09em] text-faint">{editing ? "Modifier l'otage" : "Nouvel otage"}</div>
+
+      <div>
+        <div className={L}>Nom prénom</div>
+        <div className="relative">
+          <input
+            value={draft.name}
+            onChange={(e) => { onChange({ ...draft, name: e.target.value, citizenId: null }); setQ(e.target.value); setOpen(true); }}
+            onFocus={() => setOpen(true)}
+            onBlur={() => setTimeout(() => setOpen(false), 150)}
+            placeholder="Rechercher un citoyen, ou saisir un nom libre"
+            className={F}
+          />
+          {open && can("citoyens.view") && results && results.length > 0 && (
+            <div className="absolute z-20 mt-1 max-h-[170px] w-full overflow-y-auto rounded-sm border border-border bg-surface shadow-[0_10px_30px_rgba(0,0,0,.3)]">
+              {results.map((c) => (
+                <button
+                  key={c._id}
+                  type="button"
+                  onMouseDown={(e) => { e.preventDefault(); onChange({ ...draft, name: `${c.prenom} ${c.nom}`, citizenId: c._id, dob: c.dateNaissance ?? draft.dob }); setOpen(false); }}
+                  className="flex w-full items-center gap-2 border-b border-border px-3 py-[7px] text-left hover:bg-surface-2"
+                >
+                  <span className="flex-1 text-[13px] font-semibold">{c.prenom} {c.nom}</span>
+                  {c.dateNaissance && <span className="text-[11px] text-faint">{c.dateNaissance}</span>}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        {draft.citizenId && <div className="mt-[4px] text-[11px] text-accent">Citoyen lié à la fiche.</div>}
+      </div>
+
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <div className={L}>Téléphone</div>
+          <input value={draft.phone} onChange={(e) => onChange({ ...draft, phone: e.target.value })} className={F} />
+        </div>
+        <div>
+          <div className={L}>Date de naissance</div>
+          <input value={draft.dob} onChange={(e) => onChange({ ...draft, dob: e.target.value })} placeholder="JJ/MM/AAAA" className={F} />
+        </div>
+      </div>
+
+      <div>
+        <div className={L}>Déposition</div>
+        <textarea value={draft.deposition} onChange={(e) => onChange({ ...draft, deposition: e.target.value })} rows={4} className="w-full rounded-sm border border-border bg-surface-2 px-3 py-2 text-[13px] outline-none focus:border-accent" />
+      </div>
+
+      <div>
+        <div className={L}>Objets trouvés lors de la palpation</div>
+        <textarea value={draft.frisk} onChange={(e) => onChange({ ...draft, frisk: e.target.value })} rows={3} className="w-full rounded-sm border border-border bg-surface-2 px-3 py-2 text-[13px] outline-none focus:border-accent" />
+      </div>
+
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <div className={L}>Photo de l'otage</div>
+          <ImageUpload value={draft.photoUrl} onChange={(url) => onChange({ ...draft, photoUrl: url })} aspect="portrait" />
+        </div>
+        <div>
+          <div className={L}>Photo de la palpation</div>
+          <ImageUpload value={draft.friskPhotoUrl} onChange={(url) => onChange({ ...draft, friskPhotoUrl: url })} aspect="portrait" />
+        </div>
+      </div>
+
+      <div className="flex gap-2">
+        <button onClick={onCancel} className="flex-1 rounded-sm border border-border bg-surface py-[8px] text-[12.5px] font-semibold hover:border-border-strong">Annuler</button>
+        <button onClick={onSave} disabled={!draft.name.trim()} className="flex-1 rounded-sm bg-accent py-[8px] text-[12.5px] font-semibold text-accent-contrast hover:brightness-[1.06] disabled:opacity-50">Enregistrer</button>
+      </div>
     </div>
   );
 }

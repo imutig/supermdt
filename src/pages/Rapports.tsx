@@ -9,6 +9,8 @@ import { EmptyState } from "@/components/common/EmptyState";
 import { SkeletonRows } from "@/components/common/Skeleton";
 import { Clover } from "@/components/common/Clover";
 
+type Category = "OPERATION" | "PERSONNEL";
+
 const STATUS: Record<string, { label: string; color: string }> = {
   BROUILLON: { label: "Brouillon", color: "var(--muted)" },
   SOUMIS: { label: "Soumis", color: "var(--warning)" },
@@ -16,10 +18,23 @@ const STATUS: Record<string, { label: string; color: string }> = {
 };
 
 export function Rapports() {
-  const list = useQuery(api.reports.list);
+  const [tab, setTab] = useState<Category>("OPERATION");
+  const list = useQuery(api.reports.list, { category: tab });
   const { can } = useCan();
   const navigate = useNavigate();
   const [modal, setModal] = useState(false);
+
+  const Tab = ({ id, label }: { id: Category; label: string }) => (
+    <button
+      onClick={() => setTab(id)}
+      className="mdt-press rounded-[8px] px-[13px] py-[7px] text-[12.5px] font-semibold"
+      style={tab === id
+        ? { background: "var(--accent-soft)", color: "var(--accent)" }
+        : { color: "var(--muted)" }}
+    >
+      {label}
+    </button>
+  );
 
   return (
     <div className="p-[22px_26px]" style={{ animation: "mdtFade .2s ease" }}>
@@ -32,6 +47,17 @@ export function Rapports() {
           </button>
         )}
       </div>
+
+      <div className="mb-[14px] flex items-center gap-1 rounded-card border border-border bg-surface p-[8px]">
+        <Tab id="OPERATION" label="Rapports d'opérations" />
+        <Tab id="PERSONNEL" label="Rapports personnels" />
+      </div>
+
+      {tab === "PERSONNEL" && (
+        <div className="mb-[14px] rounded-sm border border-border bg-surface-2 px-[13px] py-[10px] text-[12px] text-muted">
+          Vos rapports personnels : vous seul pouvez les consulter et en créer.
+        </div>
+      )}
 
       <div className="overflow-hidden rounded-card border border-border bg-surface">
         <div className="grid grid-cols-[2fr_1fr_1.2fr_.8fr] gap-3 border-b border-border px-4 py-[11px] text-[10px] font-bold uppercase tracking-[0.08em] text-faint">
@@ -52,20 +78,21 @@ export function Rapports() {
         })}
       </div>
 
-      {modal && <NewReportModal onClose={() => setModal(false)} />}
+      {modal && <NewReportModal category={tab} onClose={() => setModal(false)} />}
     </div>
   );
 }
 
-function NewReportModal({ onClose }: { onClose: () => void }) {
-  const types = useQuery(api.reports.listTypes);
+function NewReportModal({ category, onClose }: { category: Category; onClose: () => void }) {
+  const allTypes = useQuery(api.reports.listTypes);
   const create = useMutation(api.reports.create);
   const toast = useToast();
   const navigate = useNavigate();
   const [typeId, setTypeId] = useState("");
   const [title, setTitle] = useState("");
   const [busy, setBusy] = useState(false);
-  const effectiveType = typeId || types?.[0]?._id || "";
+  const types = (allTypes ?? []).filter((t) => t.category === category);
+  const effectiveType = typeId || types[0]?._id || "";
 
   async function submit() {
     if (!effectiveType || !title.trim()) return;
@@ -79,15 +106,19 @@ function NewReportModal({ onClose }: { onClose: () => void }) {
     <div onClick={onClose} className="fixed inset-0 z-[60] flex justify-end" style={{ background: "var(--scrim)", backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)", animation: "mdtFade .15s ease" }}>
       <div onClick={(e) => e.stopPropagation()} className="flex h-full w-[460px] max-w-[94vw] flex-col border-l border-border-strong bg-elev shadow-[-24px_0_70px_rgba(0,0,0,.3)]" style={{ animation: "mdtSlide .26s cubic-bezier(.16,1,.3,1)" }}>
         <div className="flex flex-shrink-0 items-center gap-3 border-b border-border px-[18px] py-4">
-          <h2 className="m-0 flex-1 text-[15px] font-bold">Nouveau rapport</h2>
+          <h2 className="m-0 flex-1 text-[15px] font-bold">Nouveau rapport {category === "PERSONNEL" ? "personnel" : "d'opération"}</h2>
           <button onClick={onClose} className="flex h-[30px] w-[30px] items-center justify-center rounded-sm border border-border bg-surface-2 text-muted hover:border-border-strong"><X className="h-4 w-4" /></button>
         </div>
         <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-[18px] py-4">
           <div>
             <div className="mb-[6px] text-[10.5px] font-bold uppercase tracking-[0.09em] text-faint">Type</div>
-            <select value={effectiveType} onChange={(e) => setTypeId(e.target.value)} className="h-10 w-full rounded-sm border border-border bg-surface-2 px-2 text-[13px] outline-none focus:border-accent">
-              {(types ?? []).map((t) => <option key={t._id} value={t._id}>{t.name}</option>)}
-            </select>
+            {types.length === 0 ? (
+              <div className="rounded-sm border border-border bg-surface-2 px-3 py-[10px] text-[12.5px] text-faint">Aucun type de rapport {category === "PERSONNEL" ? "personnel" : "d'opération"} configuré.</div>
+            ) : (
+              <select value={effectiveType} onChange={(e) => setTypeId(e.target.value)} className="h-10 w-full rounded-sm border border-border bg-surface-2 px-2 text-[13px] outline-none focus:border-accent">
+                {types.map((t) => <option key={t._id} value={t._id}>{t.name}</option>)}
+              </select>
+            )}
           </div>
           <div>
             <div className="mb-[6px] text-[10.5px] font-bold uppercase tracking-[0.09em] text-faint">Titre</div>
@@ -96,7 +127,7 @@ function NewReportModal({ onClose }: { onClose: () => void }) {
         </div>
         <div className="flex flex-shrink-0 gap-2 border-t border-border px-[18px] py-4">
           <button onClick={onClose} className="rounded-sm border border-border bg-surface-2 px-4 py-[10px] text-[13px] font-semibold hover:border-border-strong">Annuler</button>
-          <button onClick={submit} disabled={busy || !title.trim()} className="flex-1 rounded-sm bg-accent px-4 py-[10px] text-[13px] font-semibold text-accent-contrast hover:brightness-[1.06] disabled:opacity-50">{busy ? "…" : "Créer & rédiger"}</button>
+          <button onClick={submit} disabled={busy || !title.trim() || !effectiveType} className="flex-1 rounded-sm bg-accent px-4 py-[10px] text-[13px] font-semibold text-accent-contrast hover:brightness-[1.06] disabled:opacity-50">{busy ? "…" : "Créer & rédiger"}</button>
         </div>
       </div>
     </div>
