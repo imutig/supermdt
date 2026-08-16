@@ -7,12 +7,15 @@ import { usePortals } from "@/hooks/usePortals";
 import { ServiceToggle } from "@/components/common/ServiceToggle";
 import { StateCodeAssistant } from "@/components/statecode/StateCodeAssistant";
 import { DispatchStatus } from "./DispatchStatus";
+import { DefconClover } from "./DefconClover";
 import { ProfileMenu } from "./ProfileMenu";
 import { FEATURES } from "@/lib/features";
 
 // Barre unique. Elle était doublée d'une bande « dev » qui coûtait une ligne
-// entière pour un titre et un sélecteur de thème : les deux sont ici, et le
-// DEFCON a rejoint l'administration où il se règle.
+// entière pour un titre et un sélecteur de thème : les deux sont ici. Le DEFCON
+// courant est affiché à droite pour TOUS les agents (lecture seule) ; seul un
+// agent habilité (defcon.manage) le change en cliquant, sinon il se règle aussi
+// dans l'Administration.
 export function TopBar() {
   const { openSearch, mode, toggleMode } = useApp();
   const { onDuty, toggle: toggleDuty } = useService();
@@ -48,6 +51,10 @@ export function TopBar() {
       </button>
 
       <div className="flex-1" />
+
+      {/* Niveau DEFCON courant, visible de tous les agents (lecture seule sauf
+          droit defcon.manage). */}
+      <div className="flex-shrink-0"><DefconClover /></div>
 
       {FEATURES.dispatch && <DispatchStatus />}
 
