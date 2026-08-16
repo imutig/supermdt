@@ -218,9 +218,12 @@ export const sync = internalAction({
   args: { token: v.optional(v.string()), dryRun: v.optional(v.boolean()), resetPenal: v.optional(v.boolean()), createMissingCitizens: v.optional(v.boolean()) },
   handler: async (ctx, { token, dryRun, resetPenal, createMissingCitizens }) => {
     const t0 = Date.now();
-    const tk = token || process.env.VIZU_TOKEN;
+    // Token : explicite > env VIZU_TOKEN > compte Nexus lié (login à la demande).
+    // Ce dernier évite d'avoir à coller un token à la main : on réutilise les
+    // identifiants d'un agent ayant lié son compte (lecture org-wide entity=lspd).
+    const tk = token || process.env.VIZU_TOKEN || (await ctx.runAction(internal.nexusSync.anyLinkedToken, {})) || undefined;
     if (!tk)
-      throw new ConvexError("Aucun token. Définis-le: npx convex env set VIZU_TOKEN \"<token>\"  (token = JSON.parse(localStorage.auth).state.token sur mdt.vizu-world.com), ou passe {\"token\":\"...\"}.");
+      throw new ConvexError("Aucun token et aucun compte Nexus lié. Relie un compte dans Mon profil > Paramètres, ou passe {\"token\":\"...\"}.");
 
     // Récupération en direct
     const [citoyens, armes, chargesRaw, saisiesRaw] = await Promise.all([
@@ -631,8 +634,8 @@ export const _upsertSaisies = internalMutation({
 export const inspectNexusCharges = internalAction({
   args: { token: v.optional(v.string()) },
   handler: async (ctx, { token }): Promise<{ total: number; types: { type: string; count: number }[] }> => {
-    const tk = token || process.env.VIZU_TOKEN;
-    if (!tk) throw new ConvexError("Aucun token VIZU_TOKEN.");
+    const tk = token || process.env.VIZU_TOKEN || (await ctx.runAction(internal.nexusSync.anyLinkedToken, {})) || undefined;
+    if (!tk) throw new ConvexError("Aucun token et aucun compte Nexus lié.");
     const charges = await apiGet("/api/charges?entity=lspd", tk).then((j: any) => j.charges || []);
     const tally = new Map<string, number>();
     for (const c of charges) {
@@ -642,6 +645,28 @@ export const inspectNexusCharges = internalAction({
     return {
       total: charges.length,
       types: [...tally.entries()].sort((a, b) => b[1] - a[1]).map(([type, count]) => ({ type, count })),
+    };
+  },
+});
+
+// Inspection des plaintes Nexus : distribution réelle des `statut` (pour vérifier
+// que les statuts proposés côté SuperMDT correspondent bien à ceux acceptés).
+export const inspectNexusPlaintes = internalAction({
+  args: { token: v.optional(v.string()) },
+  handler: async (ctx, { token }): Promise<{ total: number; statuts: { statut: string; count: number }[]; sample: any }> => {
+    const tk = token || process.env.VIZU_TOKEN || (await ctx.runAction(internal.nexusSync.anyLinkedToken, {})) || undefined;
+    if (!tk) throw new ConvexError("Aucun token et aucun compte Nexus lié.");
+    const plaintes = await apiGet("/api/plaintes?page=1", tk).then((j: any) => j.plaintes || []);
+    const tally = new Map<string, number>();
+    for (const p of plaintes) {
+      const s = (p.statut || "(vide)").trim() || "(vide)";
+      tally.set(s, (tally.get(s) ?? 0) + 1);
+    }
+    const first = plaintes[0];
+    return {
+      total: plaintes.length,
+      statuts: [...tally.entries()].sort((a, b) => b[1] - a[1]).map(([statut, count]) => ({ statut, count })),
+      sample: first ? { statut: first.statut ?? null, raisonStatut: first.raisonStatut ?? null, raison: first.raison ?? null, contre: first.contre ?? null } : null,
     };
   },
 });
