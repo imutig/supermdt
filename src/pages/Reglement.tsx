@@ -38,8 +38,8 @@ export function Reglement() {
           />
         </div>
       ) : (
-        <div className="min-h-0 flex-1 overflow-hidden rounded-card border border-border bg-surface">
-          <iframe src={`${doc.url}#toolbar=1&view=FitH`} title="Règlement LSPD" className="h-full w-full" style={{ border: "none" }} />
+        <div className="relative min-h-0 flex-1 overflow-hidden rounded-card border border-border bg-surface" style={{ minHeight: "calc(100vh - 210px)" }}>
+          <iframe src={`${doc.url}#toolbar=1&view=FitH`} title="Règlement LSPD" className="absolute inset-0 h-full w-full" style={{ border: "none" }} />
         </div>
       )}
     </div>
