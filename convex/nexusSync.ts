@@ -260,6 +260,19 @@ export const myStatus = query({
   },
 });
 
+// Révèle à l'agent SON PROPRE mot de passe Nexus (dédié, stocké chiffré).
+// Réservé au titulaire du compte : on ne déchiffre jamais celui d'un autre.
+export const revealMyNexusPassword = action({
+  args: {},
+  handler: async (ctx): Promise<string> => {
+    const agentId = await ctx.runQuery(api.nexusSync.myAgentId, {});
+    if (!agentId) throw new ConvexError("Non authentifié.");
+    const cred = await ctx.runQuery(internal.nexusSync._credFor, { agentId });
+    if (!cred) throw new ConvexError("Aucun compte Nexus lié.");
+    return await decryptSecret(cred.secretEnc);
+  },
+});
+
 // Écriture interne du coffre (les actions ne peuvent pas écrire directement).
 export const _store = internalMutation({
   args: { agentId: v.id("agents"), email: v.string(), secretEnc: v.string(), status: v.union(v.literal("UNTESTED"), v.literal("OK"), v.literal("INVALID")), lastError: v.optional(v.string()) },

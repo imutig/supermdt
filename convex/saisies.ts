@@ -23,6 +23,15 @@ function objetLabel(s: {
   return s.objectType ?? "";
 }
 
+// Texte indexé pour la recherche : objet, mis en cause, type, agent, lieu, notes.
+function saisieSearchText(s: {
+  objet?: string; objectType?: string; otherLabel?: string; misEnCause?: string;
+  type?: string; agentName?: string; matricule?: number; lieu?: string; notes?: string; statut?: string;
+}): string {
+  return [objetLabel(s), s.misEnCause, s.type, s.agentName, s.matricule != null ? String(s.matricule) : "", s.lieu, s.notes, s.statut]
+    .filter(Boolean).join(" ");
+}
+
 // Forme d'une ligne de saisie renvoyée à l'UI (mutualisée liste/pagination).
 function shapeSaisie(s: any, agentId: string) {
   return {
@@ -47,12 +56,16 @@ function shapeSaisie(s: any, agentId: string) {
 }
 
 // Pagination serveur (curseur Convex) : borne la lecture au lieu de tout charger.
+// Avec `q`, recherche plein-texte (index de recherche) ; sinon liste antéchrono.
 export const page = query({
-  args: { paginationOpts: paginationOptsValidator },
-  handler: async (ctx, { paginationOpts }) => {
+  args: { paginationOpts: paginationOptsValidator, q: v.optional(v.string()) },
+  handler: async (ctx, { paginationOpts, q }) => {
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "saisies.view");
-    const res = await ctx.db.query("saisies").withIndex("by_at").order("desc").paginate(paginationOpts);
+    const query = (q ?? "").trim();
+    const res = query
+      ? await ctx.db.query("saisies").withSearchIndex("search", (s) => s.search("searchText", query)).paginate(paginationOpts)
+      : await ctx.db.query("saisies").withIndex("by_at").order("desc").paginate(paginationOpts);
     return { ...res, page: res.page.filter((s) => !s.deletedAt).map((s) => shapeSaisie(s, agent._id)) };
   },
 });
@@ -85,11 +98,8 @@ export const create = mutation({
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "saisies.create");
     if (!a.objet.trim()) throw new ConvexError("L'objet saisi est requis.");
-    const id = await ctx.db.insert("saisies", {
-      at: Date.now(),
-      agentId: agent._id,
-      matricule: agent.matricule,
-      agentName: `${agent.prenomRP} ${agent.nomRP}`,
+    const agentName = `${agent.prenomRP} ${agent.nomRP}`;
+    const fields = {
       type: a.type,
       objet: a.objet.trim(),
       quantite: a.quantite?.trim() || undefined,
@@ -99,6 +109,14 @@ export const create = mutation({
       date: a.date?.trim() || undefined,
       lieu: a.lieu?.trim() || undefined,
       notes: a.notes?.trim() || undefined,
+    };
+    const id = await ctx.db.insert("saisies", {
+      at: Date.now(),
+      agentId: agent._id,
+      matricule: agent.matricule,
+      agentName,
+      ...fields,
+      searchText: saisieSearchText({ ...fields, agentName, matricule: agent.matricule }),
     });
     await writeAudit(ctx, agent, { action: "saisie.create", resourceType: "saisie", resourceId: id, resourceLabel: a.objet.trim() });
     await notify(ctx, "saisie.create", {
@@ -127,7 +145,7 @@ export const update = mutation({
     if (s.agentId !== agent._id && !(await can(ctx, agent, "saisies.create")))
       throw new ConvexError("Modification non autorisée.");
     if (!a.objet.trim()) throw new ConvexError("L'objet saisi est requis.");
-    await ctx.db.patch(id, {
+    const fields = {
       type: a.type,
       objet: a.objet.trim(),
       quantite: a.quantite?.trim() || undefined,
@@ -137,6 +155,10 @@ export const update = mutation({
       date: a.date?.trim() || undefined,
       lieu: a.lieu?.trim() || undefined,
       notes: a.notes?.trim() || undefined,
+    };
+    await ctx.db.patch(id, {
+      ...fields,
+      searchText: saisieSearchText({ ...fields, agentName: s.agentName, matricule: s.matricule }),
     });
     await writeAudit(ctx, agent, { action: "saisie.update", resourceType: "saisie", resourceId: id, resourceLabel: a.objet.trim() });
   },

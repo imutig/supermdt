@@ -613,6 +613,7 @@ export const _upsertSaisies = internalMutation({
         type: r.type, objet: r.objet, quantite: r.quantite, montant: r.montant,
         statut: r.statut, misEnCause: r.misEnCause, date: r.date, lieu: r.lieu, notes: r.notes,
         nexusId: r.nexusId, importRef: r.importRef,
+        searchText: [r.objet, r.misEnCause, r.type, r.agentName, r.lieu, r.notes, r.statut].filter(Boolean).join(" "),
       });
     }
     // Réconciliation : saisie importée (nexusId) absente du Nexus -> supprimée là-bas.
@@ -626,6 +627,21 @@ export const _upsertSaisies = internalMutation({
       }
     }
     return { source: rows.length, presents: existing.length, ajoutes, supprimes };
+  },
+});
+
+// Backfill du champ de recherche des saisies existantes (idempotent).
+export const backfillSaisieSearch = internalMutation({
+  args: {},
+  handler: async (ctx): Promise<{ updated: number }> => {
+    const rows = await ctx.db.query("saisies").collect();
+    let updated = 0;
+    for (const s of rows) {
+      const objet = s.objet ?? (s.objectType === "Autre" ? s.otherLabel : s.objectType) ?? "";
+      const text = [objet, s.misEnCause, s.type, s.agentName, s.matricule != null ? String(s.matricule) : "", s.lieu, s.notes, s.statut].filter(Boolean).join(" ");
+      if (s.searchText !== text) { await ctx.db.patch(s._id, { searchText: text }); updated++; }
+    }
+    return { updated };
   },
 });
 

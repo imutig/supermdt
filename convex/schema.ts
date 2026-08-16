@@ -2066,13 +2066,15 @@ export default defineSchema({
     quantity: v.optional(v.number()),
     objectType: v.optional(v.string()), // nom du type OU "Autre"
     otherLabel: v.optional(v.string()), // saisi librement si "Autre"
+    searchText: v.optional(v.string()), // objet+misEnCause+type+agent+lieu+notes (recherche)
     deletedAt: v.optional(v.number()),
     deletedBy: v.optional(v.id("agents")),
   })
     .index("by_at", ["at"])
     .index("by_deleted", ["deletedAt"])
     .index("by_nexus", ["nexusId"])
-    .index("by_import", ["importRef"]),
+    .index("by_import", ["importRef"])
+    .searchIndex("search", { searchField: "searchText" }),
 
   // ============ BOT : tickets de candidature (Police Academy) ============
   // Configuration du système, singleton. Tout est réglable depuis Discord via la

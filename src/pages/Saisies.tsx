@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Trash2, X, Link2Off } from "lucide-react";
+import { Trash2, X, Link2Off, Search } from "lucide-react";
 import { useAction, useQuery, usePaginatedQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import { api, type Id } from "@/lib/api";
@@ -40,7 +40,8 @@ function fmtMoney(n: number) {
 type Row = FunctionReturnType<typeof api.saisies.page>["page"][number];
 
 export function Saisies() {
-  const { results: rows, status, loadMore } = usePaginatedQuery(api.saisies.page, {}, { initialNumItems: 30 });
+  const [q, setQ] = useState("");
+  const { results: rows, status, loadMore } = usePaginatedQuery(api.saisies.page, { q: q.trim() || undefined }, { initialNumItems: 30 });
   const loading = status === "LoadingFirstPage";
   const me = useMe();
   const { can } = useCan();
@@ -53,8 +54,17 @@ export function Saisies() {
     <div className="p-[22px_26px]" style={{ animation: "mdtFade .2s ease" }}>
       <div className="mb-[16px] flex items-center gap-3">
         <h1 className="m-0 text-[21px] font-bold tracking-tight">Saisies</h1>
-        <span className="text-[12.5px] text-muted">Registre des objets saisis, synchronisé avec le NexusMDT.</span>
+        <span className="hidden text-[12.5px] text-muted lg:inline">Registre des objets saisis, synchronisé avec le NexusMDT.</span>
         <div className="flex-1" />
+        <div className="relative w-[280px] max-w-[42vw]">
+          <Search className="pointer-events-none absolute left-[10px] top-1/2 h-[15px] w-[15px] -translate-y-1/2 text-faint" />
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Rechercher (objet, mis en cause, agent…)"
+            className="h-[38px] w-full rounded-[9px] border border-border bg-surface-2 pl-[32px] pr-3 text-[13px] outline-none focus:border-accent"
+          />
+        </div>
         {canCreate && syncActive && (
           <button onClick={() => setModal({})} className="mdt-press flex items-center gap-[7px] rounded-[9px] bg-accent px-[14px] py-[8px] text-[13px] font-semibold text-accent-contrast hover:brightness-[1.06]">
             <Clover color="#fff" size={17} /> Saisie
@@ -70,11 +80,13 @@ export function Saisies() {
       )}
 
       <div className="overflow-hidden rounded-card border border-border bg-surface">
-        <div className="grid grid-cols-[.8fr_1.3fr_.7fr_.8fr_1.1fr_.9fr_.8fr_auto] gap-3 border-b border-border px-4 py-[11px] text-[10px] font-bold uppercase tracking-[0.08em] text-faint">
-          <span>Type</span><span>Objet</span><span>Qté</span><span>Valeur</span><span>Mis en cause</span><span>Statut</span><span>Date</span><span></span>
+        <div className="grid grid-cols-[.8fr_1.3fr_.6fr_.8fr_1.1fr_.9fr_.7fr_1.1fr] gap-3 border-b border-border px-4 py-[11px] text-[10px] font-bold uppercase tracking-[0.08em] text-faint">
+          <span>Type</span><span>Objet</span><span>Qté</span><span>Valeur</span><span>Mis en cause</span><span>Statut</span><span>Date</span><span>Agent</span>
         </div>
         {loading && <div className="p-4"><SkeletonRows rows={6} /></div>}
-        {!loading && rows.length === 0 && <EmptyState title="Aucune saisie" message="Enregistrez une première saisie." />}
+        {!loading && rows.length === 0 && (q.trim()
+          ? <EmptyState title="Aucun résultat" message={`Aucune saisie ne correspond à « ${q.trim()} ».`} />
+          : <EmptyState title="Aucune saisie" message="Enregistrez une première saisie." />)}
         {rows.map((s) => {
           const canEdit = me?.agent.isOwner || s.mine || can("saisies.create");
           const canDelete = me?.agent.isOwner || s.mine || can("saisies.delete");
@@ -83,7 +95,7 @@ export function Saisies() {
             <div
               key={s._id}
               onClick={() => (canEdit || canDelete) && syncActive && setModal({ row: s })}
-              className={`grid grid-cols-[.8fr_1.3fr_.7fr_.8fr_1.1fr_.9fr_.8fr_auto] items-center gap-3 border-b border-border px-4 py-[11px] ${(canEdit || canDelete) && syncActive ? "cursor-pointer hover:bg-surface-2" : ""}`}
+              className={`grid grid-cols-[.8fr_1.3fr_.6fr_.8fr_1.1fr_.9fr_.7fr_1.1fr] items-center gap-3 border-b border-border px-4 py-[11px] ${(canEdit || canDelete) && syncActive ? "cursor-pointer hover:bg-surface-2" : ""}`}
             >
               <span className="text-[12.5px] text-muted">{s.type ?? "-"}</span>
               <span className="text-[13px] font-semibold">{s.objet || "-"}</span>
@@ -92,7 +104,10 @@ export function Saisies() {
               <span className="truncate text-[12.5px] text-muted">{s.misEnCause || "-"}</span>
               <span>{st ? <span className="rounded-[5px] px-[8px] py-[3px] text-[11px] font-semibold" style={{ background: `color-mix(in srgb, ${STATUT_COLOR[st] ?? "var(--muted)"} 14%, transparent)`, color: STATUT_COLOR[st] ?? "var(--muted)" }}>{st}</span> : "-"}</span>
               <span className="font-data text-[11.5px] text-muted">{s.date ? isoToFr(s.date) : new Date(s.at).toLocaleDateString("fr-FR")}</span>
-              <span className="text-[11px] text-faint">{s.agentName ? <span title={s.agentName}><span className="font-data text-accent">{fmtBadge(s.matricule) ?? ""}</span></span> : ""}</span>
+              <span className="flex min-w-0 items-center gap-[6px] text-[12px] text-muted" title={s.agentName || undefined}>
+                {s.matricule != null && <span className="flex-shrink-0 font-data text-[11px] text-accent">{fmtBadge(s.matricule)}</span>}
+                <span className="truncate">{s.agentName || "-"}</span>
+              </span>
             </div>
           );
         })}

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useAction, useMutation, useQuery } from "convex/react";
-import { RefreshCw, Link2Off, ShieldCheck, TriangleAlert, Copy, Dices } from "lucide-react";
+import { RefreshCw, Link2Off, ShieldCheck, TriangleAlert, Copy, Dices, Eye, EyeOff } from "lucide-react";
 import { api } from "@/lib/api";
 import { useToast } from "@/providers/toast";
 import { useDialogs } from "@/components/detective/dialogs";
@@ -20,9 +20,12 @@ export function NexusSyncCard() {
   const saveCredential = useAction(api.nexusSync.saveCredential);
   const testCredential = useAction(api.nexusSync.testCredential);
   const removeCredential = useMutation(api.nexusSync.removeCredential);
+  const revealPassword = useAction(api.nexusSync.revealMyNexusPassword);
   const toast = useToast();
   const dialogs = useDialogs();
 
+  const [revealed, setRevealed] = useState<string | null>(null);
+  const [revealBusy, setRevealBusy] = useState(false);
   const [open, setOpen] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -54,6 +57,14 @@ export function NexusSyncCard() {
     if (r === undefined) return;
     if (r.ok) toast.success("Connexion Nexus OK.");
     else toast.error(`Connexion KO : ${r.error ?? "invalide"}`);
+  }
+
+  async function toggleReveal() {
+    if (revealed !== null) { setRevealed(null); return; }
+    setRevealBusy(true);
+    const pw = await toast.guard(revealPassword({}), "Récupération impossible");
+    setRevealBusy(false);
+    if (typeof pw === "string") setRevealed(pw);
   }
 
   async function unlink() {
@@ -125,8 +136,21 @@ export function NexusSyncCard() {
             <div className="mt-2 rounded-sm border px-[10px] py-[7px] text-[12px]" style={{ borderColor: "var(--danger)", background: "color-mix(in srgb, var(--danger) 8%, transparent)", color: "var(--danger)" }}>{status.lastError}</div>
           )}
           {status.lastCheckedAt && <div className="mt-1 text-[11px] text-faint">Vérifié le {new Date(status.lastCheckedAt).toLocaleString("fr-FR")}</div>}
-          <div className="mt-3 flex gap-2">
+
+          {revealed !== null && (
+            <div className="mt-3">
+              <div className="mb-[5px] text-[10px] font-semibold uppercase tracking-[0.06em] text-faint">Mot de passe Nexus (dédié)</div>
+              <div className="flex gap-2">
+                <input readOnly value={revealed} className="h-9 flex-1 rounded-sm border border-border bg-surface-2 px-2 font-data text-[13px] outline-none" onFocus={(e) => e.target.select()} />
+                <button onClick={() => { void navigator.clipboard?.writeText(revealed); toast.success("Mot de passe copié."); }} className="flex items-center rounded-sm border border-border bg-surface-2 px-2 text-muted hover:border-border-strong" title="Copier"><Copy className="h-[14px] w-[14px]" /></button>
+              </div>
+              <div className="mt-[6px] text-[11px] text-faint">C'est le mot de passe dédié que tu as défini côté NexusMDT. Ne le partage pas.</div>
+            </div>
+          )}
+
+          <div className="mt-3 flex flex-wrap gap-2">
             <button onClick={retest} disabled={busy} className="flex items-center gap-[6px] rounded-sm border border-border bg-surface-2 px-[11px] py-[7px] text-[12.5px] font-semibold text-muted hover:border-border-strong disabled:opacity-50"><RefreshCw className="h-[14px] w-[14px]" /> Re-tester</button>
+            <button onClick={toggleReveal} disabled={revealBusy} className="flex items-center gap-[6px] rounded-sm border border-border bg-surface-2 px-[11px] py-[7px] text-[12.5px] font-semibold text-muted hover:border-border-strong disabled:opacity-50">{revealed !== null ? <><EyeOff className="h-[14px] w-[14px]" /> Masquer</> : <><Eye className="h-[14px] w-[14px]" /> {revealBusy ? "…" : "Voir mon mot de passe"}</>}</button>
             <button onClick={unlink} className="flex items-center gap-[6px] rounded-sm border border-border bg-surface-2 px-[11px] py-[7px] text-[12.5px] font-semibold hover:border-border-strong" style={{ color: "var(--danger)" }}><Link2Off className="h-[14px] w-[14px]" /> Débrancher</button>
           </div>
         </div>
