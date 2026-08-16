@@ -710,6 +710,30 @@ export const ensureNexusComplaintStatuses = internalMutation({
   },
 });
 
+// Inspection des amendes Nexus : statuts réels + un échantillon (contrat d'écriture).
+export const inspectNexusAmendes = internalAction({
+  args: { token: v.optional(v.string()) },
+  handler: async (ctx, { token }): Promise<{ total: number; statuts: { statut: string; count: number }[]; types: { type: string; count: number }[]; sample: any }> => {
+    const tk = token || process.env.VIZU_TOKEN || (await ctx.runAction(internal.nexusSync.anyLinkedToken, {})) || undefined;
+    if (!tk) throw new ConvexError("Aucun token et aucun compte Nexus lié.");
+    const amendes = await apiGet("/api/amendes?entity=lspd&page=1&limit=100", tk).then((j: any) => j.amendes || []);
+    const st = new Map<string, number>(), ty = new Map<string, number>();
+    for (const a of amendes) {
+      const s = (a.statut || a.status || "(vide)").toString().trim() || "(vide)";
+      st.set(s, (st.get(s) ?? 0) + 1);
+      const t = (a.typeAmende || "(vide)").toString().trim() || "(vide)";
+      ty.set(t, (ty.get(t) ?? 0) + 1);
+    }
+    const s0 = amendes[0];
+    return {
+      total: amendes.length,
+      statuts: [...st.entries()].sort((a, b) => b[1] - a[1]).map(([statut, count]) => ({ statut, count })),
+      types: [...ty.entries()].sort((a, b) => b[1] - a[1]).map(([type, count]) => ({ type, count })),
+      sample: s0 ? Object.keys(s0) : null,
+    };
+  },
+});
+
 // Inspection des plaintes Nexus : distribution réelle des `statut` (pour vérifier
 // que les statuts proposés côté SuperMDT correspondent bien à ceux acceptés).
 export const inspectNexusPlaintes = internalAction({

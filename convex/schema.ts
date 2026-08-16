@@ -1783,6 +1783,60 @@ export default defineSchema({
     // Contraventions VIVANTES triées par date (listes chaudes sans lignes archivées).
     .index("by_live_at", ["deletedAt", "at"]),
 
+  // Amendes : entité « argent » (miroir de l'amende NexusMDT /api/amendes).
+  // AUTO-créée à la création d'un casier (dossier/rapport d'arrestation) ou d'une
+  // contravention ; pré-remplie depuis la source. Les agents ne changent QUE le
+  // statut. Écrite en write-through sur le Nexus. Non rétroactif.
+  amendes: defineTable({
+    citizenId: v.id("citizens"),
+    // Source SuperMDT (une seule renseignée) + lien affiché.
+    sourceType: v.optional(v.union(v.literal("CASIER"), v.literal("CONTRAVENTION"), v.literal("IMPORT"))),
+    casierEntryId: v.optional(v.id("casierEntries")),
+    citationId: v.optional(v.id("citations")),
+    // Contenu (parité NexusMDT).
+    numero: v.optional(v.string()),
+    typeAmende: v.optional(v.string()),
+    categorieAmende: v.optional(v.string()),
+    statut: v.string(), // Notifiée / Payée / En attente / Contestée / Annulée
+    objet: v.optional(v.string()),
+    montant: v.number(),
+    montantMajore: v.optional(v.number()),
+    paiementEchelonne: v.optional(v.boolean()),
+    sursisApplicable: v.optional(v.boolean()),
+    dateInfraction: v.optional(v.string()),
+    heureInfraction: v.optional(v.string()),
+    lieuInfraction: v.optional(v.string()),
+    adressePrecise: v.optional(v.string()),
+    autoriteCompetente: v.optional(v.string()),
+    verbalisateurNom: v.optional(v.string()),
+    matriculeAgent: v.optional(v.number()),
+    modeNotification: v.optional(v.string()),
+    dateNotification: v.optional(v.string()),
+    dateLimitePaiement: v.optional(v.string()),
+    dateLimiteContestation: v.optional(v.string()),
+    referenceJuridique: v.optional(v.string()),
+    articleLoi: v.optional(v.string()),
+    description: v.optional(v.string()),
+    circonstancesAggravantes: v.optional(v.string()),
+    circonstancesAttenuantes: v.optional(v.string()),
+    temoins: v.optional(v.string()),
+    preuves: v.optional(v.string()),
+    // Métadonnées locales.
+    at: v.number(),
+    createdBy: v.optional(v.id("agents")),
+    // Nexus write-through / import.
+    nexusId: v.optional(v.string()),
+    importRef: v.optional(v.string()),
+    nexusError: v.optional(v.string()), // dernière erreur de push (diagnostic)
+    deletedAt: v.optional(v.number()),
+    deletedBy: v.optional(v.id("agents")),
+  })
+    .index("by_citizen", ["citizenId"])
+    .index("by_nexus", ["nexusId"])
+    .index("by_import", ["importRef"])
+    .index("by_casier", ["casierEntryId"])
+    .index("by_citation", ["citationId"]),
+
   citationCharges: defineTable({
     citationId: v.id("citations"),
     penalChargeId: v.optional(v.id("penalCharges")),

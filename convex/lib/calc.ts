@@ -1,6 +1,6 @@
 // Moteur de calcul d'amende partagé. Source de vérité unique du calcul.
-// amende = base × (récidive ? facteur : 1)   [le DEFCON n'affecte plus l'amende - item 4]
-// prison = jailSeconds (la récidive n'affecte PAS la prison).
+// amende = base   [le DEFCON n'affecte plus l'amende - item 4 ; la récidive a été retirée]
+// prison = jailSeconds.
 
 export interface FineSpec {
   kind: "FIXED" | "FORMULA" | "ON_DECISION" | "PER_UNIT" | "UNSPECIFIED";
@@ -13,8 +13,6 @@ export interface DefconMult {
   sensitiveFineMultiplier: number;
 }
 
-export const RECIDIVE_FACTOR = 2; // configurable ultérieurement
-
 export function computeCharge(opts: {
   fine: FineSpec;
   jailSeconds?: number;
@@ -22,9 +20,10 @@ export function computeCharge(opts: {
   defcon: DefconMult;
   /** qty pour PER_UNIT, ou montant résolu pour FORMULA (saisi au moment de l'amende) */
   param?: number;
-  isRecidive: boolean;
+  /** Conservé pour compatibilité de signature ; ignoré (récidive retirée - item 6). */
+  isRecidive?: boolean;
 }): { fine: number; jailSeconds: number; onDecision: boolean } {
-  const { fine, param, isRecidive } = opts;
+  const { fine, param } = opts;
 
   if (fine.kind === "ON_DECISION") {
     return { fine: 0, jailSeconds: opts.jailSeconds ?? 0, onDecision: true };
@@ -46,8 +45,8 @@ export function computeCharge(opts: {
       base = 0;
   }
 
-  // Item 4 : plus de multiplicateur DEFCON. Amende à 100% (× récidive si applicable).
-  const fineAmount = Math.round(base * (isRecidive ? RECIDIVE_FACTOR : 1));
+  // Item 4 : plus de multiplicateur DEFCON. Item 6 : plus de facteur récidive.
+  const fineAmount = Math.round(base);
 
   return { fine: fineAmount, jailSeconds: opts.jailSeconds ?? 0, onDecision: false };
 }

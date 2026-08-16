@@ -1,11 +1,13 @@
 import { mutation, query } from "./_generated/server";
 import { v, ConvexError } from "convex/values";
 import type { QueryCtx } from "./_generated/server";
+import { internal } from "./_generated/api";
 import { requireAgent, requirePermission, requireOwnOrPermission, agentLabel, can } from "./rbac";
 import { writeAudit } from "./lib/audit";
 import { touchStats } from "./stats";
 import { notify, NOTIFY_COLOR, deepLink } from "./lib/notify";
 import { computeCharge } from "./lib/calc";
+import { parisInfractionStamp } from "./citations";
 
 // Officiers affichables d'une entrée, avec état de rattachement.
 //  - `linked: true`  = relié à un compte du MDT (badge + nom à jour)
@@ -465,6 +467,44 @@ export const addEntry = mutation({
       url: await deepLink(ctx, `/citoyen/${args.citizenId}`),
       footer: `Établi par ${agent.prenomRP} ${agent.nomRP}`,
     });
+
+    // Amende (entité pénalité financière) auto-créée depuis l'entrée de casier,
+    // pré-remplie et poussée vers le Nexus (write-through asynchrone). Les agents
+    // n'en modifieront ensuite que le statut. Pas d'amende si aucun montant dû.
+    if (totalFine > 0) {
+      const { date, heure } = parisInfractionStamp();
+      const amendeId = await ctx.db.insert("amendes", {
+        citizenId: args.citizenId,
+        sourceType: "CASIER",
+        casierEntryId: entryId,
+        typeAmende: "Amende de police",
+        statut: "Notifiée",
+        objet: snaps.map((s) => s.snapshot.name).join(" + ") || undefined,
+        montant: totalFine,
+        dateInfraction: date,
+        heureInfraction: heure,
+        lieuInfraction: args.lieu || undefined,
+        autoriteCompetente: "LSPD - Los Santos Police Department",
+        verbalisateurNom: `${agent.prenomRP} ${agent.nomRP}`,
+        matriculeAgent: agent.matricule ?? undefined,
+        description: (args.derouleFaits || args.reportBody || args.notes) || undefined,
+        at: Date.now(),
+        createdBy: agent._id,
+      });
+      await ctx.scheduler.runAfter(0, internal.nexusSync.pushAmende, { amendeId, agentId: agent._id });
+      await notify(ctx, "amende.create", {
+        title: "Amende émise",
+        description: citizen ? `**${citizen.prenom} ${citizen.nom}**` : undefined,
+        color: NOTIFY_COLOR.warning,
+        fields: [
+          { name: "Montant", value: `$${totalFine.toLocaleString("fr-FR")}`, inline: true },
+          { name: "Statut", value: "Notifiée", inline: true },
+        ],
+        url: await deepLink(ctx, `/citoyen/${args.citizenId}`),
+        footer: `Émise par ${agent.prenomRP} ${agent.nomRP}`,
+      });
+    }
+
     return entryId;
   },
 });

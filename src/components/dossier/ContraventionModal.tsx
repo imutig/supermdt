@@ -130,9 +130,6 @@ export function ContraventionModal({
                       </div>
                       <div className="mt-[5px] flex flex-wrap gap-[6px] text-[11px]">
                         <span className="rounded-[4px] border border-border bg-surface px-[6px] py-[1px] text-muted">{ch.category}</span>
-                        {ch.isRecidive && (
-                          <span className="rounded-[4px] px-[6px] py-[1px] font-semibold" style={{ background: "color-mix(in srgb, var(--warning) 16%, transparent)", color: "var(--warning)" }}>Récidive</span>
-                        )}
                       </div>
                     </div>
                   ))}

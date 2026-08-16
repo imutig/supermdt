@@ -120,9 +120,9 @@ export function CalcModal() {
     if (f.kind === "FORMULA") return row.param || 0;
     return 0;
   };
-  // Item 4 : plus de multiplicateur DEFCON, amende à 100% (× récidive).
+  // Item 4 : plus de multiplicateur DEFCON. Item 6 : plus de facteur récidive.
   const rowFine = (row: Row) =>
-    row.charge.fine.kind === "ON_DECISION" ? 0 : Math.round(baseOf(row) * (row.isRecidive ? 2 : 1));
+    row.charge.fine.kind === "ON_DECISION" ? 0 : Math.round(baseOf(row));
 
   // Dossier d'arrestation dès qu'une charge est un Crime ou un Délit majeur, sinon simple rapport.
   const isDossier = rows.some((r) => r.charge.severityName === "Crime" || r.charge.severityName === "Délit majeur");
@@ -156,7 +156,7 @@ export function CalcModal() {
     const charges = rows.map((r) => ({
       penalChargeId: r.charge._id,
       param: r.param,
-      isRecidive: r.isRecidive,
+      isRecidive: false, // récidive retirée (item 6)
     }));
     const casierArgs = {
       citizenId,
@@ -353,8 +353,8 @@ export function CalcModal() {
                       ✕
                     </button>
                   </div>
-                  <div className="mt-[10px] flex flex-wrap items-center gap-[9px]">
-                    {(r.charge.fine.kind === "PER_UNIT" || r.charge.fine.kind === "FORMULA") && (
+                  {(r.charge.fine.kind === "PER_UNIT" || r.charge.fine.kind === "FORMULA") && (
+                    <div className="mt-[10px] flex flex-wrap items-center gap-[9px]">
                       <div className="flex items-center gap-[7px] rounded-[6px] border border-border bg-surface-2 px-[9px] py-1">
                         <span className="text-[11px] text-muted">
                           {r.charge.fine.kind === "PER_UNIT" ? `Quantité` : "Montant de base"}
@@ -366,23 +366,8 @@ export function CalcModal() {
                         />
                         {r.charge.fine.unit && <span className="text-[11px] text-faint">{r.charge.fine.unit}</span>}
                       </div>
-                    )}
-                    <button
-                      onClick={() => patch(r.uid, { isRecidive: !r.isRecidive })}
-                      className="flex items-center gap-[6px] rounded-[6px] border px-[9px] py-1 text-[11.5px] font-semibold"
-                      style={
-                        r.isRecidive
-                          ? { background: "rgba(220,38,38,0.10)", borderColor: "rgba(220,38,38,0.4)", color: "var(--danger)" }
-                          : { background: "var(--surface-2)", borderColor: "var(--border)", color: "var(--muted)" }
-                      }
-                    >
-                      <span
-                        className="h-[7px] w-[7px] rounded-full"
-                        style={{ background: "currentColor", opacity: r.isRecidive ? 1 : 0.35 }}
-                      />
-                      Récidive
-                    </button>
-                  </div>
+                    </div>
+                  )}
                   {rowError(r) && (
                     <div className="mt-[8px] rounded-[5px] px-[8px] py-[5px] text-[11.5px] font-semibold" style={{ background: "rgba(220,38,38,0.10)", color: "var(--danger)" }}>
                       {rowError(r)}

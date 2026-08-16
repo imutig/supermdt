@@ -20,6 +20,7 @@ import { AgentTag } from "@/components/common/AgentTag";
 import { DeleteButton } from "@/components/common/DeleteButton";
 import { EmptyState } from "@/components/common/EmptyState";
 import { useCan } from "@/hooks/useCan";
+import { useToast } from "@/providers/toast";
 import { RichTextEditor } from "@/components/common/RichTextEditor";
 import { FEATURES, NEXUS_MSG } from "@/lib/features";
 
@@ -31,6 +32,7 @@ const TABS = [
   { key: "casier", label: "Casier" },
   { key: "mandats", label: "Mandats" },
   { key: "contraventions", label: "Contraventions" },
+  { key: "amendes", label: "Amendes" },
   { key: "plaintes", label: "Plaintes" },
   { key: "depositions", label: "Dépositions" },
   { key: "rapports", label: "Rapports" },
@@ -61,6 +63,7 @@ export function Dossier() {
   const { id } = useParams();
   const { openCalc, openMandat } = useApp();
   const { can } = useCan();
+  const toast = useToast();
   // Chaque action vise sa propre permission. Un contrôle unique fondé sur le
   // corps du grade ignorait la configuration : un Officier ne pouvait rien
   // faire même avec les droits accordés, et un gradé pouvait tout faire même
@@ -106,6 +109,10 @@ export function Dossier() {
   const casier = useQuery(api.casier.byCitizen, citizenId && can("casier.view") ? { citizenId } : "skip");
   const mandats = useQuery(api.mandats.byCitizen, citizenId && can("mandats.view") ? { citizenId } : "skip");
   const contraventions = useQuery(api.citations.byCitizen, citizenId && can("contraventions.view") ? { citizenId } : "skip");
+  const amendes = useQuery(api.amendes.byCitizen, citizenId && can("citoyens.view") ? { citizenId } : "skip");
+  const amendeStatuts = useQuery(api.amendes.statuts, {});
+  const setAmendeStatus = useMutation(api.amendes.setStatus);
+  const canManageAmende = can("finances.manage");
   const rapports = useQuery(api.reports.byCitizen, citizenId && can("rapports.view") ? { citizenId } : "skip");
   const plaintes = useQuery(api.complaints.byCitizen, citizenId && can("plaintes.view") ? { citizenId } : "skip");
   const depositions = useQuery(api.depositions.byCitizen, citizenId && can("depositions.view") ? { citizenId } : "skip");
@@ -698,6 +705,66 @@ export function Dossier() {
                   </>
                 )}
               </div>
+            ) : tab === "amendes" ? (
+              <div>
+                {(amendes ?? []).length === 0 ? (
+                  <div className="flex min-h-[180px] items-center justify-center text-[13px] text-faint">
+                    Aucune amende.
+                  </div>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-[1fr_.7fr_.7fr_.9fr] gap-3 border-b border-border px-4 py-[11px] text-[10px] font-bold uppercase tracking-[0.08em] text-faint">
+                      <span>Objet</span>
+                      <span>Montant</span>
+                      <span>Source</span>
+                      <span>Statut</span>
+                    </div>
+                    {(amendes ?? []).map((a) => (
+                      <div
+                        key={a._id}
+                        className="grid grid-cols-[1fr_.7fr_.7fr_.9fr] items-center gap-3 border-b border-border px-4 py-3"
+                      >
+                        <div>
+                          <div className="text-[13px] font-medium">{a.objet || a.typeAmende || "Amende"}</div>
+                          <div className="font-data text-[11px] text-faint">
+                            {a.numero ? `n°${a.numero} · ` : ""}{new Date(a.at).toLocaleDateString("fr-FR")}
+                          </div>
+                        </div>
+                        <span className="font-data text-[13px] font-semibold">
+                          ${a.montant.toLocaleString("fr-FR")}
+                        </span>
+                        <span className="text-[12px]">
+                          {a.source?.kind === "CASIER" ? (
+                            <span onClick={() => { setTab("casier"); setCasierModalId(a.source!.id as Id<"casierEntries">); }} className="cursor-pointer text-accent hover:underline">Casier →</span>
+                          ) : a.source?.kind === "CONTRAVENTION" ? (
+                            <span onClick={() => { setTab("contraventions"); setContravModalId(a.source!.id as Id<"citations">); }} className="cursor-pointer text-accent hover:underline">Contravention →</span>
+                          ) : (
+                            <span className="text-faint">Import</span>
+                          )}
+                        </span>
+                        <span>
+                          {canManageAmende ? (
+                            <select
+                              value={a.statut}
+                              onChange={async (e) => {
+                                const r = await toast.guard(setAmendeStatus({ amendeId: a._id, statut: e.target.value }), "Changement de statut impossible");
+                                if (r !== undefined) toast.success("Statut mis à jour.");
+                              }}
+                              className="h-8 w-full rounded-sm border border-border bg-surface-2 px-2 text-[12px] outline-none focus:border-accent"
+                            >
+                              {(amendeStatuts ?? [a.statut]).map((s) => (
+                                <option key={s} value={s}>{s}</option>
+                              ))}
+                            </select>
+                          ) : (
+                            <span className="text-[12px] font-semibold" style={{ color: amendeStatutColor(a.statut) }}>{a.statut}</span>
+                          )}
+                        </span>
+                      </div>
+                    ))}
+                  </>
+                )}
+              </div>
             ) : tab === "plaintes" ? (
               <div className="p-[14px]">
                 {canPlainte && syncActive && (
@@ -916,4 +983,11 @@ function fmtDur(seconds: number) {
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);
   return [h ? `${h}h` : "", m ? `${m}min` : ""].filter(Boolean).join(" ") || `${seconds}s`;
+}
+
+function amendeStatutColor(statut: string): string {
+  if (statut === "Payée") return "var(--success)";
+  if (statut === "Annulée") return "var(--muted)";
+  if (statut === "Contestée") return "var(--danger)";
+  return "var(--warning)"; // Notifiée / En attente
 }

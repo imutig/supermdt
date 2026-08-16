@@ -531,45 +531,47 @@ export const _upsertContraventions = internalMutation({
   args: { raws: v.array(v.string()), dryRun: v.optional(v.boolean()), createMissing: v.optional(v.boolean()) },
   handler: async (ctx, { raws, dryRun, createMissing }) => {
     const refs = await resolveRefs(ctx);
-    if (!refs.owner) throw new ConvexError("Aucun compte owner pour rattacher les contraventions importées.");
-    const all = await ctx.db.query("citations").collect();
-    const existingByRef = new Map<string, (typeof all)[number]>();
-    const orphansByCitizen = new Map<string, (typeof all)[number][]>();
-    for (const c of all) {
-      if (c.importRef) existingByRef.set(c.importRef, c);
-      else if (!c.deletedAt) {
-        const k = c.citizenId as string;
-        if (!orphansByCitizen.has(k)) orphansByCitizen.set(k, []);
-        orphansByCitizen.get(k)!.push(c);
-      }
+    if (!refs.owner) throw new ConvexError("Aucun compte owner pour rattacher les amendes importées.");
+    // Cible : la table `amendes` (l'objet Nexus /api/amendes y est désormais
+    // importé, plus dans `citations`). Dédup par nexusId ET importRef ; adoption
+    // des amendes créées en write-through (nexusId présent, importRef absent).
+    const all = await ctx.db.query("amendes").collect();
+    const byRef = new Map<string, (typeof all)[number]>();
+    const byNexus = new Map<string, (typeof all)[number]>();
+    for (const am of all) {
+      if (am.importRef) byRef.set(am.importRef, am);
+      if (am.nexusId) byNexus.set(am.nexusId, am);
     }
+    // Non-rétroactif : une amende Nexus déjà importée jadis comme CONTRAVENTION
+    // (table citations, importRef nexus-amende:...) reste telle quelle — on la
+    // saute pour ne pas la dupliquer dans la table amendes.
+    const oldCitationRefs = new Set<string>();
+    for (const c of await ctx.db.query("citations").collect()) if (c.importRef) oldCitationRefs.add(c.importRef);
+
     const incomingRefs = new Set<string>();
     for (const rawStr of raws) { try { incomingRefs.add(mapAmende(JSON.parse(rawStr)).importRef); } catch { /* compté plus bas */ } }
 
-    let ajoutes = 0, dejaImporte = 0, sansCitoyen = 0, citoyensCrees = 0, chargesLiees = 0, chargesLibres = 0, officiersLies = 0, parseErr = 0;
-    let contravRelies = 0;
+    let ajoutes = 0, dejaImporte = 0, sansCitoyen = 0, citoyensCrees = 0, skippedOldCitation = 0, parseErr = 0;
     const exemplesSansCitoyen: string[] = [];
     for (const rawStr of raws) {
       let a: any;
       try { a = mapAmende(JSON.parse(rawStr)); } catch { parseErr++; continue; }
-      const status = a.annulee ? ("ANNULEE" as const) : ("EMISE" as const);
-      const prev = existingByRef.get(a.importRef);
+      // Reste dans l'ancienne table citations : on ne migre pas.
+      if (oldCitationRefs.has(a.importRef)) { skippedOldCitation++; continue; }
+      const statut = a.statut || (a.annulee ? "Annulée" : a.finePaid ? "Payée" : "Notifiée");
+      const prev = byRef.get(a.importRef) || (a.nexusId ? byNexus.get(a.nexusId) : undefined);
       if (prev) {
         dejaImporte++;
         if (!dryRun) {
-          const officerId = resolveOfficer(refs, a.createdByMatricule, a.createdByNom);
           const patch: Record<string, unknown> = {};
-          if (officerId && prev.officerId === refs.owner._id) { patch.officerId = officerId; contravRelies++; officiersLies++; }
-          if ((prev.officerName ?? undefined) !== (a.createdByNom || undefined)) patch.officerName = a.createdByNom || undefined;
-          if ((prev.officerMatricule ?? undefined) !== (a.createdByMatricule ?? undefined)) patch.officerMatricule = a.createdByMatricule ?? undefined;
-          if (prev.finePaid !== a.finePaid) patch.finePaid = a.finePaid;
-          if (prev.status !== status) patch.status = status;
-          // Parité : montant majoré + références juridiques + id Nexus.
+          if ((prev.importRef ?? undefined) !== a.importRef) patch.importRef = a.importRef;
           if ((prev.nexusId ?? undefined) !== (a.nexusId ?? undefined)) patch.nexusId = a.nexusId;
+          if (prev.statut !== statut) patch.statut = statut;
+          if (prev.montant !== a.montant) patch.montant = a.montant;
           if ((prev.montantMajore ?? undefined) !== (a.montantMajore ?? undefined)) patch.montantMajore = a.montantMajore;
           if ((prev.articleLoi ?? undefined) !== (a.articleLoi ?? undefined)) patch.articleLoi = a.articleLoi;
           if ((prev.referenceJuridique ?? undefined) !== (a.referenceJuridique ?? undefined)) patch.referenceJuridique = a.referenceJuridique;
-          if (prev.importRaw !== rawStr) patch.importRaw = rawStr;
+          if ((prev.objet ?? undefined) !== (a.objet || undefined)) patch.objet = a.objet || undefined;
           if (Object.keys(patch).length) await ctx.db.patch(prev._id, patch);
         }
         continue;
@@ -588,48 +590,39 @@ export const _upsertContraventions = internalMutation({
           refs.byName.set(norm(`${a.nom} ${a.prenom}`), citizenId);
         }
       }
-      // Adoption d'un orphelin write-through du même citoyen (anti-doublon).
-      const orphans = citizenId ? orphansByCitizen.get(citizenId as string) : undefined;
-      if (orphans && orphans.length) {
-        const orphan = orphans.shift()!;
-        if (!dryRun) await ctx.db.patch(orphan._id, { importRef: a.importRef, nexusId: a.nexusId, importRaw: rawStr, montantMajore: a.montantMajore });
-        dejaImporte++;
-        continue;
-      }
       ajoutes++;
-      const officerId = resolveOfficer(refs, a.createdByMatricule, a.createdByNom);
-      if (officerId) officiersLies++;
-      const pc = refs.penalByName.get(norm(a.objet));
-      const cat: any = pc ? refs.cats.get(pc.categoryId as string) : undefined;
-      const sev: any = pc?.severityId ? refs.sevs.get(pc.severityId as string) : undefined;
-      if (pc) chargesLiees++; else chargesLibres++;
       if (dryRun) continue;
-      const notesParts = [a.typeAmende, a.categorieAmende].filter(Boolean).join(" · ");
-      const citationId = await ctx.db.insert("citations", {
-        citizenId: citizenId as Id<"citizens">, at: a.at,
-        officerId: officerId || refs.owner._id,
-        officerName: a.createdByNom || undefined,
-        officerMatricule: a.createdByMatricule ?? undefined,
-        defconSnapshot: { name: "Import", fineMultiplier: 1, sensitiveFineMultiplier: 1 },
-        totalFine: a.montant, status,
-        finePaid: a.finePaid,
-        montantMajore: a.montantMajore, articleLoi: a.articleLoi, referenceJuridique: a.referenceJuridique,
-        notes: [notesParts, a.description].filter(Boolean).join("\n") || `Importé du MDT Nexus · ${a.numero}`,
+      const officerId = resolveOfficer(refs, a.createdByMatricule, a.createdByNom);
+      await ctx.db.insert("amendes", {
+        citizenId: citizenId as Id<"citizens">,
+        sourceType: "IMPORT",
+        numero: a.numero || undefined,
+        typeAmende: a.typeAmende || undefined,
+        categorieAmende: a.categorieAmende || undefined,
+        statut,
+        objet: a.objet || undefined,
+        montant: a.montant,
+        montantMajore: a.montantMajore,
+        dateInfraction: undefined,
+        lieuInfraction: a.lieu,
+        verbalisateurNom: a.createdByNom || undefined,
+        matriculeAgent: a.createdByMatricule ?? undefined,
+        referenceJuridique: a.referenceJuridique,
+        articleLoi: a.articleLoi,
+        description: a.description,
+        at: a.at,
         createdBy: officerId || refs.owner._id,
-        importRef: a.importRef, nexusId: a.nexusId, importRaw: rawStr,
-      });
-      await ctx.db.insert("citationCharges", {
-        citationId, penalChargeId: pc?._id as Id<"penalCharges"> | undefined,
-        snapshot: { name: a.objet || "Contravention", category: cat?.name ?? "Importé", severity: sev?.name ?? "", sensitive: cat?.sensitive ?? false, fineRaw: fmtMoney(a.montant), dojRequest: false, sanctions: [] },
-        isRecidive: a.recidive, computedFine: a.montant, onDecision: false,
+        nexusId: a.nexusId,
+        importRef: a.importRef,
       });
     }
 
-    // Réconciliation : contraventions IMPORTÉES absentes du flux Nexus -> archivées
-    // (SOFT-delete, restaurable), avec le même garde-fou proportionnel que les casiers.
+    // Réconciliation : amendes IMPORTÉES absentes du flux Nexus -> archivées
+    // (SOFT-delete, restaurable), avec le même garde-fou proportionnel que les
+    // casiers. Ne cible QUE les amendes d'import (jamais les write-through).
     let supprimes = 0;
     let reconciliationSkipped = false;
-    const importedActive = all.filter((c) => c.importRef && !c.deletedAt);
+    const importedActive = all.filter((c) => c.sourceType === "IMPORT" && c.importRef && !c.deletedAt);
     const orphelins = raws.length > 0 ? importedActive.filter((c) => !incomingRefs.has(c.importRef!)) : [];
     if (!dryRun && importedActive.length >= 10 && orphelins.length > importedActive.length * 0.4) {
       reconciliationSkipped = true;
@@ -641,7 +634,7 @@ export const _upsertContraventions = internalMutation({
       }
     }
 
-    return { source: raws.length, ajoutes, dejaImporte, contravRelies, sansCitoyen, citoyensCrees, exemplesSansCitoyen, chargesLiees, chargesLibres, officiersLies, parseErr, supprimes, chargesSupprimees: 0, orphelinsDetectes: orphelins.length, reconciliationSkipped };
+    return { source: raws.length, ajoutes, dejaImporte, skippedOldCitation, sansCitoyen, citoyensCrees, exemplesSansCitoyen, parseErr, supprimes, orphelinsDetectes: orphelins.length, reconciliationSkipped };
   },
 });
 

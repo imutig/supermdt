@@ -534,7 +534,7 @@ export const _citationForPush = internalQuery({
       nom: citizen?.nom ?? "", prenom: citizen?.prenom ?? "",
       objet: charges.map((x) => x.snapshot.name).join(" + "),
       montant: c.totalFine, finePaid: c.finePaid ?? false,
-      recidive: charges.some((x) => x.isRecidive),
+      recidive: false, // récidive retirée (item 6)
     };
   },
 });
@@ -562,48 +562,128 @@ export const createContravention = action({
     const cred = await ctx.runQuery(internal.nexusSync._credFor, { agentId });
     if (!cred) throw new ConvexError("Compte NexusMDT non lié : reliez-le dans Mon profil > Paramètres pour créer des fiches (elles sont écrites en votre nom sur le NexusMDT).");
 
-    // 1) Création locale (calcul des amendes/charges par la logique existante).
+    // Création locale de la contravention. L'objet Nexus /api/amendes est
+    // désormais porté par l'entité « amende » (table amendes), auto-créée par
+    // citations.create qui planifie son push write-through (internal
+    // nexusSync.pushAmende). On ne poste donc plus l'amende ici (évite le
+    // double-post) : la contravention est un objet purement local, son miroir
+    // Nexus est l'amende.
     const citationId = await ctx.runMutation(api.citations.create, { citizenId: a.citizenId, vehicleId: a.vehicleId, charges: a.charges, notes: a.notes });
-    const info = await ctx.runQuery(internal.nexusSync._citationForPush, { citationId });
-    if (!info) { throw new ConvexError("Contravention introuvable après création."); }
-    if (!info.nexusId) {
-      await ctx.runMutation(internal.nexusSync._rollbackCitation, { citationId });
-      throw new ConvexError("Ce citoyen n'existe pas encore côté NexusMDT (resync nécessaire).");
+    return citationId;
+  },
+});
+
+// ---------------------- Amende (entité) write-through ----------------------
+// POST /api/amendes pour l'amende auto-créée (casier / contravention). Modèle
+// « best-effort » : si aucun compte lié ou citoyen sans nexusId, on conserve
+// l'amende en local et on stocke l'erreur (nexusError) sans rien annuler.
+export const pushAmende = internalAction({
+  args: { amendeId: v.id("amendes"), agentId: v.id("agents") },
+  handler: async (ctx, { amendeId, agentId }): Promise<void> => {
+    const amende = await ctx.runQuery(internal.amendes._get, { amendeId });
+    if (!amende) return;
+    if (amende.nexusId) return; // déjà poussée (idempotence)
+    const citizen = await ctx.runQuery(internal.nexusSync._citizenNexus, { citizenId: amende.citizenId });
+
+    // Résolution du compte : celui de l'agent, sinon n'importe quel compte lié.
+    let credAgentId = agentId;
+    let cred: Cred | null = await ctx.runQuery(internal.nexusSync._credFor, { agentId });
+    if (!cred) {
+      const any = await ctx.runQuery(internal.nexusSync._anyLinkedCred, {});
+      if (any) { cred = { email: any.email, secretEnc: any.secretEnc, tokenCache: any.tokenCache, tokenExpiry: any.tokenExpiry }; credAgentId = any.agentId; }
+    }
+    if (!cred || !citizen?.nexusId) {
+      const why = !cred ? "aucun compte NexusMDT lié" : "citoyen sans nexusId (resync requis)";
+      await ctx.runMutation(internal.amendes._setNexusError, { amendeId, error: why });
+      await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: "amende", op: "POST", ok: false, agentId, error: why });
+      return;
     }
 
-    // 2) Push vers Nexus (rollback local si échec).
     const t0 = Date.now();
+    const payload: Record<string, unknown> = {
+      entity: "lspd",
+      citoyen: { id: citizen.nexusId, prenom: citizen.prenom, nom: citizen.nom },
+      numero: amende.numero,
+      typeAmende: amende.typeAmende ?? "Amende de police",
+      categorieAmende: amende.categorieAmende,
+      statut: amende.statut,
+      objet: amende.objet,
+      montant: amende.montant,
+      montantMajore: amende.montantMajore,
+      paiementEchelonne: amende.paiementEchelonne,
+      sursisApplicable: amende.sursisApplicable,
+      dateInfraction: amende.dateInfraction,
+      heureInfraction: amende.heureInfraction,
+      lieuInfraction: amende.lieuInfraction,
+      adressePrecise: amende.adressePrecise,
+      autoriteCompetente: amende.autoriteCompetente,
+      verbalisateurNom: amende.verbalisateurNom,
+      matriculeAgent: amende.matriculeAgent != null ? String(amende.matriculeAgent) : "",
+      recidive: false,
+      modeNotification: amende.modeNotification,
+      dateNotification: amende.dateNotification,
+      dateLimitePaiement: amende.dateLimitePaiement,
+      dateLimiteContestation: amende.dateLimiteContestation,
+      referenceJuridique: amende.referenceJuridique,
+      articleLoi: amende.articleLoi,
+      description: amende.description,
+      circonstancesAggravantes: amende.circonstancesAggravantes,
+      circonstancesAttenuantes: amende.circonstancesAttenuantes,
+      temoins: amende.temoins,
+      preuves: amende.preuves,
+    };
+    let res: Response;
     try {
-      const { date, heure } = nowParis();
-      const payload = {
-        entity: "lspd", citoyen: { id: info.nexusId, nom: info.nom, prenom: info.prenom },
-        objet: info.objet || "Contravention", montant: info.montant,
-        statut: info.finePaid ? "Payée" : "En attente", recidive: info.recidive,
-        dateInfraction: date, heureInfraction: heure,
-        typeAmende: "Amende de police", categorieAmende: "Montant personnalisé",
-      };
-      const res = await nexusFetch(ctx, agentId, cred, `/api/amendes`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-      if (!res.ok) {
-        const txt = await res.text().catch(() => "");
-        await ctx.runMutation(internal.nexusSync._rollbackCitation, { citationId });
-        await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: "amende", op: "POST", ok: false, httpStatus: res.status, durationMs: Date.now() - t0, agentId, error: txt.slice(0, 160) });
-        throw new ConvexError(`Émission côté NexusMDT échouée (HTTP ${res.status}). Contravention annulée.`);
-      }
-      const j: any = await res.json();
-      const created = j.amende ?? j.data ?? j;
-      // On ne tamponne qu'avec le vrai `numero` (même clé que l'import) ; sinon
-      // l'orphelin sera adopté au prochain sync (anti-doublon).
-      const numero = created?.numero;
-      if (numero != null) await ctx.runMutation(internal.nexusSync._stampCitationImport, { citationId, importRef: `nexus-amende:${numero}`, nexusId: created?._id });
-      await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: "amende", op: "POST", ok: true, httpStatus: res.status, durationMs: Date.now() - t0, agentId, detail: `${info.prenom} ${info.nom} · $${info.montant}` });
-      return citationId;
+      res = await nexusFetch(ctx, credAgentId, cred, `/api/amendes`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
     } catch (e) {
-      // Erreur réseau / login : on annule la création locale.
-      await ctx.runMutation(internal.nexusSync._rollbackCitation, { citationId }).catch(() => {});
-      if (e instanceof Error && e.message.includes("échouée")) throw e;
-      await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: "amende", op: "POST", ok: false, durationMs: Date.now() - t0, agentId, error: e instanceof Error ? e.message : String(e) });
-      throw new ConvexError("NexusMDT injoignable, contravention annulée.");
+      const msg = e instanceof Error ? e.message : String(e);
+      await ctx.runMutation(internal.amendes._setNexusError, { amendeId, error: msg });
+      await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: "amende", op: "POST", ok: false, durationMs: Date.now() - t0, agentId, error: msg });
+      return;
     }
+    if (!res.ok) {
+      const txt = await res.text().catch(() => "");
+      await ctx.runMutation(internal.amendes._setNexusError, { amendeId, error: `HTTP ${res.status} ${txt.slice(0, 120)}` });
+      await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: "amende", op: "POST", ok: false, httpStatus: res.status, durationMs: Date.now() - t0, agentId, error: txt.slice(0, 160) });
+      return;
+    }
+    const j: any = await res.json();
+    const created = j.amende ?? j.data ?? j;
+    const numero = created?.numero;
+    await ctx.runMutation(internal.amendes._setNexus, { amendeId, nexusId: String(created?._id ?? ""), numero: numero != null ? String(numero) : undefined });
+    await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: "amende", op: "POST", ok: true, httpStatus: res.status, durationMs: Date.now() - t0, agentId, detail: `${citizen.prenom} ${citizen.nom} · $${amende.montant}` });
+  },
+});
+
+// PATCH /api/amendes/:id — répercute un changement de statut (best-effort).
+export const patchAmendeStatus = internalAction({
+  args: { amendeId: v.id("amendes"), agentId: v.id("agents") },
+  handler: async (ctx, { amendeId, agentId }): Promise<void> => {
+    const amende = await ctx.runQuery(internal.amendes._get, { amendeId });
+    if (!amende?.nexusId) return;
+
+    let credAgentId = agentId;
+    let cred: Cred | null = await ctx.runQuery(internal.nexusSync._credFor, { agentId });
+    if (!cred) {
+      const any = await ctx.runQuery(internal.nexusSync._anyLinkedCred, {});
+      if (any) { cred = { email: any.email, secretEnc: any.secretEnc, tokenCache: any.tokenCache, tokenExpiry: any.tokenExpiry }; credAgentId = any.agentId; }
+    }
+    if (!cred) return;
+
+    const t0 = Date.now();
+    let res: Response;
+    try {
+      res = await nexusFetch(ctx, credAgentId, cred, `/api/amendes/${amende.nexusId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ entity: "lspd", statut: amende.statut }) });
+    } catch (e) {
+      await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: "amende", op: "PATCH", ok: false, durationMs: Date.now() - t0, agentId, error: e instanceof Error ? e.message : String(e) });
+      return;
+    }
+    if (!res.ok) {
+      const txt = await res.text().catch(() => "");
+      await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: "amende", op: "PATCH", ok: false, httpStatus: res.status, durationMs: Date.now() - t0, agentId, error: txt.slice(0, 160) });
+      return;
+    }
+    await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: "amende", op: "PATCH", ok: true, httpStatus: res.status, durationMs: Date.now() - t0, agentId, detail: amende.statut });
   },
 });
 

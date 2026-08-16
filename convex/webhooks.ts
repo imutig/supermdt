@@ -23,6 +23,8 @@ export const WEBHOOK_EVENTS: { slug: string; group: string; label: string }[] = 
   { slug: "contravention.create", group: "Contraventions", label: "Contravention émise" },
   { slug: "contravention.annul", group: "Contraventions", label: "Contravention annulée" },
   { slug: "amende.paid", group: "Contraventions", label: "Amende marquée payée" },
+  { slug: "amende.create", group: "Contraventions", label: "Amende émise" },
+  { slug: "amende.status", group: "Contraventions", label: "Statut d'amende modifié" },
 
   { slug: "casier.create", group: "Casier", label: "Entrée de casier créée" },
   { slug: "casier.update", group: "Casier", label: "Dossier d'arrestation modifié" },

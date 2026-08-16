@@ -1,11 +1,20 @@
 import { mutation, query } from "./_generated/server";
 import { v, ConvexError } from "convex/values";
 import type { QueryCtx } from "./_generated/server";
+import { internal } from "./_generated/api";
 import { requireAgent, requirePermission, requireOwnOrPermission, agentLabel } from "./rbac";
 import { writeAudit } from "./lib/audit";
 import { touchStats } from "./stats";
 import { notify, NOTIFY_COLOR, deepLink } from "./lib/notify";
 import { computeCharge } from "./lib/calc";
+import { parisParts } from "./lib/paris";
+
+// Date / heure d'infraction (heure de Paris) au format Nexus (JJ/MM/AAAA, HH:MM).
+export function parisInfractionStamp(): { date: string; heure: string } {
+  const p = parisParts(Date.now());
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return { date: `${pad(p.d)}/${pad(p.mo)}/${p.y}`, heure: `${pad(p.h)}:00` };
+}
 
 async function currentDefcon(ctx: QueryCtx) {
   const levels = await ctx.db.query("defconLevels").withIndex("by_position").collect();
@@ -251,6 +260,43 @@ export const create = mutation({
       resourceLabel: citizen ? `${citizen.prenom} ${citizen.nom}` : "",
       metadata: { totalFine, charges: snaps.length },
     });
+
+    // Amende (entité pénalité financière) auto-créée depuis la contravention,
+    // pré-remplie et poussée vers le Nexus (write-through asynchrone). Les agents
+    // n'en modifieront ensuite que le statut. Pas d'amende si aucun montant dû.
+    if (totalFine > 0) {
+      const { date, heure } = parisInfractionStamp();
+      const amendeId = await ctx.db.insert("amendes", {
+        citizenId: args.citizenId,
+        sourceType: "CONTRAVENTION",
+        citationId: id,
+        typeAmende: "Amende de police",
+        statut: "Notifiée",
+        objet: snaps.map((s) => s.snapshot.name).join(" + ") || undefined,
+        montant: totalFine,
+        dateInfraction: date,
+        heureInfraction: heure,
+        autoriteCompetente: "LSPD - Los Santos Police Department",
+        verbalisateurNom: `${agent.prenomRP} ${agent.nomRP}`,
+        matriculeAgent: agent.matricule ?? undefined,
+        description: args.notes || undefined,
+        at: Date.now(),
+        createdBy: agent._id,
+      });
+      await ctx.scheduler.runAfter(0, internal.nexusSync.pushAmende, { amendeId, agentId: agent._id });
+      await notify(ctx, "amende.create", {
+        title: "Amende émise",
+        description: citizen ? `**${citizen.prenom} ${citizen.nom}**` : undefined,
+        color: NOTIFY_COLOR.warning,
+        fields: [
+          { name: "Montant", value: `$${totalFine.toLocaleString("fr-FR")}`, inline: true },
+          { name: "Statut", value: "Notifiée", inline: true },
+        ],
+        url: await deepLink(ctx, `/citoyen/${args.citizenId}`),
+        footer: `Émise par ${agent.prenomRP} ${agent.nomRP}`,
+      });
+    }
+
     await touchStats(ctx);
     return id;
   },
