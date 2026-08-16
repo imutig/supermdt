@@ -190,7 +190,7 @@ function SaisieModal({ row, onClose }: { row?: Row; onClose: () => void }) {
             <div><span className={L}>Quantité</span><input value={quantite} onChange={(e) => setQuantite(e.target.value)} disabled={!canWrite} placeholder="x1, 250g…" className={F} /></div>
             <div><span className={L}>Valeur ($)</span><input value={montant} onChange={(e) => setMontant(e.target.value.replace(/[^0-9]/g, ""))} disabled={!canWrite} inputMode="numeric" className={`${F} font-data`} /></div>
           </div>
-          <div><span className={L}>Mis en cause</span><input value={misEnCause} onChange={(e) => setMisEnCause(e.target.value)} disabled={!canWrite} placeholder="Nom du mis en cause" className={F} /></div>
+          <div><span className={L}>Mis en cause</span><MisEnCauseField value={misEnCause} onChange={setMisEnCause} disabled={!canWrite} /></div>
           <div className="grid grid-cols-2 gap-3">
             <div><span className={L}>Date</span><DateField value={date} onChange={setDate} /></div>
             <div><span className={L}>Lieu</span><input value={lieu} onChange={(e) => setLieu(e.target.value)} disabled={!canWrite} className={F} /></div>
@@ -224,6 +224,44 @@ function SaisieModal({ row, onClose }: { row?: Row; onClose: () => void }) {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// Champ « Mis en cause » : recherche dans les citoyens encodés (autocomplétion),
+// avec repli en saisie libre si aucune fiche ne correspond.
+function MisEnCauseField({ value, onChange, disabled }: { value: string; onChange: (v: string) => void; disabled?: boolean }) {
+  const { can } = useCan();
+  const [q, setQ] = useState(value);
+  const [open, setOpen] = useState(false);
+  const results = useQuery(api.citizens.search, open && q.trim() && can("citoyens.view") ? { q } : "skip");
+  const F = "h-10 w-full rounded-sm border border-border bg-surface-2 px-3 text-[13px] outline-none focus:border-accent";
+  return (
+    <div className="relative">
+      <input
+        value={q}
+        disabled={disabled}
+        onChange={(e) => { setQ(e.target.value); onChange(e.target.value); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        placeholder="Rechercher un citoyen, ou saisir un nom libre"
+        className={F}
+      />
+      {open && !disabled && results && results.length > 0 && (
+        <div className="absolute z-20 mt-1 max-h-[170px] w-full overflow-y-auto rounded-sm border border-border bg-surface shadow-[0_10px_30px_rgba(0,0,0,.3)]">
+          {results.map((c) => (
+            <button
+              key={c._id}
+              type="button"
+              onMouseDown={(e) => { e.preventDefault(); const name = `${c.prenom} ${c.nom}`; setQ(name); onChange(name); setOpen(false); }}
+              className="flex w-full items-center gap-2 border-b border-border px-3 py-[7px] text-left hover:bg-surface-2"
+            >
+              <span className="text-[13px] font-semibold">{c.prenom} {c.nom}</span>
+              {c.dateNaissance && <span className="text-[11px] text-faint">{c.dateNaissance}</span>}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

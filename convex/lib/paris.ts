@@ -33,3 +33,12 @@ export function parisParts(ts: number): { y: number; mo: number; d: number; h: n
   for (const part of dtf.formatToParts(new Date(ts))) p[part.type] = part.value;
   return { y: +p.year, mo: +p.month, d: +p.day, h: +p.hour === 24 ? 0 : +p.hour };
 }
+
+// Nombre de jours calendaires (heure de Paris) de `from` à `to`, bornes
+// INCLUSES (du 15 au 17 = 3 jours). Robuste à l'heure de la journée des epochs.
+export function inclusiveDaysParis(from: number, to: number): number {
+  const a = parisParts(from), b = parisParts(to);
+  const da = Date.UTC(a.y, a.mo - 1, a.d);
+  const db = Date.UTC(b.y, b.mo - 1, b.d);
+  return Math.round((db - da) / 86_400_000) + 1;
+}

@@ -1,7 +1,7 @@
 import { mutation, query, internalMutation } from "./_generated/server";
 import { v, ConvexError } from "convex/values";
 import { requireAgent, requirePermission } from "./rbac";
-import { writeAudit } from "./lib/audit";
+import { writeAudit, logAccess } from "./lib/audit";
 import { touchStats } from "./stats";
 
 function buildSearchText(c: { nom: string; prenom: string; telephone?: string; email?: string; dateNaissance?: string; aliases?: string[] }) {
@@ -122,6 +122,8 @@ export const logView = mutation({
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "citoyens.view");
     await ctx.db.insert("dossierViews", { citizenId: id, agentId: agent._id, at: Date.now() });
+    // Journal d'accès (analytics « consultations ») : consultation d'un dossier.
+    await logAccess(ctx, agent, { kind: "LOOKUP", resourceType: "citizen", resourceId: id });
   },
 });
 

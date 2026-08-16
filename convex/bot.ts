@@ -1,6 +1,7 @@
 import { mutation, query } from "./_generated/server";
 import { v, ConvexError } from "convex/values";
 import { internal } from "./_generated/api";
+import { inclusiveDaysParis } from "./lib/paris";
 import type { QueryCtx, MutationCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 
@@ -606,6 +607,7 @@ export const requestAbsence = mutation({
   handler: async (ctx, { secret, discordId, query, from, to, reason, discordName }) => {
     assertBot(secret);
     if (to < from) return { ok: false as const, reason: "dates" };
+    if (inclusiveDaysParis(from, to) < 3) return { ok: false as const, reason: "tropcourt" };
     let agent;
     if (query && query.trim()) {
       const needle = nrm(query);

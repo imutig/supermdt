@@ -138,6 +138,7 @@ export async function handleCommand(interaction: ChatInputCommandInteraction) {
       const res = await mdt.requestAbsence(interaction.user.id, q, from, to, reason, who);
       if (!res.ok) {
         const msg = res.reason === "dates" ? "La date de fin précède la date de début."
+          : res.reason === "tropcourt" ? "Une absence doit durer au moins **3 jours** (jours de début et de fin inclus). Pour une absence plus courte, mets-toi simplement absent au roll call."
           : res.reason === "noncompte" ? "Ton compte Discord n'est relié à aucun agent du MDT. Précise l'option `agent`, ou fais-toi envoyer un compte."
           : `Aucun agent actif ne correspond à « ${q} ».`;
         await interaction.editReply({ embeds: [errorEmbed(msg)] });

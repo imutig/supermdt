@@ -1,6 +1,6 @@
 import { query } from "./_generated/server";
 import { v } from "convex/values";
-import { requireAgent, requirePermission, agentLabel } from "./rbac";
+import { requireAgent, requirePermission } from "./rbac";
 import { actionLabel, resourceLabel } from "../src/lib/auditLabels";
 import { parisParts, parisWallToEpoch } from "./lib/paris";
 import type { Id } from "./_generated/dataModel";
@@ -88,12 +88,16 @@ export const overview = query({
       .slice(0, 10)
       .map(([action, count]) => ({ label: actionLabel(action), count }));
 
-    // ---- Agents les plus actifs (top 8) : libellés résolus une seule fois. ----
-    const topActorRaw = [...actorTally.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8);
+    // ---- Agents les plus actifs (top 8) : on exclut le propriétaire (Super
+    // Admin) et les agents inexistants/supprimés (fiche absente). On parcourt
+    // plus de candidats pour compléter les 8 après filtrage. ----
+    const topActorRaw = [...actorTally.entries()].sort((a, b) => b[1] - a[1]).slice(0, 40);
     const topAgents: { matricule: number | null; name: string; count: number }[] = [];
     for (const [id, count] of topActorRaw) {
-      const lbl = await agentLabel(ctx, id as Id<"agents">);
-      topAgents.push({ ...lbl, count });
+      if (topAgents.length >= 8) break;
+      const a = await ctx.db.get(id as Id<"agents">);
+      if (!a || a.isOwner) continue; // fiche supprimée ou propriétaire
+      topAgents.push({ matricule: a.matricule ?? null, name: `${a.prenomRP} ${a.nomRP}`, count });
     }
 
     // ---- Ressources les plus consultées (accessLog, top 8). On agrège par

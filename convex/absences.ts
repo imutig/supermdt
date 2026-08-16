@@ -4,6 +4,12 @@ import { v, ConvexError } from "convex/values";
 import { requireAgent, requirePermission, can } from "./rbac";
 import { writeAudit } from "./lib/audit";
 import { notify, NOTIFY_COLOR } from "./lib/notify";
+import { inclusiveDaysParis } from "./lib/paris";
+
+// Une absence doit couvrir au moins 3 jours (début et fin inclus). En deçà,
+// l'agent se met simplement absent aux roll calls.
+const MIN_ABSENCE_DAYS = 3;
+const TOO_SHORT_MSG = "Une absence doit durer au moins 3 jours (jours de début et de fin inclus). Pour une absence plus courte, mets-toi simplement absent au roll call.";
 
 export const list = query({
   args: {},
@@ -41,6 +47,8 @@ export const request = mutation({
   handler: async (ctx, args) => {
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "absences.request");
+    if (args.to < args.from) throw new ConvexError("La date de fin précède la date de début.");
+    if (inclusiveDaysParis(args.from, args.to) < MIN_ABSENCE_DAYS) throw new ConvexError(TOO_SHORT_MSG);
     // Plus d'approbation nécessaire : une absence déclarée est active d'emblée
     // (elle exclut aussitôt l'agent du ping du roll call).
     const id = await ctx.db.insert("absences", {
@@ -77,6 +85,7 @@ export const createFor = mutation({
     const target = await ctx.db.get(args.agentId);
     if (!target) throw new ConvexError("Agent introuvable.");
     if (args.to < args.from) throw new ConvexError("La date de fin précède la date de début.");
+    if (inclusiveDaysParis(args.from, args.to) < MIN_ABSENCE_DAYS) throw new ConvexError(TOO_SHORT_MSG);
     const id = await ctx.db.insert("absences", {
       agentId: args.agentId,
       reason: args.reason.trim() || "Absence",
