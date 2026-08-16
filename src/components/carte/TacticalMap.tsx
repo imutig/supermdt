@@ -177,6 +177,13 @@ export const TacticalMap = forwardRef<TacticalMapHandle, {
         }
       });
 
+      // Suppression via l'outil « Supprimer » (Geoman) : retirer la couche du
+      // modèle interne, sinon elle est re-sérialisée à la sauvegarde et
+      // réapparaît (notamment sur le plan partagé).
+      map.on("pm:remove", (e: { layer: L.Layer }) => {
+        drawn.current = drawn.current.filter((l) => l !== (e.layer as LayerWithMeta));
+      });
+
       // Texte libre (clic simple) sans fond.
       map.on("click", (e: L.LeafletMouseEvent) => {
         if (!placeText.current) return;
