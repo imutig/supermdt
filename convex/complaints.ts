@@ -131,6 +131,14 @@ export const update = mutation({
     await requirePermission(ctx, agent, "plaintes.edit");
     await ctx.db.patch(id, f);
     await writeAudit(ctx, agent, { action: "complaint.update", resourceType: "complaint", resourceId: id, resourceLabel: f.motif });
+    await notify(ctx, "plainte.update", {
+      title: "Plainte modifiée",
+      description: `**${f.motif}**`,
+      color: NOTIFY_COLOR.muted,
+      fields: [{ name: "Statut", value: f.status, inline: true }],
+      url: await deepLink(ctx, "/plaintes"),
+      footer: `Modifiée par ${agent.prenomRP} ${agent.nomRP}`,
+    });
   },
 });
 
@@ -143,5 +151,12 @@ export const remove = mutation({
     await requireOwnOrPermission(ctx, agent, c.createdBy, "plaintes.delete");
     await ctx.db.patch(id, { deletedAt: Date.now(), deletedBy: agent._id });
     await writeAudit(ctx, agent, { action: "complaint.delete", resourceType: "complaint", resourceId: id });
+    await notify(ctx, "plainte.delete", {
+      title: "Plainte supprimée",
+      description: `**${c.motif}**`,
+      color: NOTIFY_COLOR.danger,
+      url: await deepLink(ctx, "/plaintes"),
+      footer: `Supprimée par ${agent.prenomRP} ${agent.nomRP}`,
+    });
   },
 });

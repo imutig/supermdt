@@ -3,6 +3,7 @@ import { v, ConvexError } from "convex/values";
 import { requireAgent, requirePermission } from "./rbac";
 import { writeAudit, logAccess } from "./lib/audit";
 import { touchStats } from "./stats";
+import { notify, NOTIFY_COLOR, deepLink } from "./lib/notify";
 
 function buildSearchText(c: { nom: string; prenom: string; telephone?: string; email?: string; dateNaissance?: string; aliases?: string[] }) {
   // La date de naissance est indexée telle quelle ET sans séparateurs (01/08/1994 et 01081994).
@@ -252,6 +253,14 @@ export const create = mutation({
       resourceLabel: `${args.prenom} ${args.nom}`,
     });
     await touchStats(ctx);
+    await notify(ctx, "citoyen.create", {
+      title: "Dossier citoyen créé",
+      description: `**${args.prenom} ${args.nom}**`,
+      color: NOTIFY_COLOR.info,
+      fields: args.dateNaissance ? [{ name: "Date de naissance", value: args.dateNaissance, inline: true }] : undefined,
+      url: await deepLink(ctx, `/citoyen/${id}`),
+      footer: `Encodé par ${agent.prenomRP} ${agent.nomRP}`,
+    });
     return id;
   },
 });
@@ -272,6 +281,13 @@ export const update = mutation({
       before: { nom: before.nom, prenom: before.prenom, dateNaissance: before.dateNaissance, telephone: before.telephone, adresse: before.adresse, metier: before.metier },
       after: { nom: fields.nom, prenom: fields.prenom, dateNaissance: fields.dateNaissance, telephone: fields.telephone, adresse: fields.adresse, metier: fields.metier },
     });
+    await notify(ctx, "citoyen.update", {
+      title: "Dossier citoyen modifié",
+      description: `**${fields.prenom} ${fields.nom}**`,
+      color: NOTIFY_COLOR.muted,
+      url: await deepLink(ctx, `/citoyen/${id}`),
+      footer: `Modifié par ${agent.prenomRP} ${agent.nomRP}`,
+    });
   },
 });
 
@@ -290,6 +306,15 @@ export const setDeceased = mutation({
       resourceId: id,
       resourceLabel: `${c.prenom} ${c.nom}`,
     });
+    if (deceased) {
+      await notify(ctx, "citoyen.deceased", {
+        title: "Citoyen déclaré décédé",
+        description: `**${c.prenom} ${c.nom}**`,
+        color: NOTIFY_COLOR.danger,
+        url: await deepLink(ctx, `/citoyen/${id}`),
+        footer: `Déclaré par ${agent.prenomRP} ${agent.nomRP}`,
+      });
+    }
   },
 });
 
@@ -415,6 +440,13 @@ export const archive = mutation({
       resourceLabel: `${c.prenom} ${c.nom}`,
     });
     await touchStats(ctx);
+    await notify(ctx, "citoyen.archive", {
+      title: "Dossier citoyen archivé",
+      description: `**${c.prenom} ${c.nom}**`,
+      color: NOTIFY_COLOR.warning,
+      url: await deepLink(ctx, `/citoyen/${id}`),
+      footer: `Archivé par ${agent.prenomRP} ${agent.nomRP}`,
+    });
   },
 });
 

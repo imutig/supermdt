@@ -722,6 +722,13 @@ export const setMatricule = mutation({
       resourceLabel: `${target.prenomRP} ${target.nomRP}`,
       after: { matricule },
     });
+    await notify(ctx, "agent.matricule", {
+      title: "Numéro de badge modifié",
+      description: `**${target.prenomRP} ${target.nomRP}**`,
+      color: NOTIFY_COLOR.muted,
+      fields: [{ name: "Nouveau badge", value: String(matricule).padStart(5, "0"), inline: true }],
+      footer: `Modifié par ${actor.prenomRP} ${actor.nomRP}`,
+    });
   },
 });
 
@@ -988,6 +995,18 @@ export const setLock = mutation({
       resourceId: agentId,
       resourceLabel: `${target.prenomRP} ${target.nomRP}`,
       metadata: { minutes, reason },
+    });
+    await notify(ctx, "agent.lock", {
+      title: lock ? "Compte verrouillé" : "Compte déverrouillé",
+      description: `**${target.prenomRP} ${target.nomRP}**`,
+      color: lock ? NOTIFY_COLOR.danger : NOTIFY_COLOR.accent,
+      fields: lock
+        ? [
+            { name: "Durée", value: `${minutes} min`, inline: true },
+            ...(reason?.trim() ? [{ name: "Motif", value: reason.trim() }] : []),
+          ]
+        : undefined,
+      footer: `Décidé par ${actor.prenomRP} ${actor.nomRP}`,
     });
   },
 });

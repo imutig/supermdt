@@ -2,6 +2,7 @@ import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { requireAgent, requirePermission, requireOwnOrPermission, agentLabel } from "./rbac";
 import { writeAudit } from "./lib/audit";
+import { notify, NOTIFY_COLOR, deepLink } from "./lib/notify";
 
 export const byCitizen = query({
   args: { citizenId: v.id("citizens") },
@@ -85,6 +86,14 @@ export const create = mutation({
     const id = await ctx.db.insert("depositions", { ...args, at: Date.now(), createdBy: agent._id });
     const c = await ctx.db.get(args.citizenId);
     await writeAudit(ctx, agent, { action: "deposition.create", resourceType: "deposition", resourceId: id, resourceLabel: c ? `${c.prenom} ${c.nom}` : "" });
+    await notify(ctx, "deposition.create", {
+      title: "Déposition enregistrée",
+      description: c ? `**${c.prenom} ${c.nom}**` : undefined,
+      color: NOTIFY_COLOR.info,
+      fields: args.title?.trim() ? [{ name: "Titre", value: args.title.trim() }] : undefined,
+      url: await deepLink(ctx, `/citoyen/${args.citizenId}`),
+      footer: `Recueillie par ${agent.prenomRP} ${agent.nomRP}`,
+    });
     return id;
   },
 });
@@ -98,5 +107,13 @@ export const remove = mutation({
     await requireOwnOrPermission(ctx, agent, d.createdBy, "depositions.delete");
     await ctx.db.patch(id, { deletedAt: Date.now(), deletedBy: agent._id });
     await writeAudit(ctx, agent, { action: "deposition.delete", resourceType: "deposition", resourceId: id });
+    const c = await ctx.db.get(d.citizenId);
+    await notify(ctx, "deposition.delete", {
+      title: "Déposition supprimée",
+      description: c ? `**${c.prenom} ${c.nom}**` : undefined,
+      color: NOTIFY_COLOR.danger,
+      url: await deepLink(ctx, `/citoyen/${d.citizenId}`),
+      footer: `Supprimée par ${agent.prenomRP} ${agent.nomRP}`,
+    });
   },
 });

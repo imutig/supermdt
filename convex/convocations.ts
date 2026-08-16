@@ -4,6 +4,7 @@ import { internal } from "./_generated/api";
 import { v, ConvexError } from "convex/values";
 import { requireAgent, requirePermission } from "./rbac";
 import { writeAudit } from "./lib/audit";
+import { notify, NOTIFY_COLOR, deepLink } from "./lib/notify";
 import { parisWallToEpoch } from "./lib/paris";
 
 function wallToEpoch(s?: string): number | undefined {
@@ -95,6 +96,18 @@ export const create = mutation({
       discordAnnounced: false, // le bot dépilera via convocationsToAnnounce
     });
     await writeAudit(ctx, actor, { action: "convocation.create", resourceType: "convocation", resourceId: id });
+    await notify(ctx, "convocation.create", {
+      title: "Convocation émise",
+      description: `**${agentLabel ?? (args.discordId ? `Discord ${args.discordId.trim()}` : "Agent")}**`,
+      color: NOTIFY_COLOR.warning,
+      fields: [
+        { name: "Motif", value: args.motif },
+        ...(args.lieu?.trim() ? [{ name: "Lieu", value: args.lieu.trim(), inline: true }] : []),
+        ...(wallToEpoch(args.convokedAtWall) != null ? [{ name: "Convoqué le", value: new Date(wallToEpoch(args.convokedAtWall)!).toLocaleString("fr-FR", { timeZone: "Europe/Paris" }), inline: true }] : []),
+      ],
+      url: await deepLink(ctx, "/discipline"),
+      footer: `Émise par ${actor.prenomRP} ${actor.nomRP}`,
+    });
     await ctx.scheduler.runAfter(0, internal.push.notify, {}); // prévient le bot (embed + ping agent)
     return id;
   },
@@ -109,5 +122,14 @@ export const remove = mutation({
     if (!c || c.deletedAt) return;
     await ctx.db.patch(id, { deletedAt: Date.now(), deletedBy: actor._id });
     await writeAudit(ctx, actor, { action: "convocation.remove", resourceType: "convocation", resourceId: id });
+    const target = c.agentId ? await ctx.db.get(c.agentId) : null;
+    await notify(ctx, "convocation.delete", {
+      title: "Convocation supprimée",
+      description: `**${target ? `${target.prenomRP} ${target.nomRP}` : c.agentLabel ?? "Agent"}**`,
+      color: NOTIFY_COLOR.danger,
+      fields: [{ name: "Motif", value: c.motif }],
+      url: await deepLink(ctx, "/discipline"),
+      footer: `Supprimée par ${actor.prenomRP} ${actor.nomRP}`,
+    });
   },
 });

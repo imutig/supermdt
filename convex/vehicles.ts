@@ -4,6 +4,7 @@ import { paginationOptsValidator } from "convex/server";
 import { requireAgent, requirePermission, requireOwnOrPermission } from "./rbac";
 import { writeAudit } from "./lib/audit";
 import { touchStats } from "./stats";
+import { notify, NOTIFY_COLOR, deepLink } from "./lib/notify";
 
 function buildVehicleSearch(veh: {
   plaque: string;
@@ -220,6 +221,17 @@ export const setFlag = mutation({
       resourceLabel: veh?.plaque,
       metadata: { flag: t?.name },
     });
+    await notify(ctx, "vehicle.flag", {
+      title: "Signalement véhicule posé",
+      description: veh ? `**${veh.plaque}**${veh.modele ? ` · ${veh.modele}` : ""}` : undefined,
+      color: NOTIFY_COLOR.warning,
+      fields: [
+        ...(t?.name ? [{ name: "Signalement", value: t.name, inline: true }] : []),
+        ...(note?.trim() ? [{ name: "Note", value: note.trim() }] : []),
+      ],
+      url: await deepLink(ctx, "/vehicules"),
+      footer: `Posé par ${agent.prenomRP} ${agent.nomRP}`,
+    });
   },
 });
 
@@ -305,6 +317,15 @@ export const create = mutation({
       metadata: { modele: args.modele, ownerId: args.ownerId },
     });
     await touchStats(ctx);
+    const owner = await ctx.db.get(args.ownerId);
+    await notify(ctx, "vehicle.create", {
+      title: "Véhicule enregistré",
+      description: `**${plaque}**${args.modele ? ` · ${args.modele}` : ""}`,
+      color: NOTIFY_COLOR.info,
+      fields: owner ? [{ name: "Propriétaire", value: `${owner.prenom} ${owner.nom}`, inline: true }] : undefined,
+      url: await deepLink(ctx, "/vehicules"),
+      footer: `Enregistré par ${agent.prenomRP} ${agent.nomRP}`,
+    });
     return id;
   },
 });
@@ -340,6 +361,13 @@ export const update = mutation({
       before: { plaque: before.plaque, modele: before.modele, couleur: before.couleur },
       after: { plaque, modele: fields.modele, couleur: fields.couleur },
     });
+    await notify(ctx, "vehicle.update", {
+      title: "Véhicule modifié",
+      description: `**${plaque}**${fields.modele ? ` · ${fields.modele}` : ""}`,
+      color: NOTIFY_COLOR.muted,
+      url: await deepLink(ctx, "/vehicules"),
+      footer: `Modifié par ${agent.prenomRP} ${agent.nomRP}`,
+    });
   },
 });
 
@@ -360,5 +388,12 @@ export const remove = mutation({
       resourceLabel: veh.plaque,
     });
     await touchStats(ctx);
+    await notify(ctx, "vehicle.delete", {
+      title: "Véhicule supprimé",
+      description: `**${veh.plaque}**${veh.modele ? ` · ${veh.modele}` : ""}`,
+      color: NOTIFY_COLOR.danger,
+      url: await deepLink(ctx, "/vehicules"),
+      footer: `Supprimé par ${agent.prenomRP} ${agent.nomRP}`,
+    });
   },
 });

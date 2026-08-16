@@ -161,6 +161,17 @@ export const update = mutation({
       searchText: saisieSearchText({ ...fields, agentName: s.agentName, matricule: s.matricule }),
     });
     await writeAudit(ctx, agent, { action: "saisie.update", resourceType: "saisie", resourceId: id, resourceLabel: a.objet.trim() });
+    await notify(ctx, "saisie.update", {
+      title: "Saisie modifiée",
+      description: `**${a.objet.trim()}**${a.quantite?.trim() ? ` · ${a.quantite.trim()}` : ""}`,
+      color: NOTIFY_COLOR.muted,
+      fields: [
+        { name: "Type", value: a.type, inline: true },
+        { name: "Statut", value: a.statut, inline: true },
+      ],
+      url: await deepLink(ctx, "/saisies"),
+      footer: `Modifiée par ${agent.prenomRP} ${agent.nomRP}`,
+    });
   },
 });
 
@@ -175,5 +186,12 @@ export const remove = mutation({
       throw new ConvexError("Suppression non autorisée.");
     await ctx.db.patch(id, { deletedAt: Date.now(), deletedBy: agent._id });
     await writeAudit(ctx, agent, { action: "saisie.delete", resourceType: "saisie", resourceId: id });
+    await notify(ctx, "saisie.delete", {
+      title: "Saisie supprimée",
+      description: `**${objetLabel(s)}**`,
+      color: NOTIFY_COLOR.danger,
+      url: await deepLink(ctx, "/saisies"),
+      footer: `Supprimée par ${agent.prenomRP} ${agent.nomRP}`,
+    });
   },
 });

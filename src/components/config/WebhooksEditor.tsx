@@ -228,12 +228,17 @@ function WebhookModal({
   const [url, setUrl] = useState("");
   const [events, setEvents] = useState<string[]>(initial?.events ?? []);
 
+  // Tous les slugs du catalogue (pour le « tout sélectionner » global).
+  const allSlugs = [...groups.values()].flat().map((e) => e.slug);
+  const allSelected = allSlugs.length > 0 && allSlugs.every((s) => events.includes(s));
+
   const toggle = (slug: string) =>
     setEvents((prev) => (prev.includes(slug) ? prev.filter((s) => s !== slug) : [...prev, slug]));
   const toggleGroup = (list: { slug: string }[]) => {
     const all = list.every((e) => events.includes(e.slug));
     setEvents((prev) => (all ? prev.filter((s) => !list.some((e) => e.slug === s)) : [...new Set([...prev, ...list.map((e) => e.slug)])]));
   };
+  const toggleAll = () => setEvents(allSelected ? [] : [...allSlugs]);
 
   const submit = async () => {
     if (id) {
@@ -271,12 +276,30 @@ function WebhookModal({
           </div>
 
           <div>
-            <div className="mb-[7px] text-[11px] font-bold uppercase tracking-[0.07em] text-faint">Événements relayés</div>
+            <div className="mb-[7px] flex items-center gap-2">
+              <span className="text-[11px] font-bold uppercase tracking-[0.07em] text-faint">Événements relayés</span>
+              <div className="flex-1" />
+              <button
+                onClick={toggleAll}
+                className="mdt-press flex items-center gap-[5px] rounded-[7px] border border-border bg-surface-2 px-[9px] py-[4px] text-[11px] font-semibold text-muted hover:border-border-strong"
+                style={allSelected ? { borderColor: "var(--accent)", color: "var(--accent)" } : undefined}
+              >
+                <Check className="h-[12px] w-[12px]" /> {allSelected ? "Tout désélectionner" : "Tout sélectionner"}
+              </button>
+            </div>
             <div className="flex flex-col gap-[10px]">
-              {[...groups.entries()].map(([group, list]) => (
+              {[...groups.entries()].map(([group, list]) => {
+                const groupCount = list.filter((e) => events.includes(e.slug)).length;
+                const groupAll = groupCount === list.length;
+                return (
                 <div key={group} className="rounded-[9px] border border-border bg-surface-2 p-[11px]">
-                  <button onClick={() => toggleGroup(list)} className="mb-[6px] flex items-center gap-[6px] text-[12px] font-bold text-muted hover:text-accent">
+                  <button
+                    onClick={() => toggleGroup(list)}
+                    className="mb-[6px] flex items-center gap-[6px] text-[12px] font-bold text-muted hover:text-accent"
+                    style={groupAll ? { color: "var(--accent)" } : undefined}
+                  >
                     <Check className="h-[13px] w-[13px]" /> {group}
+                    <span className="text-[10.5px] font-semibold text-faint">{groupCount}/{list.length}</span>
                   </button>
                   <div className="flex flex-wrap gap-[6px]">
                     {list.map((e) => {
@@ -296,7 +319,8 @@ function WebhookModal({
                     })}
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>

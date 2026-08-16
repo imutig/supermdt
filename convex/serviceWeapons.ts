@@ -1,6 +1,7 @@
 import { v, ConvexError } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { requireAgent, requirePermission, agentLabel, can } from "./rbac";
+import { notify, NOTIFY_COLOR, deepLink } from "./lib/notify";
 
 // Armes de service LSPD (voir table `serviceWeapons` dans schema.ts). Chaque
 // agent enregistre la/les sienne(s) ; l'encadrement (effectif.view) voit tout.
@@ -39,9 +40,18 @@ export const register = mutation({
     const dup = (await ctx.db.query("serviceWeapons").withIndex("by_agent", (q) => q.eq("agentId", agent._id)).collect())
       .find((w) => !w.deletedAt && norm(w.serial) === norm(s));
     if (dup) throw new ConvexError("Tu as déjà enregistré une arme avec ce numéro de série.");
-    return await ctx.db.insert("serviceWeapons", {
+    const id = await ctx.db.insert("serviceWeapons", {
       agentId: agent._id, serial: s, model: m, photoUrl: p, createdBy: agent._id, createdAt: Date.now(),
     });
+    await notify(ctx, "serviceWeapon.register", {
+      title: "Arme de service enregistrée",
+      description: `**${m}** · ${s}`,
+      color: NOTIFY_COLOR.info,
+      imageUrl: p,
+      url: await deepLink(ctx, "/armes"),
+      footer: `${agent.prenomRP} ${agent.nomRP}`,
+    });
+    return id;
   },
 });
 
@@ -54,6 +64,15 @@ export const remove = mutation({
     if (!w || w.deletedAt) return;
     if (w.agentId !== agent._id) await requirePermission(ctx, agent, "effectif.edit");
     await ctx.db.patch(id, { deletedAt: Date.now() });
+    const owner = await agentLabel(ctx, w.agentId);
+    await notify(ctx, "serviceWeapon.remove", {
+      title: "Arme de service retirée",
+      description: `**${w.model}** · ${w.serial}`,
+      color: NOTIFY_COLOR.danger,
+      fields: [{ name: "Agent", value: owner.name, inline: true }],
+      url: await deepLink(ctx, "/armes"),
+      footer: `Retirée par ${agent.prenomRP} ${agent.nomRP}`,
+    });
   },
 });
 

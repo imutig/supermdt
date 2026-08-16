@@ -3,6 +3,7 @@ import type { MutationCtx } from "./_generated/server";
 import { v, ConvexError } from "convex/values";
 import { requireAgent, requirePermission, can, agentLabel } from "./rbac";
 import { writeAudit } from "./lib/audit";
+import { notify, NOTIFY_COLOR, deepLink } from "./lib/notify";
 
 // ============================================================================
 // Fiches 911 : suivi des appels par les opérateurs 911.
@@ -122,6 +123,17 @@ export const create = mutation({
       at: Date.now(),
     });
     await writeAudit(ctx, agent, { action: "call911.create", resourceType: "call911", resourceId: id, resourceLabel: `Fiche 911 n°${number}` });
+    await notify(ctx, "call911.create", {
+      title: `Fiche 911 n°${number}`,
+      description: a.nature?.trim() ? `**${a.nature.trim()}**` : a.info.trim(),
+      color: NOTIFY_COLOR.danger,
+      fields: [
+        ...(a.location?.trim() ? [{ name: "Lieu", value: a.location.trim(), inline: true }] : []),
+        ...(a.priority?.trim() ? [{ name: "Priorité", value: a.priority.trim(), inline: true }] : []),
+      ],
+      url: await deepLink(ctx, "/911"),
+      footer: `Ouverte par ${agent.prenomRP} ${agent.nomRP}`,
+    });
     return { id, number };
   },
 });
@@ -148,7 +160,7 @@ export const update = mutation({
 export const setStatus = mutation({
   args: { id: v.id("calls911"), status: STATUS, assignedPatrol: v.optional(v.string()) },
   handler: async (ctx, { id, status, assignedPatrol }) => {
-    const { agent } = await requireOwnerOfFiche(ctx, id);
+    const { agent, c } = await requireOwnerOfFiche(ctx, id);
     const patch: Record<string, unknown> = { status, updatedAt: Date.now() };
     // On ne touche à la patrouille attribuée que si elle est fournie (ne pas
     // l'effacer en passant à « résolu »).
@@ -156,14 +168,29 @@ export const setStatus = mutation({
     if (status === "RESOLU") patch.resolvedAt = Date.now();
     await ctx.db.patch(id, patch);
     await writeAudit(ctx, agent, { action: "call911.status", resourceType: "call911", resourceId: id, resourceLabel: status });
+    await notify(ctx, "call911.status", {
+      title: `Fiche 911 n°${c.number} · ${status}`,
+      description: c.nature ? `**${c.nature}**` : undefined,
+      color: status === "RESOLU" ? NOTIFY_COLOR.accent : NOTIFY_COLOR.warning,
+      fields: assignedPatrol?.trim() ? [{ name: "Patrouille", value: assignedPatrol.trim(), inline: true }] : undefined,
+      url: await deepLink(ctx, "/911"),
+      footer: `Mise à jour par ${agent.prenomRP} ${agent.nomRP}`,
+    });
   },
 });
 
 export const remove = mutation({
   args: { id: v.id("calls911") },
   handler: async (ctx, { id }) => {
-    const { agent } = await requireOwnerOfFiche(ctx, id);
+    const { agent, c } = await requireOwnerOfFiche(ctx, id);
     await ctx.db.patch(id, { deletedAt: Date.now(), deletedBy: agent._id });
     await writeAudit(ctx, agent, { action: "call911.delete", resourceType: "call911", resourceId: id });
+    await notify(ctx, "call911.delete", {
+      title: `Fiche 911 n°${c.number} supprimée`,
+      description: c.nature ? `**${c.nature}**` : undefined,
+      color: NOTIFY_COLOR.danger,
+      url: await deepLink(ctx, "/911"),
+      footer: `Supprimée par ${agent.prenomRP} ${agent.nomRP}`,
+    });
   },
 });

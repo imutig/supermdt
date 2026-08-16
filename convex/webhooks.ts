@@ -10,35 +10,79 @@ export const WEBHOOK_EVENTS: { slug: string; group: string; label: string }[] = 
   { slug: "bolo.create", group: "Avis de recherche", label: "Avis de recherche émis" },
   { slug: "bolo.close", group: "Avis de recherche", label: "Avis de recherche clos" },
 
+  { slug: "citoyen.create", group: "Citoyens", label: "Dossier citoyen créé" },
+  { slug: "citoyen.update", group: "Citoyens", label: "Dossier citoyen modifié" },
+  { slug: "citoyen.archive", group: "Citoyens", label: "Dossier citoyen archivé" },
+  { slug: "citoyen.deceased", group: "Citoyens", label: "Citoyen déclaré décédé" },
+
   { slug: "mandat.create", group: "Mandats", label: "Mandat émis" },
   { slug: "mandat.execute", group: "Mandats", label: "Mandat exécuté" },
   { slug: "mandat.annul", group: "Mandats", label: "Mandat annulé" },
+  { slug: "mandat.expire", group: "Mandats", label: "Mandat(s) expiré(s)" },
 
   { slug: "contravention.create", group: "Contraventions", label: "Contravention émise" },
   { slug: "contravention.annul", group: "Contraventions", label: "Contravention annulée" },
   { slug: "amende.paid", group: "Contraventions", label: "Amende marquée payée" },
 
   { slug: "casier.create", group: "Casier", label: "Entrée de casier créée" },
+  { slug: "casier.update", group: "Casier", label: "Dossier d'arrestation modifié" },
+  { slug: "casier.reopen", group: "Casier", label: "Dossier d'arrestation rouvert" },
   { slug: "casier.closed", group: "Casier", label: "Dossier d'arrestation clôturé" },
+  { slug: "casier.delete", group: "Casier", label: "Entrée de casier supprimée" },
 
   { slug: "rapport.submit", group: "Rapports", label: "Rapport soumis" },
   { slug: "rapport.validate", group: "Rapports", label: "Rapport validé" },
+
+  { slug: "weapon.create", group: "Armes", label: "Arme enregistrée (registre)" },
+  { slug: "weapon.update", group: "Armes", label: "Arme modifiée (registre)" },
+  { slug: "weapon.delete", group: "Armes", label: "Arme supprimée (registre)" },
+  { slug: "serviceWeapon.register", group: "Armes", label: "Arme de service enregistrée" },
+  { slug: "serviceWeapon.remove", group: "Armes", label: "Arme de service retirée" },
+
+  { slug: "vehicle.create", group: "Véhicules", label: "Véhicule enregistré" },
+  { slug: "vehicle.update", group: "Véhicules", label: "Véhicule modifié" },
+  { slug: "vehicle.delete", group: "Véhicules", label: "Véhicule supprimé" },
+  { slug: "vehicle.flag", group: "Véhicules", label: "Signalement véhicule posé" },
 
   { slug: "agent.pending", group: "Effectif", label: "Nouvelle inscription en attente" },
   { slug: "agent.validate", group: "Effectif", label: "Agent validé" },
   { slug: "agent.grade", group: "Effectif", label: "Promotion / rétrogradation" },
   { slug: "agent.deactivate", group: "Effectif", label: "Agent désactivé" },
+  { slug: "agent.lock", group: "Effectif", label: "Compte verrouillé / déverrouillé" },
+  { slug: "agent.matricule", group: "Effectif", label: "Numéro de badge modifié" },
   { slug: "ceremony.publish", group: "Effectif", label: "Cérémonie publiée" },
 
   { slug: "discipline.create", group: "Discipline", label: "Sanction disciplinaire ouverte" },
+  { slug: "discipline.close", group: "Discipline", label: "Sanction clôturée" },
+  { slug: "discipline.reactivate", group: "Discipline", label: "Mise à pied levée" },
+  { slug: "discipline.delete", group: "Discipline", label: "Sanction supprimée" },
+  { slug: "convocation.create", group: "Discipline", label: "Convocation émise" },
+  { slug: "convocation.delete", group: "Discipline", label: "Convocation supprimée" },
   { slug: "absence.request", group: "Discipline", label: "Demande d'absence" },
+  { slug: "absence.decide", group: "Discipline", label: "Absence décidée" },
+  { slug: "absence.delete", group: "Discipline", label: "Absence supprimée" },
+
+  { slug: "call911.create", group: "911", label: "Fiche 911 créée" },
+  { slug: "call911.status", group: "911", label: "Statut de fiche 911 modifié" },
+  { slug: "call911.delete", group: "911", label: "Fiche 911 supprimée" },
+
+  { slug: "service.start", group: "Service", label: "Prise de service" },
+  { slug: "service.end", group: "Service", label: "Fin de service" },
 
   { slug: "defcon.change", group: "Opérations", label: "Changement de DEFCON" },
   { slug: "operation.start", group: "Opérations", label: "Opération lancée" },
   { slug: "operation.end", group: "Opérations", label: "Opération terminée" },
+  { slug: "patrol.create", group: "Opérations", label: "Patrouille créée" },
+  { slug: "patrol.end", group: "Opérations", label: "Patrouille dissoute" },
 
   { slug: "plainte.create", group: "Divers", label: "Plainte déposée" },
+  { slug: "plainte.update", group: "Divers", label: "Plainte modifiée" },
+  { slug: "plainte.delete", group: "Divers", label: "Plainte supprimée" },
+  { slug: "deposition.create", group: "Divers", label: "Déposition enregistrée" },
+  { slug: "deposition.delete", group: "Divers", label: "Déposition supprimée" },
   { slug: "saisie.create", group: "Divers", label: "Saisie enregistrée" },
+  { slug: "saisie.update", group: "Divers", label: "Saisie modifiée" },
+  { slug: "saisie.delete", group: "Divers", label: "Saisie supprimée" },
 ];
 
 const VALID = new Set(WEBHOOK_EVENTS.map((e) => e.slug));

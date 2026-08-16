@@ -213,6 +213,13 @@ export const updateArrest = mutation({
       resourceLabel: citizen ? `${citizen.prenom} ${citizen.nom}` : "",
       metadata: { arrestType: f.arrestType },
     });
+    await notify(ctx, "casier.update", {
+      title: "Dossier d'arrestation modifié",
+      description: citizen ? `**${citizen.prenom} ${citizen.nom}**` : undefined,
+      color: NOTIFY_COLOR.muted,
+      url: await deepLink(ctx, `/citoyen/${e.citizenId}`),
+      footer: `Modifié par ${agent.prenomRP} ${agent.nomRP}`,
+    });
   },
 });
 
@@ -246,6 +253,14 @@ export const reopenDossier = mutation({
     if (!e) throw new ConvexError("Entrée introuvable.");
     await ctx.db.patch(entryId, { closed: false, closedAt: undefined, closedBy: undefined });
     await writeAudit(ctx, agent, { action: "casier.dossier_reopen", resourceType: "casierEntry", resourceId: entryId });
+    const reopenedCitizen = await ctx.db.get(e.citizenId);
+    await notify(ctx, "casier.reopen", {
+      title: "Dossier d'arrestation rouvert",
+      description: reopenedCitizen ? `**${reopenedCitizen.prenom} ${reopenedCitizen.nom}**` : undefined,
+      color: NOTIFY_COLOR.warning,
+      url: await deepLink(ctx, `/citoyen/${e.citizenId}`),
+      footer: `Rouvert par ${agent.prenomRP} ${agent.nomRP}`,
+    });
   },
 });
 
@@ -269,6 +284,13 @@ export const remove = mutation({
       metadata: { soft: true, totalFine: e.totalFine, lieu: e.lieu },
     });
     await touchStats(ctx);
+    await notify(ctx, "casier.delete", {
+      title: "Entrée de casier supprimée",
+      description: citizen ? `**${citizen.prenom} ${citizen.nom}**` : undefined,
+      color: NOTIFY_COLOR.danger,
+      url: await deepLink(ctx, `/citoyen/${e.citizenId}`),
+      footer: `Supprimée par ${agent.prenomRP} ${agent.nomRP}`,
+    });
   },
 });
 
@@ -432,6 +454,17 @@ export const addEntry = mutation({
       metadata: { totalFine, totalJail, charges: snaps.length, defcon: defcon.name },
     });
     await touchStats(ctx);
+    await notify(ctx, "casier.create", {
+      title: isDossier ? "Dossier d'arrestation créé" : "Entrée de casier créée",
+      description: citizen ? `**${citizen.prenom} ${citizen.nom}**` : undefined,
+      color: NOTIFY_COLOR.warning,
+      fields: [
+        { name: "Chefs d'accusation", value: String(snaps.length), inline: true },
+        ...(totalFine > 0 ? [{ name: "Amende", value: `$${totalFine.toLocaleString("fr-FR")}`, inline: true }] : []),
+      ],
+      url: await deepLink(ctx, `/citoyen/${args.citizenId}`),
+      footer: `Établi par ${agent.prenomRP} ${agent.nomRP}`,
+    });
     return entryId;
   },
 });

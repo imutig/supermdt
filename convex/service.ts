@@ -2,6 +2,7 @@ import { mutation } from "./_generated/server";
 import { v } from "convex/values";
 import { requireAgent, requirePermission } from "./rbac";
 import { writeAudit } from "./lib/audit";
+import { notify, NOTIFY_COLOR } from "./lib/notify";
 import { releaseAgentFromPatrol } from "./dispatch";
 
 async function openSession(ctx: import("./_generated/server").QueryCtx, agentId: import("./_generated/dataModel").Id<"agents">) {
@@ -26,6 +27,12 @@ export const start = mutation({
       startedAt: Date.now(),
     });
     await writeAudit(ctx, agent, { action: "service.start", resourceType: "serviceSession", resourceId: id });
+    await notify(ctx, "service.start", {
+      title: "Prise de service",
+      description: `**${agent.prenomRP} ${agent.nomRP}**${agent.matricule != null ? ` · ${String(agent.matricule).padStart(5, "0")}` : ""}`,
+      color: NOTIFY_COLOR.accent,
+      footer: `${agent.prenomRP} ${agent.nomRP}`,
+    });
     return id;
   },
 });
@@ -44,6 +51,13 @@ export const end = mutation({
       action: "service.end",
       resourceType: "serviceSession",
       resourceId: existing._id,
+    });
+    await notify(ctx, "service.end", {
+      title: "Fin de service",
+      description: `**${agent.prenomRP} ${agent.nomRP}**${agent.matricule != null ? ` · ${String(agent.matricule).padStart(5, "0")}` : ""}`,
+      color: NOTIFY_COLOR.muted,
+      fields: [{ name: "Durée", value: `${Math.max(1, Math.round((Date.now() - existing.startedAt) / 60000))} min`, inline: true }],
+      footer: `${agent.prenomRP} ${agent.nomRP}`,
     });
   },
 });

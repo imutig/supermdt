@@ -194,6 +194,18 @@ export const expireDue = internalMutation({
       await ctx.db.patch(m._id, { status: "EXPIRE" });
       n++;
     }
+    // Récap unique : le cron passe régulièrement, on ne notifie que s'il y a eu
+    // au moins une expiration.
+    if (n > 0) {
+      await notify(ctx, "mandat.expire", {
+        title: n > 1 ? `${n} mandats expirés` : "Mandat expiré",
+        description: n > 1
+          ? `${n} mandats actifs ont atteint leur échéance et sont passés en « Expiré ».`
+          : "Un mandat actif a atteint son échéance et est passé en « Expiré ».",
+        color: NOTIFY_COLOR.muted,
+        footer: "Expiration automatique",
+      });
+    }
     return n;
   },
 });

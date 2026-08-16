@@ -6,6 +6,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { requireAgent, requirePermission, requireOwnOrPermission } from "./rbac";
 import { writeAudit } from "./lib/audit";
 import { touchStats } from "./stats";
+import { notify, NOTIFY_COLOR, deepLink } from "./lib/notify";
 
 const STATUS = v.union(
   v.literal("ACTIVE"),
@@ -116,6 +117,14 @@ export const create = mutation({
     });
     await writeAudit(ctx, agent, { action: "weapon.create", resourceType: "weapon", resourceId: id, resourceLabel: `${args.modele} ${args.serial}` });
     await touchStats(ctx);
+    await notify(ctx, "weapon.create", {
+      title: "Arme enregistrée",
+      description: `**${(type?.name ? `${type.name} ` : "") + args.modele}** · ${args.serial}`,
+      color: NOTIFY_COLOR.info,
+      fields: [{ name: "Statut", value: args.status, inline: true }],
+      url: await deepLink(ctx, "/armes"),
+      footer: `Enregistrée par ${agent.prenomRP} ${agent.nomRP}`,
+    });
     return id;
   },
 });
@@ -137,6 +146,14 @@ export const update = mutation({
     const type = f.typeId ? await ctx.db.get(f.typeId) : null;
     await ctx.db.patch(id, { ...f, typeName: type?.name, searchText: norm(`${type?.name ?? ""} ${f.modele} ${f.serial}`) });
     await writeAudit(ctx, agent, { action: "weapon.update", resourceType: "weapon", resourceId: id, resourceLabel: `${f.modele} ${f.serial}` });
+    await notify(ctx, "weapon.update", {
+      title: "Arme modifiée",
+      description: `**${(type?.name ? `${type.name} ` : "") + f.modele}** · ${f.serial}`,
+      color: NOTIFY_COLOR.muted,
+      fields: [{ name: "Statut", value: f.status, inline: true }],
+      url: await deepLink(ctx, "/armes"),
+      footer: `Modifiée par ${agent.prenomRP} ${agent.nomRP}`,
+    });
   },
 });
 
@@ -150,5 +167,12 @@ export const remove = mutation({
     await ctx.db.patch(id, { deletedAt: Date.now(), deletedBy: agent._id });
     await writeAudit(ctx, agent, { action: "weapon.delete", resourceType: "weapon", resourceId: id, resourceLabel: w ? `${w.modele} ${w.serial}` : "" });
     await touchStats(ctx);
+    await notify(ctx, "weapon.delete", {
+      title: "Arme supprimée",
+      description: `**${(w.typeName ? `${w.typeName} ` : "") + w.modele}** · ${w.serial}`,
+      color: NOTIFY_COLOR.danger,
+      url: await deepLink(ctx, "/armes"),
+      footer: `Supprimée par ${agent.prenomRP} ${agent.nomRP}`,
+    });
   },
 });

@@ -110,6 +110,15 @@ export const remove = mutation({
     if (!d || d.deletedAt) return;
     await ctx.db.patch(id, { deletedAt: Date.now(), deletedBy: actor._id });
     await writeAudit(ctx, actor, { action: "discipline.remove", resourceType: "discipline", resourceId: id });
+    const target = await ctx.db.get(d.agentId);
+    await notify(ctx, "discipline.delete", {
+      title: "Sanction supprimée",
+      description: target ? `**${target.prenomRP} ${target.nomRP}**` : undefined,
+      color: NOTIFY_COLOR.danger,
+      fields: [{ name: "Motif", value: d.motif }],
+      url: await deepLink(ctx, "/discipline"),
+      footer: `Supprimée par ${actor.prenomRP} ${actor.nomRP}`,
+    });
   },
 });
 
@@ -191,6 +200,13 @@ export const reactivate = mutation({
     if (target.status !== "SUSPENDED") return;
     await ctx.db.patch(agentId, { status: "ACTIVE", suspendedUntil: undefined, suspendedReason: undefined, suspendedBy: undefined });
     await writeAudit(ctx, actor, { action: "discipline.reactivate", resourceType: "agent", resourceId: agentId });
+    await notify(ctx, "discipline.reactivate", {
+      title: "Mise à pied levée",
+      description: `**${target.prenomRP} ${target.nomRP}**`,
+      color: NOTIFY_COLOR.accent,
+      url: await deepLink(ctx, "/discipline"),
+      footer: `Levée par ${actor.prenomRP} ${actor.nomRP}`,
+    });
   },
 });
 
@@ -199,8 +215,18 @@ export const close = mutation({
   handler: async (ctx, { id }) => {
     const actor = await requireAgent(ctx);
     await requirePermission(ctx, actor, "discipline.edit");
+    const d = await ctx.db.get(id);
     await ctx.db.patch(id, { status: "CLOSE" });
     await writeAudit(ctx, actor, { action: "discipline.close", resourceType: "discipline", resourceId: id });
+    const target = d ? await ctx.db.get(d.agentId) : null;
+    await notify(ctx, "discipline.close", {
+      title: "Sanction clôturée",
+      description: target ? `**${target.prenomRP} ${target.nomRP}**` : undefined,
+      color: NOTIFY_COLOR.muted,
+      fields: d ? [{ name: "Motif", value: d.motif }] : undefined,
+      url: await deepLink(ctx, "/discipline"),
+      footer: `Clôturée par ${actor.prenomRP} ${actor.nomRP}`,
+    });
   },
 });
 

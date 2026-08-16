@@ -3,7 +3,7 @@ import { internal } from "./_generated/api";
 import { v, ConvexError } from "convex/values";
 import { requireAgent, requirePermission, can } from "./rbac";
 import { writeAudit } from "./lib/audit";
-import { notify, NOTIFY_COLOR } from "./lib/notify";
+import { notify, NOTIFY_COLOR, deepLink } from "./lib/notify";
 import { inclusiveDaysParis } from "./lib/paris";
 
 // Une absence doit couvrir au moins 3 jours (début et fin inclus). En deçà,
@@ -116,8 +116,17 @@ export const remove = mutation({
   handler: async (ctx, { id }) => {
     const actor = await requireAgent(ctx);
     await requirePermission(ctx, actor, "absences.delete");
+    const ab = await ctx.db.get(id);
     await ctx.db.delete(id);
     await writeAudit(ctx, actor, { action: "absence.delete", resourceType: "absence", resourceId: id });
+    const target = ab ? await ctx.db.get(ab.agentId) : null;
+    await notify(ctx, "absence.delete", {
+      title: "Absence supprimée",
+      description: target ? `**${target.prenomRP} ${target.nomRP}**` : undefined,
+      color: NOTIFY_COLOR.danger,
+      url: await deepLink(ctx, "/discipline"),
+      footer: `Supprimée par ${actor.prenomRP} ${actor.nomRP}`,
+    });
   },
 });
 
@@ -131,6 +140,18 @@ export const decide = mutation({
       action: approve ? "absence.approve" : "absence.reject",
       resourceType: "absence",
       resourceId: id,
+    });
+    const ab = await ctx.db.get(id);
+    const target = ab ? await ctx.db.get(ab.agentId) : null;
+    await notify(ctx, "absence.decide", {
+      title: approve ? "Absence approuvée" : "Absence refusée",
+      description: target ? `**${target.prenomRP} ${target.nomRP}**` : undefined,
+      color: approve ? NOTIFY_COLOR.accent : NOTIFY_COLOR.danger,
+      fields: ab
+        ? [{ name: "Période", value: `${new Date(ab.from).toLocaleDateString("fr-FR", { timeZone: "Europe/Paris" })} au ${new Date(ab.to).toLocaleDateString("fr-FR", { timeZone: "Europe/Paris" })}` }]
+        : undefined,
+      url: await deepLink(ctx, "/discipline"),
+      footer: `Décidée par ${actor.prenomRP} ${actor.nomRP}`,
     });
   },
 });

@@ -367,6 +367,14 @@ export const create = mutation({
     // Une patrouille prenant un véhicule LSPD ouvre une sortie.
     if (fleetVehicleId) await openTrip(ctx, patrolId, fleetVehicleId, agent._id, members);
     await logPatrol(ctx, patrolId, agent._id, "created", `Patrouille créée (${members.length} agent${members.length > 1 ? "s" : ""})`);
+    const memberNames = [];
+    for (const m of members) memberNames.push(await agentName(ctx, m));
+    await notify(ctx, "patrol.create", {
+      title: `Patrouille créée · 13${indicator}${numPadded}`,
+      description: memberNames.join(", "),
+      color: NOTIFY_COLOR.info,
+      footer: `Créée par ${agent.prenomRP} ${agent.nomRP}`,
+    });
     return patrolId;
   },
 });
@@ -404,6 +412,12 @@ export const createForAgent = mutation({
     });
     await ctx.db.insert("patrolMembers", { patrolId, agentId, at: now });
     await logPatrol(ctx, patrolId, agent._id, "created", `Patrouille créée avec ${await agentName(ctx, agentId)}`);
+    await notify(ctx, "patrol.create", {
+      title: `Patrouille créée · 13${indicator}${vehicleNumber}`,
+      description: await agentName(ctx, agentId),
+      color: NOTIFY_COLOR.info,
+      footer: `Créée par ${agent.prenomRP} ${agent.nomRP}`,
+    });
     return patrolId;
   },
 });
@@ -661,6 +675,12 @@ export const dissolve = mutation({
     await ctx.db.patch(patrolId, { endedAt: Date.now() });
     // Dissolution manuelle : la sortie se clôt aussi (rentrée).
     await closeTrip(ctx, patrolId);
+    await notify(ctx, "patrol.end", {
+      title: `Patrouille dissoute · ${patrol.label}`,
+      color: NOTIFY_COLOR.muted,
+      fields: [{ name: "Durée", value: `${Math.max(1, Math.round((Date.now() - patrol.startedAt) / 60000))} min`, inline: true }],
+      footer: `Dissoute par ${agent.prenomRP} ${agent.nomRP}`,
+    });
   },
 });
 
