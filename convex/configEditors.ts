@@ -420,12 +420,14 @@ export const defconRemove = mutation({
 });
 
 // ================= Report types (templates) =================
+const REPORT_CATEGORY = v.union(v.literal("OPERATION"), v.literal("PERSONNEL"));
 export const reportTypeCreate = mutation({
-  args: { name: v.string() },
+  args: { name: v.string(), category: v.optional(REPORT_CATEGORY) },
   handler: async (ctx, a) => {
     const agent = await guard(ctx);
     const id = await ctx.db.insert("reportTypes", {
-      ...a,
+      name: a.name,
+      category: a.category ?? "OPERATION",
       active: true,
       position: await nextPos(ctx, "reportTypes"),
     });
@@ -437,6 +439,7 @@ export const reportTypeUpdate = mutation({
   args: {
     id: v.id("reportTypes"),
     name: v.string(),
+    category: v.optional(REPORT_CATEGORY),
     active: v.optional(v.boolean()),
   },
   handler: async (ctx, { id, ...f }) => {

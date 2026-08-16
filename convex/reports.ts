@@ -1,15 +1,51 @@
 import { mutation, query } from "./_generated/server";
-import type { QueryCtx } from "./_generated/server";
+import type { QueryCtx, MutationCtx } from "./_generated/server";
+import type { Doc, Id } from "./_generated/dataModel";
 import { v, ConvexError } from "convex/values";
-import { requireAgent, requirePermission, agentLabel } from "./rbac";
+import { requireAgent, requirePermission, agentLabel, can } from "./rbac";
 import { writeAudit } from "./lib/audit";
 import { notify, NOTIFY_COLOR, deepLink } from "./lib/notify";
+
+type AnyCtx = QueryCtx | MutationCtx;
+
+// Famille d'un rapport (rétro-compatible : absent = OPERATION).
+export function reportCategory(r: { category?: "OPERATION" | "PERSONNEL" }): "OPERATION" | "PERSONNEL" {
+  return r.category ?? "OPERATION";
+}
+
+// Lecture : rapport d'opération = permission rapports.view ; rapport personnel =
+// son auteur, ou un agent habilité Effectif (consultation seule depuis la fiche).
+export async function canReadReport(ctx: AnyCtx, agent: Doc<"agents">, r: Doc<"reports">): Promise<boolean> {
+  if (reportCategory(r) === "PERSONNEL") {
+    if (r.createdBy === agent._id || agent.isOwner) return true;
+    return await can(ctx, agent, "effectif.view");
+  }
+  return await can(ctx, agent, "rapports.view");
+}
+
+// Écriture : rapport d'opération = rapports.contribute ; rapport personnel = son
+// auteur uniquement.
+export async function canWriteReport(ctx: AnyCtx, agent: Doc<"agents">, r: Doc<"reports">): Promise<boolean> {
+  if (reportCategory(r) === "PERSONNEL") return r.createdBy === agent._id || !!agent.isOwner;
+  return await can(ctx, agent, "rapports.contribute");
+}
+
+// Garde d'écriture mutualisée : charge le rapport, vérifie l'accès selon la famille.
+async function requireReportWrite(ctx: MutationCtx, reportId: Id<"reports">): Promise<{ agent: Doc<"agents">; report: Doc<"reports"> }> {
+  const agent = await requireAgent(ctx);
+  const r = await ctx.db.get(reportId);
+  if (!r || r.deletedAt) throw new ConvexError("Rapport introuvable.");
+  if (!(await canWriteReport(ctx, agent, r))) throw new ConvexError("Modification non autorisée.");
+  return { agent, report: r };
+}
 
 export const listTypes = query({
   args: {},
   handler: async (ctx) => {
     await requireAgent(ctx);
-    return (await ctx.db.query("reportTypes").collect()).filter((t) => t.active);
+    return (await ctx.db.query("reportTypes").collect())
+      .filter((t) => t.active)
+      .map((t) => ({ _id: t._id, name: t.name, position: t.position, category: t.category ?? "OPERATION" as const }));
   },
 });
 
@@ -32,11 +68,19 @@ function makeCache(ctx: QueryCtx) {
 }
 
 export const list = query({
-  args: {},
-  handler: async (ctx) => {
+  args: { category: v.optional(v.union(v.literal("OPERATION"), v.literal("PERSONNEL"))) },
+  handler: async (ctx, { category }) => {
     const agent = await requireAgent(ctx);
-    await requirePermission(ctx, agent, "rapports.view");
-    const reports = await ctx.db.query("reports").order("desc").take(60);
+    const cat = category ?? "OPERATION";
+    let reports: Doc<"reports">[];
+    if (cat === "PERSONNEL") {
+      // Rapports personnels : strictement les miens (l'auteur seul y accède ici).
+      reports = (await ctx.db.query("reports").withIndex("by_creator", (q) => q.eq("createdBy", agent._id)).order("desc").take(120))
+        .filter((r) => reportCategory(r) === "PERSONNEL");
+    } else {
+      await requirePermission(ctx, agent, "rapports.view");
+      reports = (await ctx.db.query("reports").order("desc").take(120)).filter((r) => reportCategory(r) === "OPERATION");
+    }
     const cache = makeCache(ctx);
     const out = [];
     for (const r of reports) {
@@ -49,6 +93,24 @@ export const list = query({
         lead: await cache.agentName(r.leadId),
         at: r._creationTime,
       });
+    }
+    return out;
+  },
+});
+
+// Rapports personnels d'un agent (lecture seule depuis la fiche Effectif).
+export const byAgentPersonal = query({
+  args: { agentId: v.id("agents") },
+  handler: async (ctx, { agentId }) => {
+    const viewer = await requireAgent(ctx);
+    // Le titulaire, un habilité Effectif, ou le propriétaire peuvent consulter.
+    if (viewer._id !== agentId && !viewer.isOwner && !(await can(ctx, viewer, "effectif.view"))) return [];
+    const reports = (await ctx.db.query("reports").withIndex("by_creator", (q) => q.eq("createdBy", agentId)).order("desc").take(100))
+      .filter((r) => reportCategory(r) === "PERSONNEL" && !r.deletedAt);
+    const cache = makeCache(ctx);
+    const out = [];
+    for (const r of reports) {
+      out.push({ _id: r._id, title: r.title, typeName: await cache.typeName(r.typeId), status: r.status, at: r._creationTime });
     }
     return out;
   },
@@ -83,10 +145,24 @@ export const get = query({
   args: { id: v.id("reports") },
   handler: async (ctx, { id }) => {
     const agent = await requireAgent(ctx);
-    await requirePermission(ctx, agent, "rapports.view");
     const r = await ctx.db.get(id);
     if (!r || r.deletedAt) return null;
+    if (!(await canReadReport(ctx, agent, r))) throw new ConvexError("Accès refusé à ce rapport.");
+    const category = reportCategory(r);
+    const canWrite = (await canWriteReport(ctx, agent, r)) && r.status !== "VALIDE";
     const type = await ctx.db.get(r.typeId);
+
+    // Otages (rapports d'opération).
+    const hostageRows = await ctx.db.query("reportHostages").withIndex("by_report", (q) => q.eq("reportId", id)).collect();
+    const hostages = [];
+    for (const h of hostageRows) {
+      if (h.deletedAt) continue;
+      hostages.push({
+        _id: h._id, citizenId: h.citizenId ?? null, name: h.name, phone: h.phone ?? "", dob: h.dob ?? "",
+        deposition: h.deposition ?? "", frisk: h.frisk ?? "", photoUrl: h.photoUrl ?? null, friskPhotoUrl: h.friskPhotoUrl ?? null,
+        depositionLinked: !!h.depositionNexusId,
+      });
+    }
 
     const suspects = [];
     for (const cid of r.citizenIds) {
@@ -113,10 +189,14 @@ export const get = query({
 
     return {
       _id: r._id,
+      category,
+      canWrite,
       title: r.title,
       typeName: type?.name ?? "",
       status: r.status,
       lieu: r.lieu ?? "",
+      factsAt: r.factsAt ?? null,
+      bodycamUrl: r.bodycamUrl ?? "",
       mapX: r.mapX ?? null,
       mapY: r.mapY ?? null,
       imageUrls: r.imageUrls ?? [],
@@ -133,6 +213,7 @@ export const get = query({
       weapons,
       weaponIds: r.weaponIds ?? [],
       casings: r.casings ?? [],
+      hostages,
     };
   },
 });
@@ -285,10 +366,7 @@ export const setNote = mutation({
 export const addSuspect = mutation({
   args: { reportId: v.id("reports"), citizenId: v.id("citizens") },
   handler: async (ctx, { reportId, citizenId }) => {
-    const agent = await requireAgent(ctx);
-    await requirePermission(ctx, agent, "rapports.contribute");
-    const r = await ctx.db.get(reportId);
-    if (!r) throw new ConvexError("Rapport introuvable.");
+    const { report: r } = await requireReportWrite(ctx, reportId);
     if (!r.citizenIds.includes(citizenId)) {
       await ctx.db.patch(reportId, { citizenIds: [...r.citizenIds, citizenId] });
     }
@@ -298,10 +376,7 @@ export const addSuspect = mutation({
 export const removeSuspect = mutation({
   args: { reportId: v.id("reports"), citizenId: v.id("citizens") },
   handler: async (ctx, { reportId, citizenId }) => {
-    const agent = await requireAgent(ctx);
-    await requirePermission(ctx, agent, "rapports.contribute");
-    const r = await ctx.db.get(reportId);
-    if (!r) return;
+    const { report: r } = await requireReportWrite(ctx, reportId);
     await ctx.db.patch(reportId, { citizenIds: r.citizenIds.filter((c) => c !== citizenId) });
   },
 });
@@ -370,8 +445,12 @@ export const create = mutation({
   handler: async (ctx, args) => {
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "rapports.create");
+    const type = await ctx.db.get(args.typeId);
+    if (!type) throw new ConvexError("Type de rapport introuvable.");
+    const category = type.category ?? "OPERATION";
     const id = await ctx.db.insert("reports", {
       typeId: args.typeId,
+      category,
       title: args.title,
       leadId: agent._id,
       status: "BROUILLON",
@@ -382,6 +461,15 @@ export const create = mutation({
     });
     await writeAudit(ctx, agent, { action: "report.create", resourceType: "report", resourceId: id, resourceLabel: args.title });
     return id;
+  },
+});
+
+// Champs propres aux rapports personnels : date/heure des faits + lien bodycam.
+export const setFacts = mutation({
+  args: { reportId: v.id("reports"), factsAt: v.optional(v.number()), bodycamUrl: v.optional(v.string()) },
+  handler: async (ctx, { reportId, factsAt, bodycamUrl }) => {
+    await requireReportWrite(ctx, reportId);
+    await ctx.db.patch(reportId, { factsAt, bodycamUrl: bodycamUrl?.trim() || undefined });
   },
 });
 
@@ -418,6 +506,70 @@ export const setStatus = mutation({
         footer: `${status === "VALIDE" ? "Validé" : "Soumis"} par ${agent.prenomRP} ${agent.nomRP}`,
       });
     }
+  },
+});
+
+// ---- Otages (rapports d'opération) ----
+const HOSTAGE_FIELDS = {
+  name: v.string(),
+  citizenId: v.optional(v.id("citizens")),
+  phone: v.optional(v.string()),
+  dob: v.optional(v.string()),
+  deposition: v.optional(v.string()),
+  frisk: v.optional(v.string()),
+  photoUrl: v.optional(v.string()),
+  friskPhotoUrl: v.optional(v.string()),
+};
+function cleanHostage(a: Record<string, unknown>) {
+  const t = (x: unknown) => (typeof x === "string" ? x.trim() || undefined : (x as undefined));
+  return {
+    name: String(a.name ?? "").trim(),
+    citizenId: a.citizenId as Id<"citizens"> | undefined,
+    phone: t(a.phone), dob: t(a.dob), deposition: t(a.deposition), frisk: t(a.frisk),
+    photoUrl: t(a.photoUrl), friskPhotoUrl: t(a.friskPhotoUrl),
+  };
+}
+
+export const addHostage = mutation({
+  args: { reportId: v.id("reports"), ...HOSTAGE_FIELDS },
+  handler: async (ctx, { reportId, ...a }) => {
+    const { agent } = await requireReportWrite(ctx, reportId);
+    const f = cleanHostage(a);
+    if (!f.name) throw new ConvexError("Le nom de l'otage est requis.");
+    return await ctx.db.insert("reportHostages", { reportId, ...f, at: Date.now(), createdBy: agent._id });
+  },
+});
+
+export const updateHostage = mutation({
+  args: { hostageId: v.id("reportHostages"), ...HOSTAGE_FIELDS },
+  handler: async (ctx, { hostageId, ...a }) => {
+    const h = await ctx.db.get(hostageId);
+    if (!h || h.deletedAt) throw new ConvexError("Otage introuvable.");
+    await requireReportWrite(ctx, h.reportId);
+    const f = cleanHostage(a);
+    if (!f.name) throw new ConvexError("Le nom de l'otage est requis.");
+    await ctx.db.patch(hostageId, f);
+  },
+});
+
+export const removeHostage = mutation({
+  args: { hostageId: v.id("reportHostages") },
+  handler: async (ctx, { hostageId }) => {
+    const h = await ctx.db.get(hostageId);
+    if (!h || h.deletedAt) return;
+    await requireReportWrite(ctx, h.reportId);
+    await ctx.db.patch(hostageId, { deletedAt: Date.now() });
+  },
+});
+
+// Enregistre l'id de la déposition Nexus créée pour cet otage (write-through client).
+export const setHostageDeposition = mutation({
+  args: { hostageId: v.id("reportHostages"), depositionNexusId: v.string() },
+  handler: async (ctx, { hostageId, depositionNexusId }) => {
+    const h = await ctx.db.get(hostageId);
+    if (!h || h.deletedAt) return;
+    await requireReportWrite(ctx, h.reportId);
+    await ctx.db.patch(hostageId, { depositionNexusId });
   },
 });
 

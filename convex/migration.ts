@@ -630,6 +630,31 @@ export const _upsertSaisies = internalMutation({
   },
 });
 
+// Crée les types de rapport par défaut demandés (idempotent, par nom).
+export const ensureDefaultReportTypes = internalMutation({
+  args: {},
+  handler: async (ctx): Promise<{ added: string[] }> => {
+    const DEFAULTS: { name: string; category: "OPERATION" | "PERSONNEL" }[] = [
+      { name: "Rapport d'usage de la force", category: "PERSONNEL" },
+      { name: "Rapport de tirs", category: "PERSONNEL" },
+      { name: "Braquage de banque Fleeca", category: "OPERATION" },
+      { name: "Braquage de banque fédérale", category: "OPERATION" },
+      { name: "Braquage de Bijouterie", category: "OPERATION" },
+      { name: "Prise d'otage", category: "OPERATION" },
+    ];
+    const existing = await ctx.db.query("reportTypes").collect();
+    const have = new Set(existing.map((t) => norm(t.name)));
+    let pos = existing.reduce((m, t) => Math.max(m, t.position), -1) + 1;
+    const added: string[] = [];
+    for (const d of DEFAULTS) {
+      if (have.has(norm(d.name))) continue;
+      await ctx.db.insert("reportTypes", { name: d.name, category: d.category, active: true, position: pos++ });
+      added.push(d.name);
+    }
+    return { added };
+  },
+});
+
 // Backfill du champ de recherche des saisies existantes (idempotent).
 export const backfillSaisieSearch = internalMutation({
   args: {},

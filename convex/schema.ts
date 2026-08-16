@@ -1391,15 +1391,24 @@ export default defineSchema({
     name: v.string(),
     position: v.number(),
     active: v.boolean(),
+    // Famille de rapport : OPERATION (rapports d'opérations, défaut) ou PERSONNEL
+    // (rapports individuels : usage de la force, tirs…). Absent = OPERATION.
+    category: v.optional(v.union(v.literal("OPERATION"), v.literal("PERSONNEL"))),
   }),
 
   reports: defineTable({
     typeId: v.id("reportTypes"),
+    // Famille dénormalisée à la création (contrôle d'accès + filtrage rapide).
+    // Absent = OPERATION (rapports existants).
+    category: v.optional(v.union(v.literal("OPERATION"), v.literal("PERSONNEL"))),
     title: v.string(),
     leadId: v.id("agents"), // lead opé
     scribeId: v.optional(v.id("agents")),
     negotiatorId: v.optional(v.id("agents")),
     status: v.union(v.literal("BROUILLON"), v.literal("SOUMIS"), v.literal("VALIDE")),
+    // Rapports personnels : date/heure des faits + lien bodycam optionnel.
+    factsAt: v.optional(v.number()),
+    bodycamUrl: v.optional(v.string()),
     lieu: v.optional(v.string()),
     mapX: v.optional(v.number()), // position sur la carte (§19)
     mapY: v.optional(v.number()),
@@ -1430,8 +1439,27 @@ export default defineSchema({
   })
     .index("by_status", ["status"])
     .index("by_lead", ["leadId"])
+    .index("by_creator", ["createdBy"])
     .index("by_deleted", ["deletedAt"])
     .searchIndex("search", { searchField: "title" }),
+
+  // Otages d'un rapport d'opération. Si lié à un citoyen encodé, une déposition
+  // est créée sur le NexusMDT (fiche de l'otage) via le write-through.
+  reportHostages: defineTable({
+    reportId: v.id("reports"),
+    citizenId: v.optional(v.id("citizens")), // encodage lié (crée une déposition)
+    name: v.string(),
+    phone: v.optional(v.string()),
+    dob: v.optional(v.string()),
+    deposition: v.optional(v.string()), // déposition de l'otage
+    frisk: v.optional(v.string()), // objets trouvés lors de la palpation
+    photoUrl: v.optional(v.string()), // photo de l'otage
+    friskPhotoUrl: v.optional(v.string()), // photo de la palpation
+    depositionNexusId: v.optional(v.string()), // id de la déposition créée côté Nexus
+    at: v.number(),
+    createdBy: v.optional(v.id("agents")),
+    deletedAt: v.optional(v.number()),
+  }).index("by_report", ["reportId"]),
 
   reportContributors: defineTable({
     reportId: v.id("reports"),
