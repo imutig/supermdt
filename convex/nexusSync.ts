@@ -749,7 +749,7 @@ export const _citizenNexus = internalQuery({
     return c ? { nexusId: c.nexusId ?? null, nom: c.nom, prenom: c.prenom } : null;
   },
 });
-const DELETE_KIND = v.union(v.literal("casier"), v.literal("amende"), v.literal("plainte"), v.literal("deposition"), v.literal("arme"), v.literal("vehicule"));
+const DELETE_KIND = v.union(v.literal("casier"), v.literal("amende"), v.literal("plainte"), v.literal("deposition"), v.literal("arme"), v.literal("vehicule"), v.literal("saisie"));
 export const _recordNexusInfo = internalQuery({
   args: { kind: DELETE_KIND, localId: v.string() },
   handler: async (ctx, { kind, localId }) => {
@@ -773,6 +773,10 @@ export const _recordNexusInfo = internalQuery({
       const ve = await ctx.db.get(localId as Id<"vehicles">);
       return ve ? { nexusId: ve.nexusId ?? null, arrestType: null as string | null } : null;
     }
+    if (kind === "saisie") {
+      const sa = await ctx.db.get(localId as Id<"saisies">);
+      return sa ? { nexusId: sa.nexusId ?? null, arrestType: null as string | null } : null;
+    }
     const d = await ctx.db.get(localId as Id<"depositions">);
     return d ? { nexusId: d.nexusId ?? null, arrestType: null as string | null } : null;
   },
@@ -794,6 +798,7 @@ export const deleteRecord = action({
       else if (kind === "plainte") await ctx.runMutation(api.complaints.remove, { id: localId as Id<"complaints"> });
       else if (kind === "arme") await ctx.runMutation(api.weapons.remove, { id: localId as Id<"weapons"> });
       else if (kind === "vehicule") await ctx.runMutation(api.vehicles.remove, { id: localId as Id<"vehicles"> });
+      else if (kind === "saisie") await ctx.runMutation(api.saisies.remove, { id: localId as Id<"saisies"> });
       else await ctx.runMutation(api.depositions.remove, { id: localId as Id<"depositions"> });
     };
 
@@ -806,6 +811,7 @@ export const deleteRecord = action({
       : kind === "deposition" ? "/api/depositions"
       : kind === "arme" ? "/api/armes"
       : kind === "vehicule" ? "/api/vehicules"
+      : kind === "saisie" ? "/api/saisies"
       : info.arrestType === "RAPPORT" ? "/api/rapports" : "/api/dossiers";
     let res: Response;
     try {
@@ -1338,5 +1344,99 @@ export const updateVehicle = action({
     }
     await ctx.runMutation(api.vehicles.update, { id, ...fields });
     await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: "vehicule", op: "PUT", ok: true, httpStatus: res.status, durationMs: Date.now() - t0, agentId, detail: a.plaque });
+  },
+});
+
+// ============================================================================
+// Saisies — write-through (POST/PATCH). Même invariant : si l'écriture Nexus
+// échoue, RIEN localement. DELETE via deleteRecord (kind "saisie").
+// Contrat Nexus : /api/saisies · body { type, objet, quantite, montant, lieu,
+// date, statut, notes, citoyen:{ nom } } (l'entity est inférée du token).
+// ============================================================================
+export const _saisieNexus = internalQuery({
+  args: { id: v.id("saisies") },
+  handler: async (ctx, { id }) => { const s = await ctx.db.get(id); return s ? { nexusId: s.nexusId ?? null } : null; },
+});
+export const _stampSaisieNexus = internalMutation({
+  args: { id: v.id("saisies"), nexusId: v.string() },
+  handler: async (ctx, { id, nexusId }) => { await ctx.db.patch(id, { nexusId }); },
+});
+
+const SAISIE_FIELDS = {
+  type: v.string(), objet: v.string(), quantite: v.optional(v.string()), montant: v.optional(v.number()),
+  statut: v.string(), misEnCause: v.optional(v.string()), date: v.optional(v.string()),
+  lieu: v.optional(v.string()), notes: v.optional(v.string()),
+};
+
+function saisiePayload(a: {
+  type: string; objet: string; quantite?: string; montant?: number; statut: string;
+  misEnCause?: string; date?: string; lieu?: string; notes?: string;
+}) {
+  return {
+    type: a.type,
+    objet: a.objet.trim(),
+    quantite: a.quantite ?? "",
+    montant: a.montant ?? 0,
+    lieu: a.lieu ?? "",
+    date: a.date ?? "",
+    statut: a.statut,
+    notes: a.notes ?? "",
+    citoyen: { nom: (a.misEnCause ?? "").trim() },
+  };
+}
+
+export const createSaisie = action({
+  args: SAISIE_FIELDS,
+  handler: async (ctx, a): Promise<Id<"saisies">> => {
+    const agentId = await ctx.runQuery(api.nexusSync.myAgentId, {});
+    if (!agentId) throw new ConvexError("Non authentifié.");
+    const cred = await ctx.runQuery(internal.nexusSync._credFor, { agentId });
+    if (!cred) throw new ConvexError("Compte NexusMDT non lié : reliez-le dans Mon profil > Paramètres pour créer des fiches (elles sont écrites en votre nom sur le NexusMDT).");
+    if (!a.objet.trim()) throw new ConvexError("L'objet saisi est requis.");
+    const t0 = Date.now();
+    let res: Response;
+    try {
+      res = await nexusFetch(ctx, agentId, cred, `/api/saisies`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(saisiePayload(a)) });
+    } catch (e) {
+      await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: "saisie", op: "POST", ok: false, durationMs: Date.now() - t0, agentId, error: e instanceof Error ? e.message : String(e) });
+      throw new ConvexError("NexusMDT injoignable, saisie non créée.");
+    }
+    if (!res.ok) {
+      const txt = await res.text().catch(() => "");
+      await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: "saisie", op: "POST", ok: false, httpStatus: res.status, durationMs: Date.now() - t0, agentId, error: txt.slice(0, 160) });
+      throw new ConvexError(`Création côté NexusMDT échouée (HTTP ${res.status}). ${txt.slice(0, 120)}`);
+    }
+    const j: any = await res.json();
+    const created = j.saisie ?? j.data ?? j;
+    // Création locale puis tamponnage du nexusId (idempotence à l'import).
+    const id = await ctx.runMutation(api.saisies.create, a);
+    if (created?._id) await ctx.runMutation(internal.nexusSync._stampSaisieNexus, { id, nexusId: String(created._id) });
+    await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: "saisie", op: "POST", ok: true, httpStatus: res.status, durationMs: Date.now() - t0, agentId, detail: `${a.objet.trim()} · local ${id}` });
+    return id;
+  },
+});
+
+export const updateSaisie = action({
+  args: { id: v.id("saisies"), ...SAISIE_FIELDS },
+  handler: async (ctx, a): Promise<void> => {
+    const agentId = await ctx.runQuery(api.nexusSync.myAgentId, {});
+    if (!agentId) throw new ConvexError("Non authentifié.");
+    const cred = await ctx.runQuery(internal.nexusSync._credFor, { agentId });
+    const info = await ctx.runQuery(internal.nexusSync._saisieNexus, { id: a.id });
+    const { id, ...fields } = a;
+    if (!fields.objet.trim()) throw new ConvexError("L'objet saisi est requis.");
+
+    // Non synchronisé (aucun compte lié ou saisie non liée) : édition locale simple.
+    if (!cred || !info?.nexusId) { await ctx.runMutation(api.saisies.update, { id, ...fields }); return; }
+
+    const t0 = Date.now();
+    const res = await nexusFetch(ctx, agentId, cred, `/api/saisies/${info.nexusId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(saisiePayload(fields)) });
+    if (!res.ok) {
+      const txt = await res.text().catch(() => "");
+      await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: "saisie", op: "PATCH", ok: false, httpStatus: res.status, durationMs: Date.now() - t0, agentId, error: txt.slice(0, 160) });
+      throw new ConvexError(`Édition côté NexusMDT échouée (HTTP ${res.status}). Modification non enregistrée.`);
+    }
+    await ctx.runMutation(api.saisies.update, { id, ...fields });
+    await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: "saisie", op: "PATCH", ok: true, httpStatus: res.status, durationMs: Date.now() - t0, agentId, detail: fields.objet.trim() });
   },
 });

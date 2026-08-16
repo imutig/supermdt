@@ -2035,18 +2035,35 @@ export default defineSchema({
   saisieObjectTypes: defineTable({ name: v.string(), position: v.number(), active: v.boolean() }),
   saisies: defineTable({
     at: v.number(),
-    agentId: v.id("agents"),
+    // Agent créateur : optionnel car les saisies importées du NexusMDT n'ont pas
+    // de compte local (seul un nom d'officier libre est renvoyé).
+    agentId: v.optional(v.id("agents")),
     matricule: v.optional(v.number()), // snapshot
-    agentName: v.string(), // snapshot
+    agentName: v.optional(v.string()), // snapshot (ou officier Nexus à l'import)
+    // ---- Champs NexusMDT (source de vérité, write-through) ----
+    type: v.optional(v.string()), // Véhicule / Arme / Argent / Stupéfiants / Objet
+    objet: v.optional(v.string()), // objet saisi (requis à la création)
+    quantite: v.optional(v.string()), // ex. « x1, 250g »
+    montant: v.optional(v.number()), // Valeur ($)
+    statut: v.optional(v.string()), // Sous scellés / Confisqué / Restitué / Détruit
+    misEnCause: v.optional(v.string()), // « Mis en cause » (nom libre)
+    date: v.optional(v.string()), // « YYYY-MM-DD »
+    lieu: v.optional(v.string()),
+    notes: v.optional(v.string()),
+    nexusId: v.optional(v.string()), // _id Mongo Nexus (idempotence, edit/delete par id)
+    importRef: v.optional(v.string()),
+    // ---- Anciens champs (compat des lignes existantes ; obsolètes) ----
     enquete: v.optional(v.string()), // enquête liée (libre)
-    quantity: v.number(),
-    objectType: v.string(), // nom du type OU "Autre"
+    quantity: v.optional(v.number()),
+    objectType: v.optional(v.string()), // nom du type OU "Autre"
     otherLabel: v.optional(v.string()), // saisi librement si "Autre"
     deletedAt: v.optional(v.number()),
     deletedBy: v.optional(v.id("agents")),
   })
     .index("by_at", ["at"])
-    .index("by_deleted", ["deletedAt"]),
+    .index("by_deleted", ["deletedAt"])
+    .index("by_nexus", ["nexusId"])
+    .index("by_import", ["importRef"]),
 
   // ============ BOT : tickets de candidature (Police Academy) ============
   // Configuration du système, singleton. Tout est réglable depuis Discord via la

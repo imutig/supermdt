@@ -27,6 +27,7 @@ const BASE = "https://mdt.vizu-world.com";
 type CitRep = { source: number; presents: number; ajoutes: number; permisAjoutes: number; enrichis: number };
 type WpnRep = { source: number; presents: number; ajoutes: number; proprietairesNonTrouves: number; originesAjoutees: number; enrichis?: number; supprimes?: number };
 type ChRep = { source: number; presents: number; ajoutes: number; enrichis: number; mode: string };
+type SaiRep = { source: number; presents: number; ajoutes: number; supprimes: number };
 
 // ---------------------------- helpers de mapping ----------------------------
 function norm(s: string) {
@@ -160,6 +161,27 @@ function mapVehicle(v: any) {
   };
 }
 
+// Mapping saisie (contrat /api/saisies : type, objet, quantite, montant, lieu,
+// date, statut, notes, citoyen.nom = « Mis en cause », officier = nom libre).
+function mapSaisie(s: any) {
+  const at = s.createdAt ? Date.parse(s.createdAt) || Date.now() : Date.now();
+  return {
+    nexusId: s._id ? String(s._id) : undefined,
+    type: (s.type || "").trim() || undefined,
+    objet: (s.objet || "").trim() || undefined,
+    quantite: s.quantite != null ? String(s.quantite).trim() || undefined : undefined,
+    montant: Number(s.montant) || 0,
+    statut: (s.statut || "").trim() || undefined,
+    misEnCause: (s.citoyen?.nom || "").trim() || undefined,
+    date: (s.date || "").trim() || undefined,
+    lieu: (s.lieu || "").trim() || undefined,
+    notes: (s.notes || "").trim() || undefined,
+    agentName: (s.officier || "").trim() || undefined,
+    at,
+    importRef: s.numero != null ? `nexus-saisie:${s.numero}` : undefined,
+  };
+}
+
 // ------------------------------- fetch API ----------------------------------
 async function apiGet(path: string, token: string): Promise<any> {
   const res = await fetch(`${BASE}${path}`, { headers: { Authorization: `Bearer ${token}` } });
@@ -189,19 +211,22 @@ export const sync = internalAction({
       throw new ConvexError("Aucun token. Définis-le: npx convex env set VIZU_TOKEN \"<token>\"  (token = JSON.parse(localStorage.auth).state.token sur mdt.vizu-world.com), ou passe {\"token\":\"...\"}.");
 
     // Récupération en direct
-    const [citoyens, armes, chargesRaw] = await Promise.all([
+    const [citoyens, armes, chargesRaw, saisiesRaw] = await Promise.all([
       fetchAllPaged("/api/citoyens?entity=lspd&search=", "citoyens", tk),
       fetchAllPaged("/api/armes?entity=lspd", "armes", tk),
       apiGet("/api/charges?entity=lspd", tk).then((j) => j.charges || []),
+      fetchAllPaged("/api/saisies?entity=lspd", "saisies", tk),
     ]);
 
     const citRows = citoyens.map(mapCitizen);
     const wRows = armes.map(mapWeapon);
     const chRows = chargesRaw.map(mapCharge);
+    const saRows = saisiesRaw.map(mapSaisie);
 
     const citoyensRep: CitRep = await ctx.runMutation(internal.migration._upsertCitizens, { rows: citRows, dryRun });
     const armesRep: WpnRep = await ctx.runMutation(internal.migration._upsertWeapons, { rows: wRows, dryRun, reconcile: true });
     const codePenalRep: ChRep = await ctx.runMutation(internal.migration._upsertCharges, { rows: chRows, dryRun, reset: resetPenal });
+    const saisiesRep: SaiRep = await ctx.runMutation(internal.migration._upsertSaisies, { rows: saRows, dryRun, reconcile: true });
 
     // Véhicules : uniquement si l'endpoint est configuré (VIZU_VEHICLES_PATH,
     // ex. "/api/vehicules?entity=lspd"). Clé de réponse « vehicules » à confirmer.
@@ -231,7 +256,7 @@ export const sync = internalAction({
       await ctx.runMutation(internal.nexusSync._log, {
         direction: "IMPORT", entity: "import-complet", op: "SYNC", ok: true,
         durationMs: Date.now() - t0,
-        detail: `citoyens +${cit.ajoutes}/enr ${cit.enrichis} · casiers +${cas.ajoutes ?? 0}/-${cas.supprimes ?? 0} · contraventions +${con.ajoutes ?? 0}/-${con.supprimes ?? 0} · plaintes +${pla.ajoutes ?? 0}/~${pla.maj ?? 0}/-${pla.supprimes ?? 0} · dépositions +${dep.ajoutes ?? 0}/~${dep.maj ?? 0}/-${dep.supprimes ?? 0}`,
+        detail: `citoyens +${cit.ajoutes}/enr ${cit.enrichis} · casiers +${cas.ajoutes ?? 0}/-${cas.supprimes ?? 0} · contraventions +${con.ajoutes ?? 0}/-${con.supprimes ?? 0} · plaintes +${pla.ajoutes ?? 0}/~${pla.maj ?? 0}/-${pla.supprimes ?? 0} · dépositions +${dep.ajoutes ?? 0}/~${dep.maj ?? 0}/-${dep.supprimes ?? 0} · saisies +${saisiesRep.ajoutes}/-${saisiesRep.supprimes}`,
       });
       // Garde-fou : la réconciliation des suppressions a été suspendue (flux Nexus
       // anormalement tronqué). On alerte plutôt que d'archiver des fiches à tort.
@@ -254,6 +279,7 @@ export const sync = internalAction({
       contraventions: contraventionsRep,
       plaintes: plaintesRep,
       depositions: depositionsRep,
+      saisies: saisiesRep,
     };
   },
 });
@@ -312,6 +338,29 @@ export const autoSync = internalAction({
         return { ok: false, retrying: true, attempt: attempt + 1 };
       }
       await ctx.runMutation(internal.nexusSync._log, { direction: "IMPORT", entity: "import-complet", op: "SYNC", ok: false, error: String(err).slice(0, 200) }).catch(() => {});
+      return { ok: false, error: String(err) };
+    }
+  },
+});
+
+// Synchro CIBLÉE des saisies (toutes les 30 min) : léger (une seule entité),
+// contrairement à autoSync qui relit tout le dataset et reste espacé à 6 h. Le
+// write-through couvre déjà le temps réel côté MDT ; ceci capte les saisies
+// créées/modifiées/supprimées directement sur le Nexus + réconciliation.
+export const autoSyncSaisies = internalAction({
+  args: {},
+  handler: async (ctx): Promise<unknown> => {
+    try {
+      let token: string | null = await ctx.runAction(internal.nexusSync.anyLinkedToken, {});
+      if (!token) {
+        if (!process.env.VIZU_EMAIL || !process.env.VIZU_PASSWORD) return { skipped: true };
+        token = await vizuLogin();
+      }
+      const rows = (await fetchAllPaged("/api/saisies?entity=lspd", "saisies", token)).map(mapSaisie);
+      const rep = await ctx.runMutation(internal.migration._upsertSaisies, { rows, reconcile: true });
+      return rep;
+    } catch (err) {
+      console.error("[autoSyncSaisies] échec :", err);
       return { ok: false, error: String(err) };
     }
   },
@@ -524,6 +573,44 @@ export const _upsertVehicles = internalMutation({
       }
     }
     return { source: rows.length, presents: existing.length, ajoutes, proprietairesNonTrouves: sansProprietaire, enrichis, supprimes };
+  },
+});
+
+// Saisies : dédup + réconciliation par nexusId (id Mongo stable, seule clé fiable
+// — pas de clé naturelle comme le n° de série d'une arme). Calqué sur _upsertWeapons.
+export const _upsertSaisies = internalMutation({
+  args: { rows: v.array(v.any()), dryRun: v.optional(v.boolean()), reconcile: v.optional(v.boolean()) },
+  handler: async (ctx, { rows, dryRun, reconcile }): Promise<SaiRep> => {
+    const existing = await ctx.db.query("saisies").collect();
+    const byNexus = new Map(existing.filter((s) => s.nexusId).map((s) => [s.nexusId as string, s]));
+    const seenNexus = new Set<string>();
+    for (const r of rows) if (r.nexusId) seenNexus.add(String(r.nexusId));
+
+    let ajoutes = 0;
+    for (const r of rows) {
+      if (!r.nexusId) continue; // sans id Nexus : rien à dédupliquer de façon fiable
+      if (byNexus.has(String(r.nexusId))) continue; // déjà importée
+      ajoutes++;
+      if (dryRun) continue;
+      await ctx.db.insert("saisies", {
+        at: r.at ?? Date.now(),
+        agentName: r.agentName,
+        type: r.type, objet: r.objet, quantite: r.quantite, montant: r.montant,
+        statut: r.statut, misEnCause: r.misEnCause, date: r.date, lieu: r.lieu, notes: r.notes,
+        nexusId: r.nexusId, importRef: r.importRef,
+      });
+    }
+    // Réconciliation : saisie importée (nexusId) absente du Nexus -> supprimée là-bas.
+    let supprimes = 0;
+    if (reconcile && !dryRun) {
+      for (const s of existing) {
+        if (s.nexusId && !s.deletedAt && !seenNexus.has(s.nexusId)) {
+          await ctx.db.patch(s._id, { deletedAt: Date.now() });
+          supprimes++;
+        }
+      }
+    }
+    return { source: rows.length, presents: existing.length, ajoutes, supprimes };
   },
 });
 

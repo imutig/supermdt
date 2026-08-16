@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { Trash2, X } from "lucide-react";
-import { useMutation, useQuery } from "convex/react";
+import { Trash2, X, Link2Off } from "lucide-react";
+import { useAction, useQuery } from "convex/react";
 import { api, type Id } from "@/lib/api";
 import { useMe } from "@/hooks/useMe";
 import { useCan } from "@/hooks/useCan";
@@ -8,16 +8,47 @@ import { useToast } from "@/providers/toast";
 import { EmptyState } from "@/components/common/EmptyState";
 import { SkeletonRows } from "@/components/common/Skeleton";
 import { Clover } from "@/components/common/Clover";
+import { DateField } from "@/components/common/DateField";
 import { fmtBadge } from "@/components/common/AgentTag";
 import { Pagination, usePaged } from "@/components/common/Pagination";
 
+// Listes fixes imposées par le NexusMDT (voir /api/saisies).
+const TYPES = ["Véhicule", "Arme", "Argent", "Stupéfiants", "Objet"] as const;
+const STATUTS = ["Sous scellés", "Confisqué", "Restitué", "Détruit"] as const;
+
+const STATUT_COLOR: Record<string, string> = {
+  "Sous scellés": "var(--warning)",
+  "Confisqué": "var(--accent)",
+  "Restitué": "var(--success)",
+  "Détruit": "var(--muted)",
+};
+
+// Conversions date : la fiche affiche JJ/MM/AAAA, Nexus stocke « YYYY-MM-DD ».
+function isoToFr(iso: string) {
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : iso;
+}
+function frToIso(fr: string) {
+  const m = fr.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  return m ? `${m[3]}-${m[2]}-${m[1]}` : "";
+}
+function fmtMoney(n: number) {
+  return "$" + Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+}
+
+type Row = NonNullable<ReturnType<typeof useSaisies>>[number];
+function useSaisies() {
+  return useQuery(api.saisies.list);
+}
+
 export function Saisies() {
-  const rows = useQuery(api.saisies.list);
-  const remove = useMutation(api.saisies.remove);
+  const rows = useSaisies();
   const me = useMe();
   const { can } = useCan();
-  const toast = useToast();
-  const [modal, setModal] = useState(false);
+  const nexusStatus = useQuery(api.nexusSync.myStatus);
+  const syncActive = !!nexusStatus?.configured && nexusStatus.status === "OK";
+  const canCreate = can("saisies.create");
+  const [modal, setModal] = useState<{ row?: Row } | null>(null);
   const [page, setPage] = useState(1);
   const { pages, slice, safePage } = usePaged(rows ?? [], 20, page);
 
@@ -25,97 +56,173 @@ export function Saisies() {
     <div className="p-[22px_26px]" style={{ animation: "mdtFade .2s ease" }}>
       <div className="mb-[16px] flex items-center gap-3">
         <h1 className="m-0 text-[21px] font-bold tracking-tight">Saisies</h1>
-        <span className="text-[12.5px] text-muted">Registre des objets saisis par les agents.</span>
+        <span className="text-[12.5px] text-muted">Registre des objets saisis, synchronisé avec le NexusMDT.</span>
         <div className="flex-1" />
-        <button onClick={() => setModal(true)} className="mdt-press flex items-center gap-[7px] rounded-[9px] bg-accent px-[14px] py-[8px] text-[13px] font-semibold text-accent-contrast hover:brightness-[1.06]">
-          <Clover color="#fff" size={17} /> Saisie
-        </button>
+        {canCreate && syncActive && (
+          <button onClick={() => setModal({})} className="mdt-press flex items-center gap-[7px] rounded-[9px] bg-accent px-[14px] py-[8px] text-[13px] font-semibold text-accent-contrast hover:brightness-[1.06]">
+            <Clover color="#fff" size={17} /> Saisie
+          </button>
+        )}
       </div>
 
+      {canCreate && !syncActive && nexusStatus !== undefined && (
+        <div className="mb-[16px] flex items-start gap-[9px] rounded-card border border-border px-[14px] py-[11px] text-[12.5px]" style={{ background: "color-mix(in srgb, var(--warning) 9%, transparent)", color: "var(--warning)" }}>
+          <Link2Off className="mt-[1px] h-[15px] w-[15px] flex-shrink-0" />
+          <span>Le registre des saisies est synchronisé avec le NexusMDT. Lie ton compte Nexus dans <b>Mon profil</b> pour enregistrer, modifier ou retirer une saisie.</span>
+        </div>
+      )}
+
       <div className="overflow-hidden rounded-card border border-border bg-surface">
-        <div className="grid grid-cols-[1.2fr_.6fr_1.4fr_1.3fr_.9fr_auto] gap-3 border-b border-border px-4 py-[11px] text-[10px] font-bold uppercase tracking-[0.08em] text-faint">
-          <span>Objet</span><span>Qté</span><span>Enquête</span><span>Agent</span><span>Date</span><span></span>
+        <div className="grid grid-cols-[.8fr_1.3fr_.7fr_.8fr_1.1fr_.9fr_.8fr_auto] gap-3 border-b border-border px-4 py-[11px] text-[10px] font-bold uppercase tracking-[0.08em] text-faint">
+          <span>Type</span><span>Objet</span><span>Qté</span><span>Valeur</span><span>Mis en cause</span><span>Statut</span><span>Date</span><span></span>
         </div>
         {rows === undefined && <div className="p-4"><SkeletonRows rows={6} /></div>}
         {rows && rows.length === 0 && <EmptyState title="Aucune saisie" message="Enregistrez une première saisie." />}
         {slice.map((s) => {
-          // Le serveur accepte aussi `saisies.delete` : l'interface masquait le
-          // bouton à qui détenait pourtant ce droit.
-          const canDelete = me?.agent.isOwner || s.agentId === me?.agent._id || can("saisies.delete");
+          const canEdit = me?.agent.isOwner || s.mine || can("saisies.create");
+          const canDelete = me?.agent.isOwner || s.mine || can("saisies.delete");
+          const st = s.statut ?? "";
           return (
-            <div key={s._id} className="grid grid-cols-[1.2fr_.6fr_1.4fr_1.3fr_.9fr_auto] items-center gap-3 border-b border-border px-4 py-[11px]">
-              <span className="text-[13px] font-semibold">{s.objectLabel}</span>
-              <span className="font-data text-[13px]">{s.quantity}</span>
-              <span className="truncate text-[12.5px] text-muted">{s.enquete || "-"}</span>
-              <span className="text-[12.5px]"><span className="font-data text-accent">{fmtBadge(s.matricule) ?? ""}</span> {s.agentName}</span>
-              <span className="font-data text-[11.5px] text-muted">{new Date(s.at).toLocaleDateString("fr-FR")} {new Date(s.at).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}</span>
-              <span>{canDelete && <button onClick={() => toast.guard(remove({ id: s._id as Id<"saisies"> }), "Suppression impossible")} className="text-faint hover:text-danger"><Trash2 className="h-[14px] w-[14px]" /></button>}</span>
+            <div
+              key={s._id}
+              onClick={() => (canEdit || canDelete) && syncActive && setModal({ row: s })}
+              className={`grid grid-cols-[.8fr_1.3fr_.7fr_.8fr_1.1fr_.9fr_.8fr_auto] items-center gap-3 border-b border-border px-4 py-[11px] ${(canEdit || canDelete) && syncActive ? "cursor-pointer hover:bg-surface-2" : ""}`}
+            >
+              <span className="text-[12.5px] text-muted">{s.type ?? "-"}</span>
+              <span className="text-[13px] font-semibold">{s.objet || "-"}</span>
+              <span className="font-data text-[12.5px]">{s.quantite ?? "-"}</span>
+              <span className="font-data text-[12.5px]">{s.montant != null && s.montant > 0 ? fmtMoney(s.montant) : "-"}</span>
+              <span className="truncate text-[12.5px] text-muted">{s.misEnCause || "-"}</span>
+              <span>{st ? <span className="rounded-[5px] px-[8px] py-[3px] text-[11px] font-semibold" style={{ background: `color-mix(in srgb, ${STATUT_COLOR[st] ?? "var(--muted)"} 14%, transparent)`, color: STATUT_COLOR[st] ?? "var(--muted)" }}>{st}</span> : "-"}</span>
+              <span className="font-data text-[11.5px] text-muted">{s.date ? isoToFr(s.date) : new Date(s.at).toLocaleDateString("fr-FR")}</span>
+              <span className="text-[11px] text-faint">{s.agentName ? <span title={s.agentName}><span className="font-data text-accent">{fmtBadge(s.matricule) ?? ""}</span></span> : ""}</span>
             </div>
           );
         })}
         <Pagination page={safePage} pages={pages} total={(rows ?? []).length} onPage={setPage} label="saisies" />
       </div>
 
-      {modal && <SaisieModal onClose={() => setModal(false)} />}
+      {modal && <SaisieModal row={modal.row} onClose={() => setModal(null)} />}
     </div>
   );
 }
 
-function SaisieModal({ onClose }: { onClose: () => void }) {
-  const types = useQuery(api.saisies.objectTypes) ?? [];
-  const create = useMutation(api.saisies.create);
+function SaisieModal({ row, onClose }: { row?: Row; onClose: () => void }) {
+  const isCreate = !row;
   const me = useMe();
+  const { can } = useCan();
   const toast = useToast();
-  const [objectType, setObjectType] = useState("");
-  const [otherLabel, setOtherLabel] = useState("");
-  const [quantity, setQuantity] = useState("1");
-  const [enquete, setEnquete] = useState("");
-  const [busy, setBusy] = useState(false);
+  const createSynced = useAction(api.nexusSync.createSaisie);
+  const updateSynced = useAction(api.nexusSync.updateSaisie);
+  const delSynced = useAction(api.nexusSync.deleteRecord);
+  const nexusStatus = useQuery(api.nexusSync.myStatus);
+  const syncActive = !!nexusStatus?.configured && nexusStatus.status === "OK";
 
-  const effectiveType = objectType || types[0] || "";
-  const isOther = effectiveType === "Autre";
+  const canEdit = me?.agent.isOwner || row?.mine || can("saisies.create");
+  const canDelete = me?.agent.isOwner || row?.mine || can("saisies.delete");
+  const canWrite = (isCreate ? can("saisies.create") : canEdit) && syncActive;
+
+  const [type, setType] = useState<string>(row?.type ?? TYPES[4]);
+  const [statut, setStatut] = useState<string>(row?.statut ?? STATUTS[0]);
+  const [objet, setObjet] = useState(row?.objet ?? "");
+  const [quantite, setQuantite] = useState(row?.quantite ?? "");
+  const [montant, setMontant] = useState(row?.montant != null ? String(row.montant) : "");
+  const [misEnCause, setMisEnCause] = useState(row?.misEnCause ?? "");
+  const [date, setDate] = useState(row?.date ? isoToFr(row.date) : "");
+  const [lieu, setLieu] = useState(row?.lieu ?? "");
+  const [notes, setNotes] = useState(row?.notes ?? "");
+  const [busy, setBusy] = useState(false);
+  const [confirm, setConfirm] = useState(false);
 
   async function submit() {
-    if (!effectiveType) return;
-    if (isOther && !otherLabel.trim()) { toast.error("Précisez l'objet saisi."); return; }
+    if (!syncActive) { toast.error("Nécessite un compte NexusMDT lié (voir Mon profil)."); return; }
+    if (!objet.trim()) { toast.error("L'objet saisi est requis."); return; }
     setBusy(true);
-    const r = await toast.guard(
-      create({ objectType: effectiveType, otherLabel: isOther ? otherLabel.trim() : undefined, quantity: parseInt(quantity) || 1, enquete: enquete.trim() || undefined }),
-      "Enregistrement impossible",
-    );
+    const payload = {
+      type,
+      objet: objet.trim(),
+      quantite: quantite.trim() || undefined,
+      montant: montant.trim() ? Number(montant) || 0 : undefined,
+      statut,
+      misEnCause: misEnCause.trim() || undefined,
+      date: date.trim() ? frToIso(date.trim()) : undefined,
+      lieu: lieu.trim() || undefined,
+      notes: notes.trim() || undefined,
+    };
+    const r = isCreate
+      ? await toast.guard(createSynced(payload), "Enregistrement impossible")
+      : await toast.guard(updateSynced({ id: row!._id as Id<"saisies">, ...payload }), "Modification impossible");
     setBusy(false);
-    if (r !== undefined) { toast.success("Saisie enregistrée."); onClose(); }
+    if (r !== undefined) { toast.success(isCreate ? "Saisie enregistrée." : "Saisie mise à jour."); onClose(); }
   }
 
   const F = "h-10 w-full rounded-sm border border-border bg-surface-2 px-3 text-[13px] outline-none focus:border-accent";
   const L = "mb-[6px] block text-[10.5px] font-bold uppercase tracking-[0.09em] text-faint";
 
   return (
-    <div onClick={onClose} className="fixed inset-0 z-[60] flex justify-end" style={{ background: "var(--scrim)", backdropFilter: "blur(6px)", animation: "mdtFade .15s ease" }}>
-      <div onClick={(e) => e.stopPropagation()} className="flex h-full w-[460px] max-w-[94vw] flex-col border-l border-border-strong bg-elev shadow-[-24px_0_70px_rgba(0,0,0,.3)]" style={{ animation: "mdtSlide .26s cubic-bezier(.16,1,.3,1)" }}>
+    <div onClick={onClose} className="fixed inset-0 z-[60] flex justify-end" style={{ background: "var(--scrim)", backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)", animation: "mdtFade .15s ease" }}>
+      <div onClick={(e) => e.stopPropagation()} className="flex h-full w-[480px] max-w-[94vw] flex-col border-l border-border-strong bg-elev shadow-[-24px_0_70px_rgba(0,0,0,.3)]" style={{ animation: "mdtSlide .26s cubic-bezier(.16,1,.3,1)" }}>
         <div className="flex flex-shrink-0 items-center gap-3 border-b border-border px-[18px] py-4">
-          <h2 className="m-0 flex-1 text-[15px] font-bold">Nouvelle saisie</h2>
+          <h2 className="m-0 flex-1 text-[15px] font-bold">{isCreate ? "Nouvelle saisie" : "Modifier la saisie"}</h2>
           <button onClick={onClose} className="flex h-[30px] w-[30px] items-center justify-center rounded-sm border border-border bg-surface-2 text-muted hover:border-border-strong"><X className="h-4 w-4" /></button>
         </div>
         <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-[18px] py-4">
-          <div className="rounded-sm border border-border bg-surface-2 px-3 py-[10px] text-[12px] text-muted">
-            <div className="flex justify-between"><span>Agent</span><span className="font-semibold text-text">{me ? `${me.agent.prenomRP} ${me.agent.nomRP}` : "…"}</span></div>
-            <div className="mt-1 flex justify-between"><span>N° de badge</span><span className="font-data text-text">{fmtBadge(me?.agent.matricule) ?? "-"}</span></div>
-            <div className="mt-1 flex justify-between"><span>Date & heure</span><span className="font-data text-text">automatiques</span></div>
+          {isCreate && (
+            <div className="rounded-sm border border-border bg-surface-2 px-3 py-[10px] text-[12px] text-muted">
+              <div className="flex justify-between"><span>Agent</span><span className="font-semibold text-text">{me ? `${me.agent.prenomRP} ${me.agent.nomRP}` : "…"}</span></div>
+              <div className="mt-1 flex justify-between"><span>N° de badge</span><span className="font-data text-text">{fmtBadge(me?.agent.matricule) ?? "-"}</span></div>
+            </div>
+          )}
+          <div className="grid grid-cols-2 gap-3">
+            <div><span className={L}>Type</span>
+              <select value={type} onChange={(e) => setType(e.target.value)} disabled={!canWrite} className={F}>
+                {TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+            <div><span className={L}>Statut</span>
+              <select value={statut} onChange={(e) => setStatut(e.target.value)} disabled={!canWrite} className={F}>
+                {STATUTS.map((s) => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
           </div>
-          <div><span className={L}>Type d'objet</span>
-            <select value={effectiveType} onChange={(e) => setObjectType(e.target.value)} className={F}>
-              {types.map((t) => <option key={t} value={t}>{t}</option>)}
-            </select>
+          <div><span className={L}>Objet saisi *</span><input value={objet} onChange={(e) => setObjet(e.target.value)} disabled={!canWrite} placeholder="Ex. Pistolet 9mm, COKE…" autoFocus className={F} /></div>
+          <div className="grid grid-cols-2 gap-3">
+            <div><span className={L}>Quantité</span><input value={quantite} onChange={(e) => setQuantite(e.target.value)} disabled={!canWrite} placeholder="x1, 250g…" className={F} /></div>
+            <div><span className={L}>Valeur ($)</span><input value={montant} onChange={(e) => setMontant(e.target.value.replace(/[^0-9]/g, ""))} disabled={!canWrite} inputMode="numeric" className={`${F} font-data`} /></div>
           </div>
-          {isOther && <div><span className={L}>Préciser l'objet</span><input value={otherLabel} onChange={(e) => setOtherLabel(e.target.value)} autoFocus className={F} /></div>}
-          <div><span className={L}>Quantité</span><input value={quantity} onChange={(e) => setQuantity(e.target.value.replace(/[^0-9]/g, ""))} className={F} /></div>
-          <div><span className={L}>Enquête liée (optionnel)</span><input value={enquete} onChange={(e) => setEnquete(e.target.value)} placeholder="Référence / intitulé de l'enquête…" className={F} /></div>
+          <div><span className={L}>Mis en cause</span><input value={misEnCause} onChange={(e) => setMisEnCause(e.target.value)} disabled={!canWrite} placeholder="Nom du mis en cause" className={F} /></div>
+          <div className="grid grid-cols-2 gap-3">
+            <div><span className={L}>Date</span><DateField value={date} onChange={setDate} /></div>
+            <div><span className={L}>Lieu</span><input value={lieu} onChange={(e) => setLieu(e.target.value)} disabled={!canWrite} className={F} /></div>
+          </div>
+          <div><span className={L}>Notes</span><textarea value={notes} onChange={(e) => setNotes(e.target.value)} disabled={!canWrite} rows={3} className="w-full rounded-sm border border-border bg-surface-2 px-3 py-2 text-[13px] outline-none focus:border-accent" /></div>
         </div>
-        <div className="flex flex-shrink-0 gap-2 border-t border-border px-[18px] py-4">
-          <button onClick={onClose} className="rounded-sm border border-border bg-surface-2 px-4 py-[10px] text-[13px] font-semibold hover:border-border-strong">Annuler</button>
-          <button onClick={submit} disabled={busy} className="flex-1 rounded-sm bg-accent px-4 py-[10px] text-[13px] font-semibold text-accent-contrast hover:brightness-[1.06] disabled:opacity-50">{busy ? "…" : "Enregistrer"}</button>
-        </div>
+
+        {!syncActive && nexusStatus !== undefined && (
+          <div className="flex flex-shrink-0 items-start gap-[9px] border-t border-border px-[18px] py-3 text-[12px]" style={{ background: "color-mix(in srgb, var(--warning) 9%, transparent)", color: "var(--warning)" }}>
+            <Link2Off className="mt-[1px] h-[15px] w-[15px] flex-shrink-0" />
+            <span>Le registre des saisies est synchronisé avec le NexusMDT. Lie ton compte Nexus dans <b>Mon profil</b> pour enregistrer, modifier ou retirer une saisie.</span>
+          </div>
+        )}
+        {syncActive && (canWrite || canDelete) && (
+          <div className="flex flex-shrink-0 items-center gap-2 border-t border-border px-[18px] py-4">
+            {!isCreate && canDelete && (confirm ? (
+              <>
+                <span className="flex-1 text-[12.5px] text-muted">Supprimer ?</span>
+                <button onClick={() => setConfirm(false)} className="rounded-sm border border-border bg-surface-2 px-3 py-[9px] text-[12.5px] font-semibold">Annuler</button>
+                <button onClick={async () => { const r = await toast.guard(delSynced({ kind: "saisie", localId: row!._id }), "Suppression impossible"); if (r !== undefined) { toast.success("Supprimé."); onClose(); } }} className="rounded-sm px-3 py-[9px] text-[12.5px] font-semibold text-white" style={{ background: "var(--danger)" }}>Confirmer</button>
+              </>
+            ) : (
+              <button onClick={() => setConfirm(true)} className="flex h-[38px] w-[38px] items-center justify-center rounded-sm border border-border bg-surface-2" style={{ color: "var(--danger)" }}><Trash2 className="h-4 w-4" /></button>
+            ))}
+            {!confirm && (
+              <>
+                <button onClick={onClose} className="rounded-sm border border-border bg-surface-2 px-4 py-[10px] text-[13px] font-semibold hover:border-border-strong">Annuler</button>
+                {canWrite && <button onClick={submit} disabled={busy} className="flex-1 rounded-sm bg-accent px-4 py-[10px] text-[13px] font-semibold text-accent-contrast hover:brightness-[1.06] disabled:opacity-50">{busy ? "…" : "Enregistrer"}</button>}
+              </>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

@@ -14,6 +14,11 @@ crons.hourly("expirer les mandats", { minuteUTC: 5 }, internal.mandats.expireDue
 // réconciliation), donc espacé à 6 h. La synchro manuelle reste dispo à tout moment.
 crons.interval("synchro nexus", { hours: 6 }, internal.migration.autoSync, {});
 
+// Synchro CIBLÉE des saisies toutes les 30 min : légère (une seule entité), pour
+// capter les saisies créées/modifiées/supprimées directement sur le Nexus. Le
+// write-through gère déjà le temps réel côté MDT ; l'import complet reste à 6 h.
+crons.interval("synchro saisies nexus", { minutes: 30 }, internal.migration.autoSyncSaisies, {});
+
 // Re-valide les comptes Nexus liés (write-through) toutes les 6 h : détecte les
 // mots de passe changés côté Nexus et alerte en MP.
 crons.interval("revalider comptes nexus", { hours: 6 }, internal.nexusSync.revalidateCredentials, {});
