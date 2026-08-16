@@ -11,6 +11,7 @@ import {
   CalendarDays,
   Map as MapIcon,
   BookText,
+  BookOpen,
   ListChecks,
   GraduationCap,
   Network,
@@ -94,6 +95,7 @@ const GROUPS: NavGroup[] = [
     label: "Référentiel",
     items: [
       { key: "codepenal", label: "Code pénal", icon: BookText, to: "/codepenal", perm: "codepenal.view" },
+      { key: "reglement", label: "Règlement", icon: BookOpen, to: "/reglement" },
       { key: "protocoles", label: "Protocoles", icon: ListChecks, to: "/protocoles", perm: "protocoles.view" },
       { key: "ressources", label: "Ressources", icon: GraduationCap, to: "/ressources", perm: "formations.view" },
     ],

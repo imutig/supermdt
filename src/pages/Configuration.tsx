@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { api } from "@/lib/api";
 import { ListEditor } from "@/components/config/ListEditor";
 import { WebhooksEditor } from "@/components/config/WebhooksEditor";
+import { ReglementUpload } from "@/pages/Reglement";
 
 type Section =
   | "grades"
@@ -28,6 +29,7 @@ type Section =
   | "weaponOrigins"
   | "dispatchSectors"
   | "webhooks"
+  | "reglement"
   | "penal";
 
 // Regroupées par domaine : la liste à plat était devenue illisible.
@@ -75,7 +77,10 @@ const GROUPS: { group: string; items: { key: Section; label: string }[] }[] = [
   },
   {
     group: "Documentation",
-    items: [{ key: "resourceCategories", label: "Catégories Ressources" }],
+    items: [
+      { key: "resourceCategories", label: "Catégories Ressources" },
+      { key: "reglement", label: "Règlement" },
+    ],
   },
   {
     group: "Intégrations",
@@ -174,6 +179,15 @@ export function Configuration() {
 
         <div className="min-w-0">
           {section === "webhooks" && <WebhooksEditor />}
+          {section === "reglement" && (
+            <div className="rounded-card border border-border bg-surface p-[18px]">
+              <h2 className="m-0 text-[15px] font-bold">Règlement</h2>
+              <p className="mb-[14px] mt-[4px] text-[12.5px] text-muted">
+                Téléverse le PDF du règlement LSPD. Il est consultable par tous les agents dans <b>Référentiel &gt; Règlement</b> (visualiseur intégré). Un nouveau téléversement remplace l'ancien.
+              </p>
+              <ReglementUpload />
+            </div>
+          )}
           {section === "grades" && (
             <ListEditor
               title="Grades"

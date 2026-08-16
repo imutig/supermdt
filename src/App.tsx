@@ -27,6 +27,7 @@ import { Absences } from "@/pages/Absences";
 import { Discipline } from "@/pages/Discipline";
 import { Services } from "@/pages/Services";
 import { CodePenal } from "@/pages/CodePenal";
+import { Reglement } from "@/pages/Reglement";
 import { MandatsPage } from "@/pages/MandatsPage";
 import { Rapports } from "@/pages/Rapports";
 const RapportEditor = lazyReload(() => import("@/pages/RapportEditor").then((m) => ({ default: m.RapportEditor })));
@@ -216,6 +217,7 @@ function Gated() {
         <Route path="/discipline" element={<RequirePerm perm="discipline.view"><Discipline /></RequirePerm>} />
         <Route path="/services" element={FEATURES.service ? <RequirePerm perm="service.self"><Services /></RequirePerm> : <Navigate to="/" replace />} />
         <Route path="/codepenal" element={<RequirePerm perm="codepenal.view"><CodePenal /></RequirePerm>} />
+        <Route path="/reglement" element={<Reglement />} />
         <Route path="/mandats" element={<RequirePerm perm="mandats.view"><MandatsPage /></RequirePerm>} />
         <Route path="/rapports" element={<RequirePerm perm="rapports.view"><Rapports /></RequirePerm>} />
         <Route path="/rapport/:id" element={<RequirePerm perm="rapports.view"><RapportEditor /></RequirePerm>} />

@@ -1774,6 +1774,15 @@ export default defineSchema({
   }).index("by_citation", ["citationId"]),
 
   // ============ RÉFÉRENTIELS CONFIGURABLES (phase 2) ============
+  // Documents du site (règlement…) : un PDF par clé, stocké dans Convex storage.
+  siteDocuments: defineTable({
+    key: v.string(), // "reglement"
+    storageId: v.id("_storage"),
+    fileName: v.string(),
+    uploadedBy: v.optional(v.id("agents")),
+    uploadedAt: v.number(),
+  }).index("by_key", ["key"]),
+
   // Listes "nommées" génériques : name / position / active.
   weaponTypes: defineTable({ name: v.string(), position: v.number(), active: v.boolean() }).index("by_position", ["position"]),
   complaintStatuses: defineTable({ name: v.string(), position: v.number(), active: v.boolean() }).index("by_position", ["position"]),
