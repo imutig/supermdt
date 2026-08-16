@@ -70,6 +70,20 @@ export const page = query({
   },
 });
 
+// Alias de compatibilité (déprécié) : un onglet ouvert AVANT le passage à la
+// pagination appelle encore `saisies:list`. On renvoie une première page bornée
+// pour éviter un crash « Could not find public function » ; les onglets à jour
+// utilisent `page`. À retirer une fois tous les clients rafraîchis.
+export const list = query({
+  args: {},
+  handler: async (ctx) => {
+    const agent = await requireAgent(ctx);
+    await requirePermission(ctx, agent, "saisies.view");
+    const rows = (await ctx.db.query("saisies").withIndex("by_at").order("desc").take(200)).filter((s) => !s.deletedAt);
+    return rows.map((s) => shapeSaisie(s, agent._id));
+  },
+});
+
 // Types d'objets configurables (obsolète — Nexus impose une liste fixe) + "Autre"
 // immuable. Conservé inerte pour compat ; la liste fixe Nexus est renvoyée.
 export const objectTypes = query({
