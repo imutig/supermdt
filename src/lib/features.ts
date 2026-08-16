@@ -20,7 +20,7 @@ export const MDT_ENABLED = import.meta.env.VITE_MDT_ENABLED !== "false";
 // Les fiches citoyens et l'historique judiciaire restent CONSULTABLES (lecture
 // seule) : seule l'écriture bascule vers le NexusMDT.
 export const FEATURES = {
-  service: false,
+  service: true,
   dispatch: true,
   citizenWrite: false,
   judicialWrite: false,
