@@ -31,7 +31,7 @@ export const listCases = query({
     const { agent, division } = await requireDivView(ctx, divisionId);
     const canSensitive = await hasPerm(ctx, agent, division, "db.sensitive");
     const query = (q ?? "").trim().toLowerCase();
-    let rows = (await ctx.db.query("dbCases").withIndex("by_division", (x) => x.eq("divisionId", divisionId)).collect())
+    let rows = (await ctx.db.query("dbCases").withIndex("by_division", (x) => x.eq("divisionId", divisionId)).take(2000))
       .filter((c) => !c.deletedAt)
       .filter((c) => canSensitive || !c.confidential);
     if (status) rows = rows.filter((c) => c.status === status);

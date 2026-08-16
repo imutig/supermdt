@@ -11,10 +11,12 @@ export const active = query({
   handler: async (ctx) => {
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "mandats.view");
+    // Les mandats actifs sont naturellement bornés (ils sont résolus / expirent),
+    // mais on plafonne la lecture par sécurité pour ne jamais scanner sans limite.
     const rows = await ctx.db
       .query("mandats")
       .withIndex("by_status", (q) => q.eq("status", "ACTIF"))
-      .collect();
+      .take(500);
     const now = Date.now();
     const out = [];
     for (const m of rows) {

@@ -10,7 +10,7 @@ export const active = query({
   handler: async (ctx) => {
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "bolo.view");
-    const rows = await ctx.db.query("bolos").withIndex("by_active", (q) => q.eq("active", true)).collect();
+    const rows = await ctx.db.query("bolos").withIndex("by_active", (q) => q.eq("active", true)).take(200);
     const out = [];
     for (const b of rows) {
       // Photo : l'image de l'avis, sinon le mugshot du citoyen lié (l'individu
@@ -43,7 +43,7 @@ export const activeForCitizen = query({
   handler: async (ctx, { citizenId }) => {
     const agent = await requireAgent(ctx);
     if (!(await can(ctx, agent, "bolo.view"))) return [];
-    const rows = await ctx.db.query("bolos").withIndex("by_active", (q) => q.eq("active", true)).collect();
+    const rows = await ctx.db.query("bolos").withIndex("by_active", (q) => q.eq("active", true)).take(200);
     return rows
       .filter((b) => b.citizenId === citizenId)
       .map((b) => ({ _id: b._id, title: b.title, description: b.description ?? null, danger: b.danger === true, at: b.at }));

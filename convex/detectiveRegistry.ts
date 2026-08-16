@@ -25,7 +25,7 @@ export const listPersons = query({
   handler: async (ctx, { divisionId, role, gangId, q }) => {
     await requireDivView(ctx, divisionId);
     const query = (q ?? "").trim().toLowerCase();
-    let rows = (await ctx.db.query("dbPersons").withIndex("by_division", (x) => x.eq("divisionId", divisionId)).collect())
+    let rows = (await ctx.db.query("dbPersons").withIndex("by_division", (x) => x.eq("divisionId", divisionId)).take(2000))
       .filter((p) => !p.deletedAt);
     if (role) rows = rows.filter((p) => p.role === role);
     if (gangId) rows = rows.filter((p) => p.gangId === gangId);
@@ -235,7 +235,7 @@ export const personOptions = query({
   handler: async (ctx, { divisionId, q }) => {
     await requireDivView(ctx, divisionId);
     const query = (q ?? "").trim().toLowerCase();
-    let rows = (await ctx.db.query("dbPersons").withIndex("by_division", (x) => x.eq("divisionId", divisionId)).collect())
+    let rows = (await ctx.db.query("dbPersons").withIndex("by_division", (x) => x.eq("divisionId", divisionId)).take(2000))
       .filter((p) => !p.deletedAt);
     if (query) rows = rows.filter((p) => `${p.name} ${p.alias ?? ""}`.toLowerCase().includes(query));
     return rows.sort((a, b) => a.name.localeCompare(b.name, "fr")).slice(0, 20)

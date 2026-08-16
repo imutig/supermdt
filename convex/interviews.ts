@@ -1,4 +1,5 @@
 import { v, ConvexError } from "convex/values";
+import { paginationOptsValidator } from "convex/server";
 import { mutation, query } from "./_generated/server";
 import type { Doc } from "./_generated/dataModel";
 import type { QueryCtx, MutationCtx } from "./_generated/server";
@@ -112,24 +113,28 @@ export const moveItem = mutation({
 
 // ---------- Entretiens ----------
 
-export const list = query({
-  args: {},
-  handler: async (ctx) => {
+function shapeInterview(r: Doc<"interviews">) {
+  return {
+    _id: r._id,
+    prenom: r.prenom,
+    nom: r.nom,
+    dateNaissance: r.dateNaissance ?? null,
+    score: r.score ?? null,
+    questionCount: r.questions.length,
+    hasScenario: !!r.scenario,
+    createdByName: r.createdByName,
+    createdAt: r.createdAt,
+  };
+}
+
+// Pagination serveur (curseur Convex) : borne la lecture au lieu de tout charger.
+export const page = query({
+  args: { paginationOpts: paginationOptsValidator },
+  handler: async (ctx, { paginationOpts }) => {
     const agent = await requireAgent(ctx);
     await assertAccess(ctx, agent);
-    const rows = (await ctx.db.query("interviews").withIndex("by_created").order("desc").collect())
-      .filter((r) => !r.deletedAt);
-    return rows.map((r) => ({
-      _id: r._id,
-      prenom: r.prenom,
-      nom: r.nom,
-      dateNaissance: r.dateNaissance ?? null,
-      score: r.score ?? null,
-      questionCount: r.questions.length,
-      hasScenario: !!r.scenario,
-      createdByName: r.createdByName,
-      createdAt: r.createdAt,
-    }));
+    const res = await ctx.db.query("interviews").withIndex("by_created").order("desc").paginate(paginationOpts);
+    return { ...res, page: res.page.filter((r) => !r.deletedAt).map(shapeInterview) };
   },
 });
 

@@ -1,4 +1,5 @@
 import { mutation, query } from "./_generated/server";
+import { paginationOptsValidator } from "convex/server";
 import { v, ConvexError } from "convex/values";
 import { requireAgent, requirePermission, can } from "./rbac";
 import { writeAudit } from "./lib/audit";
@@ -22,31 +23,37 @@ function objetLabel(s: {
   return s.objectType ?? "";
 }
 
-export const list = query({
-  args: {},
-  handler: async (ctx) => {
+// Forme d'une ligne de saisie renvoyée à l'UI (mutualisée liste/pagination).
+function shapeSaisie(s: any, agentId: string) {
+  return {
+    _id: s._id,
+    at: s.at,
+    agentId: s.agentId ?? null,
+    matricule: s.matricule ?? null,
+    agentName: s.agentName ?? "",
+    type: s.type ?? null,
+    objet: objetLabel(s),
+    // Anciennes lignes : quantité numérique → « xN » ; nouvelles : texte libre.
+    quantite: s.quantite ?? (s.quantity != null ? `x${s.quantity}` : null),
+    montant: s.montant ?? null,
+    statut: s.statut ?? null,
+    misEnCause: s.misEnCause ?? null,
+    date: s.date ?? null,
+    lieu: s.lieu ?? null,
+    notes: s.notes ?? null,
+    // L'agent qui a encodé la saisie peut la modifier / retirer.
+    mine: !!s.agentId && s.agentId === agentId,
+  };
+}
+
+// Pagination serveur (curseur Convex) : borne la lecture au lieu de tout charger.
+export const page = query({
+  args: { paginationOpts: paginationOptsValidator },
+  handler: async (ctx, { paginationOpts }) => {
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "saisies.view");
-    const rows = (await ctx.db.query("saisies").withIndex("by_at").order("desc").collect()).filter((s) => !s.deletedAt);
-    return rows.map((s) => ({
-      _id: s._id,
-      at: s.at,
-      agentId: s.agentId ?? null,
-      matricule: s.matricule ?? null,
-      agentName: s.agentName ?? "",
-      type: s.type ?? null,
-      objet: objetLabel(s),
-      // Anciennes lignes : quantité numérique → « xN » ; nouvelles : texte libre.
-      quantite: s.quantite ?? (s.quantity != null ? `x${s.quantity}` : null),
-      montant: s.montant ?? null,
-      statut: s.statut ?? null,
-      misEnCause: s.misEnCause ?? null,
-      date: s.date ?? null,
-      lieu: s.lieu ?? null,
-      notes: s.notes ?? null,
-      // L'agent qui a encodé la saisie peut la modifier / retirer.
-      mine: !!s.agentId && s.agentId === agent._id,
-    }));
+    const res = await ctx.db.query("saisies").withIndex("by_at").order("desc").paginate(paginationOpts);
+    return { ...res, page: res.page.filter((s) => !s.deletedAt).map((s) => shapeSaisie(s, agent._id)) };
   },
 });
 

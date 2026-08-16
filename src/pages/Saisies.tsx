@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Trash2, X, Link2Off } from "lucide-react";
-import { useAction, useQuery } from "convex/react";
+import { useAction, useQuery, usePaginatedQuery } from "convex/react";
+import type { FunctionReturnType } from "convex/server";
 import { api, type Id } from "@/lib/api";
 import { useMe } from "@/hooks/useMe";
 import { useCan } from "@/hooks/useCan";
@@ -10,7 +11,7 @@ import { SkeletonRows } from "@/components/common/Skeleton";
 import { Clover } from "@/components/common/Clover";
 import { DateField } from "@/components/common/DateField";
 import { fmtBadge } from "@/components/common/AgentTag";
-import { Pagination, usePaged } from "@/components/common/Pagination";
+import { LoadMore } from "@/components/common/Pagination";
 
 // Listes fixes imposées par le NexusMDT (voir /api/saisies).
 const TYPES = ["Véhicule", "Arme", "Argent", "Stupéfiants", "Objet"] as const;
@@ -36,21 +37,17 @@ function fmtMoney(n: number) {
   return "$" + Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ");
 }
 
-type Row = NonNullable<ReturnType<typeof useSaisies>>[number];
-function useSaisies() {
-  return useQuery(api.saisies.list);
-}
+type Row = FunctionReturnType<typeof api.saisies.page>["page"][number];
 
 export function Saisies() {
-  const rows = useSaisies();
+  const { results: rows, status, loadMore } = usePaginatedQuery(api.saisies.page, {}, { initialNumItems: 30 });
+  const loading = status === "LoadingFirstPage";
   const me = useMe();
   const { can } = useCan();
   const nexusStatus = useQuery(api.nexusSync.myStatus);
   const syncActive = !!nexusStatus?.configured && nexusStatus.status === "OK";
   const canCreate = can("saisies.create");
   const [modal, setModal] = useState<{ row?: Row } | null>(null);
-  const [page, setPage] = useState(1);
-  const { pages, slice, safePage } = usePaged(rows ?? [], 20, page);
 
   return (
     <div className="p-[22px_26px]" style={{ animation: "mdtFade .2s ease" }}>
@@ -76,9 +73,9 @@ export function Saisies() {
         <div className="grid grid-cols-[.8fr_1.3fr_.7fr_.8fr_1.1fr_.9fr_.8fr_auto] gap-3 border-b border-border px-4 py-[11px] text-[10px] font-bold uppercase tracking-[0.08em] text-faint">
           <span>Type</span><span>Objet</span><span>Qté</span><span>Valeur</span><span>Mis en cause</span><span>Statut</span><span>Date</span><span></span>
         </div>
-        {rows === undefined && <div className="p-4"><SkeletonRows rows={6} /></div>}
-        {rows && rows.length === 0 && <EmptyState title="Aucune saisie" message="Enregistrez une première saisie." />}
-        {slice.map((s) => {
+        {loading && <div className="p-4"><SkeletonRows rows={6} /></div>}
+        {!loading && rows.length === 0 && <EmptyState title="Aucune saisie" message="Enregistrez une première saisie." />}
+        {rows.map((s) => {
           const canEdit = me?.agent.isOwner || s.mine || can("saisies.create");
           const canDelete = me?.agent.isOwner || s.mine || can("saisies.delete");
           const st = s.statut ?? "";
@@ -99,7 +96,7 @@ export function Saisies() {
             </div>
           );
         })}
-        <Pagination page={safePage} pages={pages} total={(rows ?? []).length} onPage={setPage} label="saisies" />
+        <LoadMore status={status} onLoadMore={() => loadMore(30)} count={rows.length} label="saisies" />
       </div>
 
       {modal && <SaisieModal row={modal.row} onClose={() => setModal(null)} />}

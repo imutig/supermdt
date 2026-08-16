@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useMutation, useQuery } from "convex/react";
+import { useMutation, useQuery, usePaginatedQuery } from "convex/react";
 import {
   Plus, Settings, X, Trash2, ChevronUp, ChevronDown, MessageSquare, Dices, Info, ClipboardCheck, FileImage,
 } from "lucide-react";
@@ -11,6 +11,7 @@ import { useToast } from "@/providers/toast";
 import { useDialogs } from "@/components/detective/dialogs";
 import { EmptyState } from "@/components/common/EmptyState";
 import { SkeletonRows } from "@/components/common/Skeleton";
+import { LoadMore } from "@/components/common/Pagination";
 import { Button } from "@/components/common/Button";
 import { Modal } from "@/components/common/Modal";
 import { EntretienReport } from "./EntretienReport";
@@ -36,7 +37,8 @@ const dt = (ts: number) => new Date(ts).toLocaleDateString("fr-FR", { day: "2-di
 export function LspaEntretiens() {
   const me = useMe();
   const { can } = useCan();
-  const list = useQuery(api.interviews.list);
+  const { results: list, status, loadMore } = usePaginatedQuery(api.interviews.page, {}, { initialNumItems: 30 });
+  const loading = status === "LoadingFirstPage";
   const [selected, setSelected] = useState<Id<"interviews"> | null>(null);
   const [creating, setCreating] = useState(false);
   const [configuring, setConfiguring] = useState(false);
@@ -57,7 +59,7 @@ export function LspaEntretiens() {
         <Button variant="primary" onClick={() => setCreating(true)}><Plus className="h-[15px] w-[15px]" /> Nouvel entretien</Button>
       </div>
 
-      {list === undefined ? (
+      {loading ? (
         <div className="rounded-card border border-border bg-surface p-4"><SkeletonRows rows={5} /></div>
       ) : list.length === 0 ? (
         <div className="rounded-card border border-border bg-surface"><EmptyState title="Aucun entretien" message="Crée un entretien pour commencer à noter un candidat." /></div>
@@ -73,6 +75,7 @@ export function LspaEntretiens() {
               <span className="flex-shrink-0 font-data text-[15px] font-bold" style={{ color: scoreColor(it.score) }}>{it.score != null ? `${it.score}%` : "-"}</span>
             </button>
           ))}
+          <LoadMore status={status} onLoadMore={() => loadMore(30)} count={list.length} label="entretiens" />
         </div>
       )}
 

@@ -22,21 +22,23 @@ export const listGangs = query({
   handler: async (ctx, { divisionId, q, orgType }) => {
     await requireDivView(ctx, divisionId);
     const query = (q ?? "").trim().toLowerCase();
-    let rows = (await ctx.db.query("dbGangs").withIndex("by_division", (x) => x.eq("divisionId", divisionId)).collect())
+    let rows = (await ctx.db.query("dbGangs").withIndex("by_division", (x) => x.eq("divisionId", divisionId)).take(1000))
       .filter((g) => !g.deletedAt);
     if (orgType) rows = rows.filter((g) => g.orgType === orgType);
     if (query) rows = rows.filter((g) => g.name.toLowerCase().includes(query));
     rows.sort((a, b) => a.name.localeCompare(b.name, "fr"));
-    const out = [];
-    for (const g of rows) {
-      const members = (await ctx.db.query("dbPersons").withIndex("by_gang", (x) => x.eq("gangId", g._id)).collect()).filter((p) => !p.deletedAt);
-      out.push({
-        _id: g._id, name: g.name, orgType: g.orgType, subDivision: g.subDivision ?? null,
-        color: g.color ?? null, logoUrl: g.logoUrl ?? null, territoryText: g.territoryText ?? "",
-        membersCount: members.length,
-      });
+    // Comptage des membres en une seule lecture de la division (évite le N+1
+    // qui interrogeait dbPersons une fois par gang).
+    const memberCount = new Map<string, number>();
+    for (const p of await ctx.db.query("dbPersons").withIndex("by_division", (x) => x.eq("divisionId", divisionId)).take(5000)) {
+      if (p.deletedAt || !p.gangId) continue;
+      memberCount.set(p.gangId as string, (memberCount.get(p.gangId as string) ?? 0) + 1);
     }
-    return out;
+    return rows.map((g) => ({
+      _id: g._id, name: g.name, orgType: g.orgType, subDivision: g.subDivision ?? null,
+      color: g.color ?? null, logoUrl: g.logoUrl ?? null, territoryText: g.territoryText ?? "",
+      membersCount: memberCount.get(g._id as string) ?? 0,
+    }));
   },
 });
 
@@ -362,7 +364,7 @@ export const listDrugSites = query({
   handler: async (ctx, { divisionId, kind, gangId, q }) => {
     await requireDivView(ctx, divisionId);
     const query = (q ?? "").trim().toLowerCase();
-    let rows = (await ctx.db.query("dbDrugSites").withIndex("by_division", (x) => x.eq("divisionId", divisionId)).collect()).filter((d) => !d.deletedAt);
+    let rows = (await ctx.db.query("dbDrugSites").withIndex("by_division", (x) => x.eq("divisionId", divisionId)).take(2000)).filter((d) => !d.deletedAt);
     if (kind) rows = rows.filter((d) => d.kind === kind);
     if (gangId) rows = rows.filter((d) => d.gangId === gangId);
     if (query) rows = rows.filter((d) => `${d.name} ${d.drugTypes ?? ""}`.toLowerCase().includes(query));
