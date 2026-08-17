@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 import { readableError } from "@/lib/errors";
-import { X, Trash2, FileText } from "lucide-react";
+import { X, Trash2, FileText, Search, Plus } from "lucide-react";
 import { CasierDoc } from "@/components/docs/CasierDoc";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { api, type Id } from "@/lib/api";
-import { AgentTag } from "@/components/common/AgentTag";
+import { AgentTag, fmtMatricule } from "@/components/common/AgentTag";
 import { RichTextEditor } from "@/components/common/RichTextEditor";
 import { ImageGallery } from "@/components/common/ImageGallery";
 import { ReportSearchPicker, VehicleSearchPicker, WeaponSearchPicker } from "@/components/dossier/LinkPickers";
@@ -51,11 +51,17 @@ export function CasierEntryModal({ entryId, canDelete: canDeleteAny, onClose }: 
   const canEditCharges = can("casier.create") && (!entry?.closed || canEditClosed);
 
   const opts = useQuery(api.configEditors.options);
+  // Effectif pour la sélection des agents impliqués (requiert effectif.view).
+  const canPickAgents = can("effectif.view");
+  const roster = useQuery(api.agents.pickerList, canPickAgents ? {} : "skip") ?? [];
 
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState(false);
   const [editCharges, setEditCharges] = useState(false);
   const [doc, setDoc] = useState(false);
+  // Agents impliqués (ids d'agents reliés) : créateur en 1er, non retirable.
+  const [officerIds, setOfficerIds] = useState<string[]>([]);
+  const [oq, setOq] = useState("");
 
   // Volet arrestation éditable (dérivé de l'entrée).
   const [init, setInit] = useState(false);
@@ -67,6 +73,7 @@ export function CasierEntryModal({ entryId, canDelete: canDeleteAny, onClose }: 
 
   if (!init && entry) {
     setInit(true);
+    setOfficerIds(entry.officerIds);
     setA({
       // Reprend le « déroulé des faits » hérité si le rapport est vide (champ
       // unifié : plus qu'un seul récit, éditable et synchronisé).
@@ -76,6 +83,14 @@ export function CasierEntryModal({ entryId, canDelete: canDeleteAny, onClose }: 
     });
   }
   const isDossier = a.arrestType === "DOSSIER";
+
+  // Agents impliqués : résolution des libellés + recherche dans l'effectif.
+  const rosterById = new Map(roster.map((r) => [r._id as string, r]));
+  const heldOfficers = new Set(officerIds);
+  const oNeedle = oq.trim().toLowerCase();
+  const oMatches = oNeedle
+    ? roster.filter((r) => !heldOfficers.has(r._id) && `${r.prenomRP} ${r.nomRP} ${r.matricule ?? ""}`.toLowerCase().includes(oNeedle)).slice(0, 8)
+    : [];
 
   async function saveArrest() {
     setBusy(true);
@@ -88,6 +103,8 @@ export function CasierEntryModal({ entryId, canDelete: canDeleteAny, onClose }: 
       dossierStatus: isDossier ? a.dossierStatus || undefined : undefined,
       forceUsed: isDossier ? a.forceUsed : undefined,
       finePaid: a.finePaid,
+      // Agents impliqués (le créateur est réajouté côté serveur s'il manque).
+      officerIds: officerIds as Id<"agents">[],
     }), "Enregistrement impossible");
     setBusy(false);
     if (r !== undefined) toast.success("Volet arrestation enregistré.");
@@ -209,19 +226,61 @@ export function CasierEntryModal({ entryId, canDelete: canDeleteAny, onClose }: 
                 </div>
               </div>
 
+              {/* Agents impliqués (éditable si effectif.view) */}
+              <div>
+                <div className={H}>{officerIds.length > 1 ? "Agents impliqués" : "Agent impliqué"}</div>
+                {canEdit && canPickAgents ? (
+                  <>
+                    <div className="mb-2 flex flex-wrap gap-[6px]">
+                      {officerIds.map((id) => {
+                        const isCreator = id === entry.creatorId;
+                        const r = rosterById.get(id);
+                        const lbl = r
+                          ? `${fmtMatricule(r.matricule) ?? ""} ${r.prenomRP} ${r.nomRP}`.trim()
+                          : (isCreator ? entry.officers[0]?.name : undefined) ?? "Agent";
+                        return (
+                          <span key={id} className="flex items-center gap-[6px] rounded-[6px] border border-border bg-surface-2 px-[9px] py-[4px] text-[12px] font-semibold">
+                            {lbl}
+                            {isCreator ? (
+                              <span className="text-[9.5px] font-bold uppercase tracking-[0.06em] text-faint">créateur</span>
+                            ) : (
+                              <button onClick={() => setOfficerIds((p) => p.filter((x) => x !== id))} className="text-faint hover:text-danger"><X className="h-[13px] w-[13px]" /></button>
+                            )}
+                          </span>
+                        );
+                      })}
+                    </div>
+                    <div className="relative">
+                      <div className="flex items-center gap-2 rounded-sm border border-border bg-surface-2 px-2">
+                        <Search className="h-[14px] w-[14px] text-faint" />
+                        <input value={oq} onChange={(e) => setOq(e.target.value)} placeholder="Ajouter un agent impliqué…" className="h-9 flex-1 bg-transparent text-[12.5px] outline-none" />
+                      </div>
+                      {oMatches.length > 0 && (
+                        <div className="mt-1 max-h-[150px] overflow-y-auto rounded-sm border border-border bg-surface">
+                          {oMatches.map((r) => (
+                            <button key={r._id} onClick={() => { setOfficerIds((p) => [...p, r._id]); setOq(""); }} className="flex w-full items-center gap-2 border-b border-border px-3 py-2 text-left last:border-0 hover:bg-surface-2">
+                              <Plus className="h-[13px] w-[13px] text-accent" />
+                              <span className="font-data text-[11px] text-accent">{fmtMatricule(r.matricule)}</span>
+                              <span className="flex-1 text-[12.5px] font-semibold">{r.prenomRP} {r.nomRP}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </>
+                ) : entry.officers.length ? (
+                  <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                    {entry.officers.map((o, i) => (
+                      <AgentTag key={i} agent={o} />
+                    ))}
+                  </span>
+                ) : (
+                  <span className="text-[13px] text-faint">-</span>
+                )}
+              </div>
+
               {/* Contexte */}
               <div className="grid grid-cols-2 gap-px overflow-hidden rounded-sm border border-border bg-border">
-                <Field label={entry.officers.length > 1 ? "Agents" : "Agent"}>
-                  {entry.officers.length ? (
-                    <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                      {entry.officers.map((o, i) => (
-                        <AgentTag key={i} agent={o} />
-                      ))}
-                    </span>
-                  ) : (
-                    "-"
-                  )}
-                </Field>
                 <Field label="Lieu">{entry.lieu || "-"}</Field>
                 <Field label="Sanctions">{entry.sanctions.length ? entry.sanctions.join(", ") : "-"}</Field>
                 <Field label="Menottage / Miranda">{entry.cuffedAt || "-"} / {entry.mirandaAt || "-"}</Field>

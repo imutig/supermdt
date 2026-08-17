@@ -78,13 +78,22 @@ export function startTasks(client: Client) {
     }
   };
   const runTick = async () => {
-    let cfg;
+    const now = new Date();
+    const P = parisNow(now); // heure de Paris (indépendante du fuseau serveur)
+    const today = P.date;
+
+    // UNE seule Function Call Convex par tick : regroupe toutes les lectures que
+    // le bot interrogeait séparément (config, présence, roll call, files de drain,
+    // suivi…). Les tranches coûteuses/temporelles (récap quotidien, roll call) ne
+    // sont renseignées par le serveur que dans leur fenêtre horaire (sinon null/[]).
+    let t: Awaited<ReturnType<typeof mdt.tick>>;
     try {
-      cfg = await mdt.config();
+      t = await mdt.tick(now.getTime());
     } catch (err) {
-      console.error("[tasks] config injoignable :", err);
+      console.error("[tasks] tick injoignable :", err);
       return;
     }
+    const cfg = t.config;
 
     // --- Embed de présence ---
     if (cfg.presenceChannel) {
@@ -94,7 +103,7 @@ export function startTasks(client: Client) {
           // Au premier passage, on récupère l'id mémorisé pour éditer le
           // message existant plutôt que d'en créer un nouveau.
           if (!presenceLoaded) { presenceMessageId = await mdt.presenceMessageGet().catch(() => null); presenceLoaded = true; }
-          const embed = presenceEmbed(await mdt.agentsOnDuty());
+          const embed = presenceEmbed(t.agentsOnDuty ?? []);
           const existing = presenceMessageId ? await chan.messages.fetch(presenceMessageId).catch(() => null) : null;
           if (existing) {
             await existing.edit({ embeds: [embed] });
@@ -109,15 +118,11 @@ export function startTasks(client: Client) {
       }
     }
 
-    const now = new Date();
-    const P = parisNow(now); // heure de Paris (indépendante du fuseau serveur)
-    const today = P.date;
-
     // --- Roll call : ouverture, puis clôture à l'heure de fin ---
     if (cfg.rollcallChannel && cfg.rollcallStartAt && cfg.rollcallEndAt) {
       const [eh, em] = cfg.rollcallEndAt.split(":").map(Number);
       const endsAtMs = parisWallToEpoch(P.y, P.mo, P.d, eh, em); // heure de fin, murale Paris
-      const existing = await mdt.rollcallToday(today).catch(() => null);
+      const existing = t.rollcall;
       // Rattrapage : on ouvre dès que l'heure de début est atteinte OU dépassée,
       // tant que la clôture n'est pas passée et qu'aucun appel n'existe pour le
       // jour. Ainsi, configurer/déployer après l'heure poste quand même l'appel.
@@ -151,17 +156,17 @@ export function startTasks(client: Client) {
 
     // --- Fermetures de ticket programmées (!close <délai>) échues ---
     try {
-      const due = await mdt.ticketsDueForClose(Date.now());
-      for (const t of due) {
-        const res = await mdt.ticketAutoClose(t.channelId);
+      const due = t.ticketsDueForClose;
+      for (const tk of due) {
+        const res = await mdt.ticketAutoClose(tk.channelId);
         if (!res) continue;
-        const cand = await client.users.fetch(t.ownerId).catch(() => null);
+        const cand = await client.users.fetch(tk.ownerId).catch(() => null);
         if (cand) {
           await cand.send({ embeds: [baseEmbed(BRAND.muted).setTitle("Candidature fermée")
             .setDescription("Faute de réponse dans le délai imparti, ta candidature a été **fermée**. Tu peux repartir de zéro à tout moment en m'envoyant le mot **Candidature**.")] }).catch(() => {});
         }
         // Ferme réellement le ticket (retire l'accès candidat + panneau encadrement).
-        await finalizeAutoClose(client, t.channelId, t.ownerId, `${t.prenom} ${t.nom}`);
+        await finalizeAutoClose(client, tk.channelId, tk.ownerId, `${tk.prenom} ${tk.nom}`);
       }
     } catch (err) { console.error("[ticket] fermetures auto :", err); }
 
@@ -173,7 +178,7 @@ export function startTasks(client: Client) {
     // Confirmé : rappel (MP candidat + ping instructeur). Non confirmé :
     // déprogrammation automatique (le candidat n'a pas validé sa présence).
     try {
-      const due = await mdt.interviewReminders(Date.now());
+      const due = t.interviewReminders;
       for (const it of due) {
         if (it.interviewPresence !== "CONFIRMED") {
           await deprogramInterview(client, it.channelId, { auto: true });
@@ -213,7 +218,7 @@ export function startTasks(client: Client) {
     // qu'à indiquer son prénom et choisir un mot de passe (matricule et nom sont
     // détectés depuis le pseudo serveur). Pas de code à recopier.
     try {
-      const queue = await mdt.accountDMQueue();
+      const queue = t.accountDMQueue;
       for (const q of queue) {
         const user = await client.users.fetch(q.discordId).catch(() => null);
         if (user) {
@@ -231,7 +236,7 @@ export function startTasks(client: Client) {
 
     // --- Alertes de synchro Nexus en MP ---
     try {
-      const alerts = await mdt.nexusAlertQueue();
+      const alerts = t.nexusAlertQueue;
       for (const al of alerts) {
         const user = await client.users.fetch(al.discordId).catch(() => null);
         if (user) {
@@ -243,7 +248,7 @@ export function startTasks(client: Client) {
 
     // --- Montées en grade : tâches de rôle Discord ---
     try {
-      const jobs = await mdt.roleJobsPending();
+      const jobs = t.roleJobsPending;
       const guild = client.guilds.cache.first();
       for (const job of jobs) {
         try {
@@ -266,7 +271,7 @@ export function startTasks(client: Client) {
     if (Date.now() - lastCadetReconcile > 10 * 60_000) {
       lastCadetReconcile = Date.now();
       try {
-        const tcfg = await mdt.ticketConfigGet();
+        const tcfg = t.ticketConfig; // fourni par le tick agrégé (plus d'appel séparé)
         const guild = client.guilds.cache.first();
         if (tcfg.cadetRoleId && guild) {
           const owners = new Set(await mdt.cadetRoleOwners());
@@ -290,7 +295,7 @@ export function startTasks(client: Client) {
     // --- Publication des absences dans le salon configuré ---
     if (cfg.absenceChannel) {
       try {
-        const pending = await mdt.absencesToAnnounce();
+        const pending = t.absencesToAnnounce;
         if (pending.length) {
           const chan = await channel(client, cfg.absenceChannel);
           for (const ab of pending) {
@@ -308,7 +313,7 @@ export function startTasks(client: Client) {
     // --- Publication des sanctions (embed + ping rôle LSPD) ---
     if (cfg.sanctionsChannel) {
       try {
-        const pending = await mdt.sanctionsToAnnounce();
+        const pending = t.sanctionsToAnnounce;
         if (pending.length) {
           const chan = await channel(client, cfg.sanctionsChannel);
           for (const s of pending) {
@@ -328,7 +333,7 @@ export function startTasks(client: Client) {
     // --- Publication des convocations (embed + ping de l'agent concerné) ---
     if (cfg.sanctionsChannel) {
       try {
-        const pending = await mdt.convocationsToAnnounce();
+        const pending = t.convocationsToAnnounce;
         if (pending.length) {
           const chan = await channel(client, cfg.sanctionsChannel);
           for (const c of pending) {
@@ -351,7 +356,7 @@ export function startTasks(client: Client) {
     // statut d'amende). On ne draine que les lignes marquées « sales » (index).
     if (cfg.trackingChannel) {
       try {
-        const items = await mdt.trackingPending();
+        const items = t.trackingPending;
         if (items.length) {
           const chan = await channel(client, cfg.trackingChannel);
           for (const item of items) {
@@ -391,7 +396,7 @@ export function startTasks(client: Client) {
 
     // --- Publication des annonces de CÉRÉMONIE (annonce + résultat) ---
     try {
-      const { channel: ceremonyChannel, posts } = await mdt.ceremonyPostsToSend();
+      const { channel: ceremonyChannel, posts } = t.ceremonyPosts;
       if (posts.length && ceremonyChannel) {
         const chan = await channel(client, ceremonyChannel);
         for (const p of posts) {
@@ -413,9 +418,11 @@ export function startTasks(client: Client) {
     ) {
       const chan = await channel(client, cfg.dailyChannel);
       let sent = false;
-      if (chan) {
+      // t.dayStats est renseigné par le tick agrégé dès que la fenêtre du récap est
+      // ouverte et non déjà envoyé (mêmes conditions que ce bloc) : garde de sûreté.
+      if (chan && t.dayStats) {
         try {
-          await chan.send({ embeds: [dailyEmbed(await mdt.dayStats())] });
+          await chan.send({ embeds: [dailyEmbed(t.dayStats)] });
           sent = true;
           console.log("[tasks] récapitulatif quotidien envoyé.");
         } catch (err) {

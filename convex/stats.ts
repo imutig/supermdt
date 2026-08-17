@@ -260,17 +260,22 @@ export const myRangeStats = query({
     const lo = from ?? null;
 
     // Lecture PAR AGENT via index (au lieu de scanner TOUTE la plage puis filtrer) :
-    // on ne lit que SES casiers (by_creator) et SES contraventions (by_officer),
-    // puis on borne à la plage EN MÉMOIRE (les volumes par agent sont naturellement
-    // petits). Gain majeur : cette query réactive ne se ré-exécute plus sur les
-    // écritures des AUTRES agents, et ne lit plus les tables entières.
-    // « Mes arrestations » = casiers créés par l'agent (officier verbalisateur) :
-    // définition acceptée pour l'usage de by_creator.
+    // on ne lit que SES casiers (jointure casierOfficers.by_officer, bornée sur `at`)
+    // et SES contraventions (by_officer), puis on borne EN MÉMOIRE (volumes par agent
+    // naturellement petits). Gain majeur : cette query réactive ne se ré-exécute plus
+    // sur les écritures des AUTRES agents, et ne lit plus les tables entières.
+    // « Mes arrestations » = casiers où l'agent est IMPLIQUÉ (créateur inclus) :
+    // la jointure crédite chaque agent impliqué sans scanner le tableau officerIds.
     const isOwner = agent.isOwner;
     const inWindow = (r: any) => r.status !== "ANNULEE" && r.deletedAt == null && r.at <= hi && (lo == null || r.at >= lo);
-    const casiers = (
-      await ctx.db.query("casierEntries").withIndex("by_creator", (q) => q.eq("createdBy", agent._id)).collect()
-    ).filter((e: any) => inWindow(e));
+    const officerRows = lo == null
+      ? await ctx.db.query("casierOfficers").withIndex("by_officer", (q) => q.eq("officerId", agent._id).lte("at", hi)).collect()
+      : await ctx.db.query("casierOfficers").withIndex("by_officer", (q) => q.eq("officerId", agent._id).gte("at", lo).lte("at", hi)).collect();
+    const casiers: any[] = [];
+    for (const jr of officerRows) {
+      const e = await ctx.db.get(jr.entryId);
+      if (e && inWindow(e)) casiers.push(e);
+    }
     // Contravention avec officerName = verbalisateur Nexus non relié : pour l'owner
     // (compte de repli des imports), on l'écarte de ses stats personnelles.
     const citations = (

@@ -731,6 +731,13 @@ export const _casierForPush = internalQuery({
     const citizen = await ctx.db.get(e.citizenId);
     const charges = await ctx.db.query("casierCharges").withIndex("by_entry", (q) => q.eq("entryId", entryId)).collect();
     const agent = await ctx.db.get(e.createdBy);
+    // Liste COMPLÈTE des agents impliqués (créateur + autres), au format Nexus
+    // { matricule, nom }. Source : l'instantané `officers` (noms/matricules figés,
+    // ceux des autres agents inclus) ; repli sur le créateur pour les vieux casiers
+    // sans instantané. Le DOSSIER Nexus reçoit toute cette liste ; le RAPPORT non.
+    const officers = (e.officers && e.officers.length)
+      ? e.officers.map((o) => ({ matricule: o.matricule ?? "", nom: o.name }))
+      : [{ matricule: agent?.matricule != null ? String(agent.matricule) : "", nom: agent ? `${agent.prenomRP} ${agent.nomRP}` : "" }];
     return {
       nexusId: citizen?.nexusId ?? null,
       nom: citizen?.nom ?? "", prenom: citizen?.prenom ?? "",
@@ -739,6 +746,7 @@ export const _casierForPush = internalQuery({
       dossierStatus: e.dossierStatus ?? "",
       totalFine: e.totalFine, totalJail: e.totalJailSeconds,
       agentMatricule: agent?.matricule ?? null, agentNom: agent ? `${agent.prenomRP} ${agent.nomRP}` : "",
+      officers,
       // quantite = param du picker (garde `|| 1`) ; tentative/complicité = drapeaux
       // Nexus (le nom `charge` reste BRUT, jamais préfixé).
       charges: charges.map((c) => ({
@@ -774,6 +782,8 @@ export const createCasier = action({
     avocat: v.optional(v.string()), linkedReportId: v.optional(v.id("reports")),
     vehicleIds: v.optional(v.array(v.id("vehicles"))), weaponIds: v.optional(v.array(v.id("weapons"))),
     dossierStatus: v.optional(v.string()), forceUsed: v.optional(v.boolean()),
+    // Agents impliqués (hors créateur) transmis à casier.addEntry.
+    officerIds: v.optional(v.array(v.id("agents"))),
   },
   handler: async (ctx, a): Promise<Id<"casierEntries">> => {
     const agentId = await ctx.runQuery(api.nexusSync.myAgentId, {});
@@ -798,7 +808,7 @@ export const createCasier = action({
       const entity = isDossier ? "dossier" : "rapport";
       const payload: Record<string, unknown> = isDossier
         ? {
-            entity: "lspd", citoyen, agents: [officer],
+            entity: "lspd", citoyen, agents: info.officers,
             // Objet Nexus complet : quantité + drapeaux tentative/complicité ;
             // `charge` = nom BRUT (Nexus porte ses propres drapeaux). amende /
             // tempsPrison sont les TOTAUX par ligne (déjà × quantité).
@@ -865,6 +875,8 @@ export const updateArrest = action({
     dossierStatus: v.optional(v.string()),
     forceUsed: v.optional(v.boolean()),
     finePaid: v.optional(v.boolean()),
+    // Agents impliqués (édition locale ; non répercuté au PATCH Nexus).
+    officerIds: v.optional(v.array(v.id("agents"))),
   },
   handler: async (ctx, a): Promise<void> => {
     const agentId = await ctx.runQuery(api.nexusSync.myAgentId, {});

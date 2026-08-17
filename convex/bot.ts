@@ -36,26 +36,7 @@ export const agentsOnDuty = query({
   args: { secret: v.string() },
   handler: async (ctx, { secret }) => {
     assertBot(secret);
-    const open = await ctx.db
-      .query("serviceSessions")
-      .withIndex("by_open", (q) => q.eq("endedAt", undefined))
-      .collect();
-    const out = [];
-    for (const s of open) {
-      const a = await ctx.db.get(s.agentId);
-      if (!a || a.status !== "ACTIVE") continue;
-      out.push({
-        name: `${a.prenomRP} ${a.nomRP}`,
-        matricule: a.matricule ?? (a.isOwner ? 0 : null),
-        grade: await gradeName(ctx, a),
-        gradePosition: a.gradeId ? (await ctx.db.get(a.gradeId))?.position ?? 0 : 0,
-        since: s.startedAt,
-        callsign: s.callsignType ?? null,
-      });
-    }
-    // Les plus gradés d'abord, puis par ancienneté de prise de service.
-    out.sort((x, y) => (y.gradePosition - x.gradePosition) || (x.since - y.since));
-    return out;
+    return readOnDuty(ctx);
   },
 });
 
@@ -64,67 +45,7 @@ export const dayStats = query({
   args: { secret: v.string() },
   handler: async (ctx, { secret }) => {
     assertBot(secret);
-    const now = Date.now();
-    const dayStart = startOfToday();
-
-    // Sessions du jour (démarrées aujourd'hui) : temps travaillé et présences.
-    const sessions = await ctx.db.query("serviceSessions").withIndex("by_open").order("desc").take(400);
-    const recent = await ctx.db.query("serviceSessions").order("desc").take(400);
-    const all = [...sessions, ...recent];
-    const seen = new Set<string>();
-    let workedMs = 0;
-    const perAgent = new Map<string, number>();
-    let onDutyNow = 0;
-    for (const s of all) {
-      if (seen.has(s._id as string)) continue;
-      seen.add(s._id as string);
-      if (s.endedAt == null) onDutyNow++;
-      const end = s.endedAt ?? now;
-      if (end < dayStart) continue;
-      const from = Math.max(s.startedAt, dayStart);
-      const dur = Math.max(0, end - from);
-      workedMs += dur;
-      perAgent.set(s.agentId as string, (perAgent.get(s.agentId as string) ?? 0) + dur);
-    }
-
-    // Patrouilles ouvertes aujourd'hui.
-    const patrols = await ctx.db.query("patrols").order("desc").take(200);
-    const patrolsToday = patrols.filter((p) => p.startedAt >= dayStart).length;
-
-    // Actes du jour.
-    const casier = (await ctx.db.query("casierEntries").order("desc").take(200)).filter((e) => !e.deletedAt && e.at >= dayStart).length;
-    const citations = (await ctx.db.query("citations").order("desc").take(200)).filter((c) => !c.deletedAt && c.at >= dayStart).length;
-
-    // Top 5 des présences du jour.
-    const topRaw = [...perAgent.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5);
-    const top = [];
-    for (const [agentId, ms] of topRaw) {
-      const a = await ctx.db.get(agentId as Doc<"agents">["_id"]);
-      if (a) top.push({ name: `${a.prenomRP} ${a.nomRP}`, minutes: Math.round(ms / 60000) });
-    }
-
-    // Répartition horaire de la présence (24 tranches) pour un mini-graphique.
-    const hourly = new Array(24).fill(0) as number[];
-    for (const s of all) {
-      const end = s.endedAt ?? now;
-      if (end < dayStart) continue;
-      const from = Math.max(s.startedAt, dayStart);
-      for (let t = from; t < end && t < dayStart + DAY; t += 5 * 60000) {
-        hourly[new Date(t).getHours()]++;
-      }
-    }
-
-    return {
-      date: dayStart,
-      onDutyNow,
-      workedMinutes: Math.round(workedMs / 60000),
-      distinctAgents: perAgent.size,
-      patrolsToday,
-      casier,
-      citations,
-      top,
-      hourly, // nombre de tranches de 5 min actives par heure (0-23)
-    };
+    return readDayStats(ctx);
   },
 });
 
@@ -148,9 +69,7 @@ export const rollcallToday = query({
   args: { secret: v.string(), date: v.string() },
   handler: async (ctx, { secret, date }) => {
     assertBot(secret);
-    const rc = await ctx.db.query("rollcalls").withIndex("by_date", (q) => q.eq("date", date)).first();
-    if (!rc) return null;
-    return { _id: rc._id, channelId: rc.channelId, messageId: rc.messageId, endsAt: rc.endsAt, closed: rc.closed, remindersSent: rc.remindersSent ?? [] };
+    return readRollcallForDate(ctx, date);
   },
 });
 
@@ -273,10 +192,7 @@ export const accountDMQueue = query({
   args: { secret: v.string() },
   handler: async (ctx, { secret }) => {
     assertBot(secret);
-    const rows = (await ctx.db.query("invitations").withIndex("by_dm_pending", (q) => q.eq("dmPending", true)).collect())
-      .filter((i) => !i.revoked && !i.dmSentAt && i.discordId);
-    const baseUrl = (await ctx.db.query("integrationConfig").first())?.baseUrl ?? "";
-    return rows.map((i) => ({ code: i.code, discordId: i.discordId!, baseUrl }));
+    return readAccountDMs(ctx);
   },
 });
 
@@ -294,8 +210,7 @@ export const nexusAlertQueue = query({
   args: { secret: v.string() },
   handler: async (ctx, { secret }) => {
     assertBot(secret);
-    const rows = await ctx.db.query("nexusAlerts").withIndex("by_sent", (q) => q.eq("sent", false)).take(10);
-    return rows.map((r) => ({ id: r._id as string, message: r.message, discordId: r.targetDiscordId }));
+    return readNexusAlerts(ctx);
   },
 });
 export const markNexusAlertSent = mutation({
@@ -312,8 +227,7 @@ export const roleJobsPending = query({
   args: { secret: v.string() },
   handler: async (ctx, { secret }) => {
     assertBot(secret);
-    const rows = await ctx.db.query("discordRoleJobs").withIndex("by_status", (q) => q.eq("status", "PENDING")).collect();
-    return rows.map((j) => ({ _id: j._id, discordId: j.discordId, addRoleId: j.addRoleId ?? null, removeRoleIds: j.removeRoleIds, reason: j.reason ?? null }));
+    return readRoleJobs(ctx);
   },
 });
 
@@ -371,23 +285,7 @@ export const config = query({
   args: { secret: v.string() },
   handler: async (ctx, { secret }) => {
     assertBot(secret);
-    const cfg = await ctx.db.query("integrationConfig").first();
-    return {
-      presenceChannel: cfg?.botPresenceChannel ?? null,
-      dailyChannel: cfg?.botDailyChannel ?? null,
-      rollcallChannel: cfg?.botRollcallChannel ?? null,
-      absenceChannel: cfg?.botAbsenceChannel ?? null,
-      dailyAt: cfg?.botDailyAt ?? "23:30",
-      rollcallStartAt: cfg?.botRollcallStartAt ?? null,
-      rollcallEndAt: cfg?.botRollcallEndAt ?? null,
-      ceremonyAt: cfg?.botCeremonyAt ?? null,
-      rollcallPingRole: cfg?.botRollcallPingRole ?? null,
-      rollcallPingEnabled: cfg?.botRollcallPingEnabled ?? false,
-      sanctionsChannel: cfg?.botSanctionsChannel ?? null,
-      sanctionsPingRole: cfg?.botSanctionsPingRole ?? null,
-      trackingChannel: cfg?.botTrackingChannel ?? null,
-      lastDailyRecap: cfg?.botLastDailyRecap ?? null,
-    };
+    return readConfig(ctx);
   },
 });
 
@@ -689,21 +587,7 @@ export const absencesToAnnounce = query({
   args: { secret: v.string() },
   handler: async (ctx, { secret }) => {
     assertBot(secret);
-    const rows = (await ctx.db.query("absences").withIndex("by_status", (q) => q.eq("status", "APPROUVEE")).collect())
-      .filter((ab) => ab.announced !== true)
-      .slice(0, 20);
-    const out = [];
-    for (const ab of rows) {
-      const a = await ctx.db.get(ab.agentId);
-      out.push({
-        id: ab._id,
-        name: a ? `${a.prenomRP} ${a.nomRP}` : "Agent",
-        matricule: a?.matricule ?? null,
-        discordId: a?.discordId ?? null,
-        from: ab.from, to: ab.to, reason: ab.reason,
-      });
-    }
-    return out;
+    return readAbsencesToAnnounce(ctx);
   },
 });
 
@@ -720,30 +604,7 @@ export const sanctionsToAnnounce = query({
   args: { secret: v.string() },
   handler: async (ctx, { secret }) => {
     assertBot(secret);
-    const rows = (await ctx.db.query("disciplines").withIndex("by_announce", (q) => q.eq("discordAnnounced", false)).collect())
-      .filter((d) => !d.deletedAt)
-      .slice(0, 20);
-    const out = [];
-    for (const d of rows) {
-      const a = await ctx.db.get(d.agentId);
-      const by = d.byAgentId ? await ctx.db.get(d.byAgentId) : null;
-      out.push({
-        id: d._id,
-        reference: d.reference ?? null,
-        agentName: a ? `${a.prenomRP} ${a.nomRP}` : "Agent",
-        agentMatricule: a?.matricule ?? null,
-        agentDiscordId: a?.discordId ?? null,
-        motif: d.motif,
-        sanction: d.sanction,
-        level: d.level ?? null,
-        suspends: d.suspends ?? false,
-        suspendedUntil: d.suspendedUntil ?? null,
-        byName: by ? `${by.prenomRP} ${by.nomRP}` : null,
-        byMatricule: by?.matricule ?? null,
-        at: d.at,
-      });
-    }
-    return out;
+    return readSanctionsToAnnounce(ctx);
   },
 });
 export const markSanctionAnnounced = mutation({
@@ -759,9 +620,7 @@ export const ceremonyPostsToSend = query({
   args: { secret: v.string() },
   handler: async (ctx, { secret }) => {
     assertBot(secret);
-    const cfg = await ctx.db.query("integrationConfig").first();
-    const rows = (await ctx.db.query("ceremonyPosts").withIndex("by_sent", (q) => q.eq("sent", false)).collect()).slice(0, 10);
-    return { channel: cfg?.botCeremonyChannel ?? null, posts: rows.map((p) => ({ id: p._id, content: p.content })) };
+    return readCeremonyPosts(ctx);
   },
 });
 export const markCeremonyPostSent = mutation({
@@ -777,29 +636,7 @@ export const convocationsToAnnounce = query({
   args: { secret: v.string() },
   handler: async (ctx, { secret }) => {
     assertBot(secret);
-    const rows = (await ctx.db.query("convocations").withIndex("by_announce", (q) => q.eq("discordAnnounced", false)).collect())
-      .filter((c) => !c.deletedAt)
-      .slice(0, 20);
-    const out = [];
-    for (const c of rows) {
-      const a = c.agentId ? await ctx.db.get(c.agentId) : null;
-      const by = c.byAgentId ? await ctx.db.get(c.byAgentId) : null;
-      out.push({
-        id: c._id,
-        reference: c.reference ?? null,
-        agentName: a ? `${a.prenomRP} ${a.nomRP}` : c.agentLabel ?? null,
-        agentMatricule: a?.matricule ?? null,
-        // Ping : Discord lié de l'agent, sinon l'ID saisi à la main.
-        pingDiscordId: a?.discordId ?? c.discordId ?? null,
-        motif: c.motif,
-        convokedAt: c.convokedAt ?? null,
-        lieu: c.lieu ?? null,
-        byName: by ? `${by.prenomRP} ${by.nomRP}` : null,
-        byMatricule: by?.matricule ?? null,
-        at: c.at,
-      });
-    }
-    return out;
+    return readConvocationsToAnnounce(ctx);
   },
 });
 export const markConvocationAnnounced = mutation({
@@ -830,90 +667,7 @@ export const trackingPending = query({
   args: { secret: v.string() },
   handler: async (ctx, { secret }) => {
     assertBot(secret);
-    const cfg = await ctx.db.query("integrationConfig").first();
-    const base = cfg?.baseUrl?.trim().replace(/\/+$/, "");
-    const link = (citizenId: string) => (base ? `${base}/citoyen/${citizenId}` : null);
-
-    const out: {
-      kind: "casier" | "citation";
-      id: string;
-      trackingMessageId: string | null;
-      trackingChannelId: string | null;
-      citizenId: string;
-      citizenName: string;
-      label: string;
-      charges: string[];
-      officer: string;
-      totalFine: number;
-      amendeStatut: string | null;
-      closed: boolean;
-      at: number;
-      deleted: boolean;
-      url: string | null;
-    }[] = [];
-
-    // Dossiers / rapports d'arrestation à (re)publier.
-    const casiers = await ctx.db
-      .query("casierEntries")
-      .withIndex("by_tracking_dirty", (q) => q.eq("trackingDirty", true))
-      .take(25);
-    for (const e of casiers) {
-      const citizen = await ctx.db.get(e.citizenId);
-      const charges = await ctx.db.query("casierCharges").withIndex("by_entry", (q) => q.eq("entryId", e._id)).collect();
-      const amende = (await ctx.db.query("amendes").withIndex("by_casier", (q) => q.eq("casierEntryId", e._id)).collect()).find((a) => !a.deletedAt);
-      out.push({
-        kind: "casier",
-        id: e._id as string,
-        trackingMessageId: e.trackingMessageId ?? null,
-        trackingChannelId: e.trackingChannelId ?? null,
-        citizenId: e.citizenId as string,
-        citizenName: citizen ? `${citizen.prenom} ${citizen.nom}` : "-",
-        label: e.arrestType === "DOSSIER" ? "Dossier d'arrestation" : "Rapport d'arrestation",
-        charges: charges.map((c) => chargeDisplayNameQty(c.snapshot.name, c.attemptType, c.formulaParam)),
-        officer: await firstCasierOfficer(ctx, e),
-        totalFine: e.totalFine,
-        amendeStatut: amende?.statut ?? null,
-        closed: e.closed ?? false,
-        at: e.at,
-        deleted: !!e.deletedAt || e.status === "ANNULEE",
-        url: link(e.citizenId as string),
-      });
-    }
-
-    // Contraventions à (re)publier.
-    const citations = await ctx.db
-      .query("citations")
-      .withIndex("by_tracking_dirty", (q) => q.eq("trackingDirty", true))
-      .take(25);
-    for (const c of citations) {
-      const citizen = await ctx.db.get(c.citizenId);
-      const charges = await ctx.db.query("citationCharges").withIndex("by_citation", (q) => q.eq("citationId", c._id)).collect();
-      const amende = (await ctx.db.query("amendes").withIndex("by_citation", (q) => q.eq("citationId", c._id)).collect()).find((a) => !a.deletedAt);
-      let officer = c.officerName ?? "-";
-      if (!c.officerName) {
-        const a = await ctx.db.get(c.officerId);
-        if (a) officer = `${a.prenomRP} ${a.nomRP}`;
-      }
-      out.push({
-        kind: "citation",
-        id: c._id as string,
-        trackingMessageId: c.trackingMessageId ?? null,
-        trackingChannelId: c.trackingChannelId ?? null,
-        citizenId: c.citizenId as string,
-        citizenName: citizen ? `${citizen.prenom} ${citizen.nom}` : "-",
-        label: "Contravention",
-        charges: charges.map((ch) => chargeDisplayNameQty(ch.snapshot.name, ch.attemptType, ch.formulaParam)),
-        officer,
-        totalFine: c.totalFine,
-        amendeStatut: amende?.statut ?? null,
-        closed: false,
-        at: c.at,
-        deleted: !!c.deletedAt || c.status === "ANNULEE",
-        url: link(c.citizenId as string),
-      });
-    }
-
-    return out;
+    return readTrackingPending(ctx);
   },
 });
 
@@ -1277,12 +1031,7 @@ export const ticketsDueForClose = query({
   args: { secret: v.string(), now: v.number() },
   handler: async (ctx, { secret, now }) => {
     assertBot(secret);
-    // Ne lit QUE les tickets ouverts réellement dus (scheduledCloseAt ∈ ]0, now]),
-    // au lieu de scanner tous les tickets ouverts toutes les 5 min.
-    const rows = await ctx.db.query("tickets")
-      .withIndex("by_close", (q) => q.eq("status", "OPEN").gt("scheduledCloseAt", 0).lte("scheduledCloseAt", now))
-      .collect();
-    return rows.map((t) => ({ channelId: t.channelId, ownerId: t.ownerId, prenom: t.prenom, nom: t.nom }));
+    return readTicketsDue(ctx, now);
   },
 });
 
@@ -1476,16 +1225,7 @@ export const interviewReminders = query({
   args: { secret: v.string(), now: v.number() },
   handler: async (ctx, { secret, now }) => {
     assertBot(secret);
-    // Ne lit QUE les tickets ouverts dont l'entretien tombe dans les 15 prochaines
-    // minutes (interviewAt ∈ ]now, now+15min]), au lieu de scanner tous les ouverts.
-    const tickets = await ctx.db.query("tickets")
-      .withIndex("by_interview", (q) => q.eq("status", "OPEN").gt("interviewAt", now).lte("interviewAt", now + 15 * 60_000))
-      .collect();
-    const due = tickets.filter((t) =>
-      t.integrationStatus === "INTERVIEW" &&
-      t.interviewRemindedFor !== t.interviewAt,
-    );
-    return due.map((t) => ({ channelId: t.channelId, ownerId: t.ownerId, interviewById: t.interviewById ?? null, interviewAt: t.interviewAt!, prenom: t.prenom, nom: t.nom, interviewPresence: t.interviewPresence ?? null }));
+    return readInterviewReminders(ctx, now);
   },
 });
 
@@ -1671,5 +1411,388 @@ export const promoFinalizeDeletion = mutation({
       if (t.promotionId === id) await ctx.db.patch(t._id, { promotionId: undefined });
     }
     await ctx.db.delete(id);
+  },
+});
+
+// ============================================================================
+// Helpers de lecture partagés + requête AGRÉGÉE du tick bot.
+//
+// Le bot (bot/src/tasks.ts runTick) interrogeait ~15 requêtes séparées à CHAQUE
+// passage (poll de sécurité 5 min + chaque push Convex) = autant de « Function
+// Calls » Convex. `tick` regroupe TOUTES ces lectures en UNE seule requête.
+// Chaque tranche réutilise le MÊME helper que la requête individuelle
+// correspondante (formats identiques : le bot change au minimum), et les
+// tranches COÛTEUSES ne sont calculées que dans leur fenêtre horaire (gate sur
+// `now` en heure de Paris). Les MUTATIONS restent séparées (écritures ponctuelles).
+// ============================================================================
+
+const TICK_TZ = "Europe/Paris";
+// Heure murale de Paris (indépendante du fuseau serveur, UTC sur Convex) : date
+// YYYY-MM-DD + minutes depuis minuit, pour ne calculer certaines tranches que
+// dans leur créneau.
+function parisClock(now: number): { date: string; min: number } {
+  const p: Record<string, string> = {};
+  for (const part of new Intl.DateTimeFormat("en-US", {
+    timeZone: TICK_TZ, hour12: false,
+    year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit",
+  }).formatToParts(new Date(now))) p[part.type] = part.value;
+  const hour = p.hour === "24" ? 0 : Number(p.hour);
+  return { date: `${p.year}-${p.month}-${p.day}`, min: hour * 60 + Number(p.minute) };
+}
+const hhmmToMin = (s: string) => { const [h, m] = s.split(":").map(Number); return h * 60 + m; };
+
+async function readConfig(ctx: QueryCtx) {
+  const cfg = await ctx.db.query("integrationConfig").first();
+  return {
+    presenceChannel: cfg?.botPresenceChannel ?? null,
+    dailyChannel: cfg?.botDailyChannel ?? null,
+    rollcallChannel: cfg?.botRollcallChannel ?? null,
+    absenceChannel: cfg?.botAbsenceChannel ?? null,
+    dailyAt: cfg?.botDailyAt ?? "23:30",
+    rollcallStartAt: cfg?.botRollcallStartAt ?? null,
+    rollcallEndAt: cfg?.botRollcallEndAt ?? null,
+    ceremonyAt: cfg?.botCeremonyAt ?? null,
+    rollcallPingRole: cfg?.botRollcallPingRole ?? null,
+    rollcallPingEnabled: cfg?.botRollcallPingEnabled ?? false,
+    sanctionsChannel: cfg?.botSanctionsChannel ?? null,
+    sanctionsPingRole: cfg?.botSanctionsPingRole ?? null,
+    trackingChannel: cfg?.botTrackingChannel ?? null,
+    lastDailyRecap: cfg?.botLastDailyRecap ?? null,
+  };
+}
+
+async function readOnDuty(ctx: QueryCtx) {
+  const open = await ctx.db
+    .query("serviceSessions")
+    .withIndex("by_open", (q) => q.eq("endedAt", undefined))
+    .collect();
+  const out = [];
+  for (const s of open) {
+    const a = await ctx.db.get(s.agentId);
+    if (!a || a.status !== "ACTIVE") continue;
+    out.push({
+      name: `${a.prenomRP} ${a.nomRP}`,
+      matricule: a.matricule ?? (a.isOwner ? 0 : null),
+      grade: await gradeName(ctx, a),
+      gradePosition: a.gradeId ? (await ctx.db.get(a.gradeId))?.position ?? 0 : 0,
+      since: s.startedAt,
+      callsign: s.callsignType ?? null,
+    });
+  }
+  out.sort((x, y) => (y.gradePosition - x.gradePosition) || (x.since - y.since));
+  return out;
+}
+
+async function readDayStats(ctx: QueryCtx) {
+  const now = Date.now();
+  const dayStart = startOfToday();
+
+  const sessions = await ctx.db.query("serviceSessions").withIndex("by_open").order("desc").take(400);
+  const recent = await ctx.db.query("serviceSessions").order("desc").take(400);
+  const all = [...sessions, ...recent];
+  const seen = new Set<string>();
+  let workedMs = 0;
+  const perAgent = new Map<string, number>();
+  let onDutyNow = 0;
+  for (const s of all) {
+    if (seen.has(s._id as string)) continue;
+    seen.add(s._id as string);
+    if (s.endedAt == null) onDutyNow++;
+    const end = s.endedAt ?? now;
+    if (end < dayStart) continue;
+    const from = Math.max(s.startedAt, dayStart);
+    const dur = Math.max(0, end - from);
+    workedMs += dur;
+    perAgent.set(s.agentId as string, (perAgent.get(s.agentId as string) ?? 0) + dur);
+  }
+
+  const patrols = await ctx.db.query("patrols").order("desc").take(200);
+  const patrolsToday = patrols.filter((p) => p.startedAt >= dayStart).length;
+
+  const casier = (await ctx.db.query("casierEntries").order("desc").take(200)).filter((e) => !e.deletedAt && e.at >= dayStart).length;
+  const citations = (await ctx.db.query("citations").order("desc").take(200)).filter((c) => !c.deletedAt && c.at >= dayStart).length;
+
+  const topRaw = [...perAgent.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5);
+  const top = [];
+  for (const [agentId, ms] of topRaw) {
+    const a = await ctx.db.get(agentId as Doc<"agents">["_id"]);
+    if (a) top.push({ name: `${a.prenomRP} ${a.nomRP}`, minutes: Math.round(ms / 60000) });
+  }
+
+  const hourly = new Array(24).fill(0) as number[];
+  for (const s of all) {
+    const end = s.endedAt ?? now;
+    if (end < dayStart) continue;
+    const from = Math.max(s.startedAt, dayStart);
+    for (let t = from; t < end && t < dayStart + DAY; t += 5 * 60000) {
+      hourly[new Date(t).getHours()]++;
+    }
+  }
+
+  return {
+    date: dayStart,
+    onDutyNow,
+    workedMinutes: Math.round(workedMs / 60000),
+    distinctAgents: perAgent.size,
+    patrolsToday,
+    casier,
+    citations,
+    top,
+    hourly,
+  };
+}
+
+async function readRollcallForDate(ctx: QueryCtx, date: string) {
+  const rc = await ctx.db.query("rollcalls").withIndex("by_date", (q) => q.eq("date", date)).first();
+  if (!rc) return null;
+  return { _id: rc._id, channelId: rc.channelId, messageId: rc.messageId, endsAt: rc.endsAt, closed: rc.closed, remindersSent: rc.remindersSent ?? [] };
+}
+
+async function readAccountDMs(ctx: QueryCtx) {
+  const rows = (await ctx.db.query("invitations").withIndex("by_dm_pending", (q) => q.eq("dmPending", true)).collect())
+    .filter((i) => !i.revoked && !i.dmSentAt && i.discordId);
+  const baseUrl = (await ctx.db.query("integrationConfig").first())?.baseUrl ?? "";
+  return rows.map((i) => ({ code: i.code, discordId: i.discordId!, baseUrl }));
+}
+
+async function readNexusAlerts(ctx: QueryCtx) {
+  const rows = await ctx.db.query("nexusAlerts").withIndex("by_sent", (q) => q.eq("sent", false)).take(10);
+  return rows.map((r) => ({ id: r._id as string, message: r.message, discordId: r.targetDiscordId }));
+}
+
+async function readRoleJobs(ctx: QueryCtx) {
+  const rows = await ctx.db.query("discordRoleJobs").withIndex("by_status", (q) => q.eq("status", "PENDING")).collect();
+  return rows.map((j) => ({ _id: j._id, discordId: j.discordId, addRoleId: j.addRoleId ?? null, removeRoleIds: j.removeRoleIds, reason: j.reason ?? null }));
+}
+
+async function readAbsencesToAnnounce(ctx: QueryCtx) {
+  const rows = (await ctx.db.query("absences").withIndex("by_status", (q) => q.eq("status", "APPROUVEE")).collect())
+    .filter((ab) => ab.announced !== true)
+    .slice(0, 20);
+  const out = [];
+  for (const ab of rows) {
+    const a = await ctx.db.get(ab.agentId);
+    out.push({
+      id: ab._id,
+      name: a ? `${a.prenomRP} ${a.nomRP}` : "Agent",
+      matricule: a?.matricule ?? null,
+      discordId: a?.discordId ?? null,
+      from: ab.from, to: ab.to, reason: ab.reason,
+    });
+  }
+  return out;
+}
+
+async function readSanctionsToAnnounce(ctx: QueryCtx) {
+  const rows = (await ctx.db.query("disciplines").withIndex("by_announce", (q) => q.eq("discordAnnounced", false)).collect())
+    .filter((d) => !d.deletedAt)
+    .slice(0, 20);
+  const out = [];
+  for (const d of rows) {
+    const a = await ctx.db.get(d.agentId);
+    const by = d.byAgentId ? await ctx.db.get(d.byAgentId) : null;
+    out.push({
+      id: d._id,
+      reference: d.reference ?? null,
+      agentName: a ? `${a.prenomRP} ${a.nomRP}` : "Agent",
+      agentMatricule: a?.matricule ?? null,
+      agentDiscordId: a?.discordId ?? null,
+      motif: d.motif,
+      sanction: d.sanction,
+      level: d.level ?? null,
+      suspends: d.suspends ?? false,
+      suspendedUntil: d.suspendedUntil ?? null,
+      byName: by ? `${by.prenomRP} ${by.nomRP}` : null,
+      byMatricule: by?.matricule ?? null,
+      at: d.at,
+    });
+  }
+  return out;
+}
+
+async function readCeremonyPosts(ctx: QueryCtx) {
+  const cfg = await ctx.db.query("integrationConfig").first();
+  const rows = (await ctx.db.query("ceremonyPosts").withIndex("by_sent", (q) => q.eq("sent", false)).collect()).slice(0, 10);
+  return { channel: cfg?.botCeremonyChannel ?? null, posts: rows.map((p) => ({ id: p._id, content: p.content })) };
+}
+
+async function readConvocationsToAnnounce(ctx: QueryCtx) {
+  const rows = (await ctx.db.query("convocations").withIndex("by_announce", (q) => q.eq("discordAnnounced", false)).collect())
+    .filter((c) => !c.deletedAt)
+    .slice(0, 20);
+  const out = [];
+  for (const c of rows) {
+    const a = c.agentId ? await ctx.db.get(c.agentId) : null;
+    const by = c.byAgentId ? await ctx.db.get(c.byAgentId) : null;
+    out.push({
+      id: c._id,
+      reference: c.reference ?? null,
+      agentName: a ? `${a.prenomRP} ${a.nomRP}` : c.agentLabel ?? null,
+      agentMatricule: a?.matricule ?? null,
+      pingDiscordId: a?.discordId ?? c.discordId ?? null,
+      motif: c.motif,
+      convokedAt: c.convokedAt ?? null,
+      lieu: c.lieu ?? null,
+      byName: by ? `${by.prenomRP} ${by.nomRP}` : null,
+      byMatricule: by?.matricule ?? null,
+      at: c.at,
+    });
+  }
+  return out;
+}
+
+async function readTrackingPending(ctx: QueryCtx) {
+  const cfg = await ctx.db.query("integrationConfig").first();
+  const base = cfg?.baseUrl?.trim().replace(/\/+$/, "");
+  const link = (citizenId: string) => (base ? `${base}/citoyen/${citizenId}` : null);
+
+  const out: {
+    kind: "casier" | "citation";
+    id: string;
+    trackingMessageId: string | null;
+    trackingChannelId: string | null;
+    citizenId: string;
+    citizenName: string;
+    label: string;
+    charges: string[];
+    officer: string;
+    totalFine: number;
+    amendeStatut: string | null;
+    closed: boolean;
+    at: number;
+    deleted: boolean;
+    url: string | null;
+  }[] = [];
+
+  const casiers = await ctx.db
+    .query("casierEntries")
+    .withIndex("by_tracking_dirty", (q) => q.eq("trackingDirty", true))
+    .take(25);
+  for (const e of casiers) {
+    const citizen = await ctx.db.get(e.citizenId);
+    const charges = await ctx.db.query("casierCharges").withIndex("by_entry", (q) => q.eq("entryId", e._id)).collect();
+    const amende = (await ctx.db.query("amendes").withIndex("by_casier", (q) => q.eq("casierEntryId", e._id)).collect()).find((a) => !a.deletedAt);
+    out.push({
+      kind: "casier",
+      id: e._id as string,
+      trackingMessageId: e.trackingMessageId ?? null,
+      trackingChannelId: e.trackingChannelId ?? null,
+      citizenId: e.citizenId as string,
+      citizenName: citizen ? `${citizen.prenom} ${citizen.nom}` : "-",
+      label: e.arrestType === "DOSSIER" ? "Dossier d'arrestation" : "Rapport d'arrestation",
+      charges: charges.map((c) => chargeDisplayNameQty(c.snapshot.name, c.attemptType, c.formulaParam)),
+      officer: await firstCasierOfficer(ctx, e),
+      totalFine: e.totalFine,
+      amendeStatut: amende?.statut ?? null,
+      closed: e.closed ?? false,
+      at: e.at,
+      deleted: !!e.deletedAt || e.status === "ANNULEE",
+      url: link(e.citizenId as string),
+    });
+  }
+
+  const citations = await ctx.db
+    .query("citations")
+    .withIndex("by_tracking_dirty", (q) => q.eq("trackingDirty", true))
+    .take(25);
+  for (const c of citations) {
+    const citizen = await ctx.db.get(c.citizenId);
+    const charges = await ctx.db.query("citationCharges").withIndex("by_citation", (q) => q.eq("citationId", c._id)).collect();
+    const amende = (await ctx.db.query("amendes").withIndex("by_citation", (q) => q.eq("citationId", c._id)).collect()).find((a) => !a.deletedAt);
+    let officer = c.officerName ?? "-";
+    if (!c.officerName) {
+      const a = await ctx.db.get(c.officerId);
+      if (a) officer = `${a.prenomRP} ${a.nomRP}`;
+    }
+    out.push({
+      kind: "citation",
+      id: c._id as string,
+      trackingMessageId: c.trackingMessageId ?? null,
+      trackingChannelId: c.trackingChannelId ?? null,
+      citizenId: c.citizenId as string,
+      citizenName: citizen ? `${citizen.prenom} ${citizen.nom}` : "-",
+      label: "Contravention",
+      charges: charges.map((ch) => chargeDisplayNameQty(ch.snapshot.name, ch.attemptType, ch.formulaParam)),
+      officer,
+      totalFine: c.totalFine,
+      amendeStatut: amende?.statut ?? null,
+      closed: false,
+      at: c.at,
+      deleted: !!c.deletedAt || c.status === "ANNULEE",
+      url: link(c.citizenId as string),
+    });
+  }
+
+  return out;
+}
+
+async function readTicketsDue(ctx: QueryCtx, now: number) {
+  const rows = await ctx.db.query("tickets")
+    .withIndex("by_close", (q) => q.eq("status", "OPEN").gt("scheduledCloseAt", 0).lte("scheduledCloseAt", now))
+    .collect();
+  return rows.map((t) => ({ channelId: t.channelId, ownerId: t.ownerId, prenom: t.prenom, nom: t.nom }));
+}
+
+async function readInterviewReminders(ctx: QueryCtx, now: number) {
+  const tickets = await ctx.db.query("tickets")
+    .withIndex("by_interview", (q) => q.eq("status", "OPEN").gt("interviewAt", now).lte("interviewAt", now + 15 * 60_000))
+    .collect();
+  const due = tickets.filter((t) =>
+    t.integrationStatus === "INTERVIEW" &&
+    t.interviewRemindedFor !== t.interviewAt,
+  );
+  return due.map((t) => ({ channelId: t.channelId, ownerId: t.ownerId, interviewById: t.interviewById ?? null, interviewAt: t.interviewAt!, prenom: t.prenom, nom: t.nom, interviewPresence: t.interviewPresence ?? null }));
+}
+
+// Requête AGRÉGÉE : UNE Function Call par tick au lieu de ~15. Les tranches
+// coûteuses/temporelles (roll call, récap quotidien) sont gardées par `now`.
+export const tick = query({
+  args: { secret: v.string(), now: v.number() },
+  handler: async (ctx, { secret, now }) => {
+    assertBot(secret);
+    const config = await readConfig(ctx);
+    const ticketConfig = ticketDefaults(await ctx.db.query("ticketConfig").first());
+    const clock = parisClock(now);
+
+    // Roll call : n'existe qu'à partir de l'heure d'ouverture (avant, aucun appel
+    // du jour n'est encore créé -> rollcallToday renverrait null de toute façon).
+    let rollcall: Awaited<ReturnType<typeof readRollcallForDate>> = null;
+    if (
+      config.rollcallChannel && config.rollcallStartAt && config.rollcallEndAt &&
+      clock.min >= hhmmToMin(config.rollcallStartAt)
+    ) {
+      rollcall = await readRollcallForDate(ctx, clock.date);
+    }
+
+    // Récap quotidien (COÛTEUX : agrège les sessions) : seulement passé l'heure et
+    // pas déjà envoyé aujourd'hui (anti-doublon persistant).
+    let dayStats: Awaited<ReturnType<typeof readDayStats>> | null = null;
+    if (
+      config.dailyChannel && config.dailyAt &&
+      clock.min >= hhmmToMin(config.dailyAt) &&
+      config.lastDailyRecap !== clock.date
+    ) {
+      dayStats = await readDayStats(ctx);
+    }
+
+    return {
+      config,
+      ticketConfig,
+      rollcall,
+      dayStats,
+      // Tranches toujours utiles (files de drain, indexées et petites).
+      agentsOnDuty: config.presenceChannel ? await readOnDuty(ctx) : null,
+      ticketsDueForClose: await readTicketsDue(ctx, now),
+      interviewReminders: await readInterviewReminders(ctx, now),
+      accountDMQueue: await readAccountDMs(ctx),
+      nexusAlertQueue: await readNexusAlerts(ctx),
+      roleJobsPending: await readRoleJobs(ctx),
+      ceremonyPosts: await readCeremonyPosts(ctx),
+      // Tranches conditionnées au salon configuré (rien à publier sinon).
+      absencesToAnnounce: config.absenceChannel ? await readAbsencesToAnnounce(ctx) : [],
+      sanctionsToAnnounce: config.sanctionsChannel ? await readSanctionsToAnnounce(ctx) : [],
+      convocationsToAnnounce: config.sanctionsChannel ? await readConvocationsToAnnounce(ctx) : [],
+      trackingPending: config.trackingChannel ? await readTrackingPending(ctx) : [],
+    };
   },
 });

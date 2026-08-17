@@ -1,6 +1,6 @@
-import { mutation, query } from "./_generated/server";
+import { internalMutation, mutation, query } from "./_generated/server";
 import { v, ConvexError } from "convex/values";
-import type { QueryCtx } from "./_generated/server";
+import type { QueryCtx, MutationCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { requireAgent, requirePermission, requireOwnOrPermission, agentLabel, can } from "./rbac";
 import { writeAudit } from "./lib/audit";
@@ -38,6 +38,59 @@ async function officerViews(
     out.push({ name: l.name, matricule: l.matricule, linked: true });
   }
   return out;
+}
+
+type AgentId = import("./_generated/dataModel").Id<"agents">;
+type EntryId = import("./_generated/dataModel").Id<"casierEntries">;
+
+// Ensemble final des agents impliqués : le créateur en 1re position (jamais
+// retiré), suivi des autres agents distincts. Dédup par id.
+function officerSet(creator: AgentId, others: AgentId[] | undefined): AgentId[] {
+  const out: AgentId[] = [creator];
+  const seen = new Set<string>([creator]);
+  for (const id of others ?? []) {
+    if (!seen.has(id)) { seen.add(id); out.push(id); }
+  }
+  return out;
+}
+
+// Instantané `officers` (nom + matricule + agentId) pour une liste d'ids d'agents,
+// dans l'ordre reçu (créateur d'abord). Ignore les ids introuvables.
+async function officerSnapshot(
+  ctx: QueryCtx,
+  ids: AgentId[],
+): Promise<{ name: string; matricule?: string; agentId: AgentId }[]> {
+  const out = [];
+  for (const id of ids) {
+    const a = await ctx.db.get(id);
+    if (!a) continue;
+    out.push({
+      name: `${a.prenomRP} ${a.nomRP}`,
+      matricule: a.matricule != null ? String(a.matricule) : undefined,
+      agentId: a._id,
+    });
+  }
+  return out;
+}
+
+// (Ré)concilie les lignes de jointure casierOfficers d'une entrée pour refléter
+// exactement `finalIds` : supprime les officiers retirés, insère les ajoutés.
+// `at` = date de l'arrestation (index by_officer borné sans db.get).
+async function reconcileCasierOfficers(
+  ctx: MutationCtx,
+  entryId: EntryId,
+  finalIds: AgentId[],
+  at: number,
+): Promise<void> {
+  const existing = await ctx.db.query("casierOfficers").withIndex("by_entry", (q) => q.eq("entryId", entryId)).collect();
+  const finalSet = new Set(finalIds.map((id) => id as string));
+  const kept = new Set<string>();
+  for (const row of existing) {
+    const key = row.officerId as string;
+    if (!row.deletedAt && finalSet.has(key) && !kept.has(key)) { kept.add(key); continue; }
+    await ctx.db.delete(row._id); // retiré, en double, ou précédemment supprimé
+  }
+  for (const id of finalIds) if (!kept.has(id as string)) await ctx.db.insert("casierOfficers", { entryId, officerId: id, at });
 }
 
 // Type d'une charge saisie (casier / rapport / dossier), label tentative inclus.
@@ -229,6 +282,9 @@ export const getEntry = query({
       // sans détenir la permission dédiée.
       mine: e.createdBy === agent._id,
       officers,
+      // Agents impliqués reliés à un compte (édition) + créateur non retirable.
+      officerIds: e.officerIds,
+      creatorId: e.createdBy,
       defcon: e.defconSnapshot,
       totalFine: e.totalFine,
       totalJailSeconds: e.totalJailSeconds,
@@ -293,8 +349,10 @@ export const updateArrest = mutation({
     dossierStatus: v.optional(v.string()),
     forceUsed: v.optional(v.boolean()),
     finePaid: v.optional(v.boolean()),
+    // Agents impliqués (hors créateur). Absent = inchangé.
+    officerIds: v.optional(v.array(v.id("agents"))),
   },
-  handler: async (ctx, { entryId, ...f }) => {
+  handler: async (ctx, { entryId, officerIds, ...f }) => {
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "casier.edit");
     const e = await ctx.db.get(entryId);
@@ -311,15 +369,24 @@ export const updateArrest = mutation({
       arrestType === "DOSSIER"
         ? { ...f, arrestType }
         : { ...f, arrestType, linkedReportId: undefined, vehicleIds: undefined, weaponIds: undefined, dossierStatus: undefined };
+    // Agents impliqués édités : recalcule l'ensemble (créateur d'ORIGINE toujours
+    // 1er), l'instantané `officers`, et réconcilie la jointure casierOfficers.
+    const officerPatch: { officerIds?: AgentId[]; officers?: { name: string; matricule?: string; agentId: AgentId }[] } = {};
+    if (officerIds !== undefined) {
+      const finalIds = officerSet(e.createdBy, officerIds);
+      officerPatch.officerIds = finalIds;
+      officerPatch.officers = await officerSnapshot(ctx, finalIds);
+      await reconcileCasierOfficers(ctx, entryId, finalIds, e.at);
+    }
     // Suivi Discord : l'embed du salon de suivi doit refléter la modification.
-    await ctx.db.patch(entryId, { ...patch, trackingDirty: true });
+    await ctx.db.patch(entryId, { ...patch, ...officerPatch, trackingDirty: true });
     const citizen = await ctx.db.get(e.citizenId);
     await writeAudit(ctx, agent, {
       action: "casier.arrest_update",
       resourceType: "casierEntry",
       resourceId: entryId,
       resourceLabel: citizen ? `${citizen.prenom} ${citizen.nom}` : "",
-      metadata: { arrestType: f.arrestType },
+      metadata: { arrestType: f.arrestType, ...(officerPatch.officerIds ? { officers: officerPatch.officerIds.length } : {}) },
     });
     await notify(ctx, "casier.update", {
       title: "Dossier d'arrestation modifié",
@@ -387,7 +454,13 @@ export const remove = mutation({
     await requireOwnOrPermission(ctx, agent, e.createdBy, "casier.annul");
     const citizen = await ctx.db.get(e.citizenId);
     // Suivi Discord : marquer sale pour que le bot retire/annule l'embed.
-    await ctx.db.patch(entryId, { deletedAt: Date.now(), deletedBy: agent._id, trackingDirty: true });
+    const removedAt = Date.now();
+    await ctx.db.patch(entryId, { deletedAt: removedAt, deletedBy: agent._id, trackingDirty: true });
+    // Jointure agents impliqués : marquée supprimée (les stats par agent, qui
+    // relisent l'entrée, l'écartent déjà — ce marquage garde la table cohérente).
+    for (const row of await ctx.db.query("casierOfficers").withIndex("by_entry", (q) => q.eq("entryId", entryId)).collect()) {
+      if (!row.deletedAt) await ctx.db.patch(row._id, { deletedAt: removedAt });
+    }
     await writeAudit(ctx, agent, {
       action: "casier.entry_delete",
       resourceType: "casierEntry",
@@ -422,6 +495,8 @@ export const addEntry = mutation({
     derouleFaits: v.optional(v.string()),
     lieu: v.optional(v.string()),
     notes: v.optional(v.string()),
+    // Agents impliqués (hors créateur, qui est toujours ajouté en 1re position).
+    officerIds: v.optional(v.array(v.id("agents"))),
     // Arrestation (§3)
     cuffedAt: v.optional(v.string()),
     mirandaAt: v.optional(v.string()),
@@ -451,10 +526,18 @@ export const addEntry = mutation({
     // (un rapport avec avocat devient un dossier) ; sinon simple rapport (item 6).
     const isDossier = !!args.avocat?.trim() || snaps.some((s) => s.snapshot.severity === "Crime" || s.snapshot.severity === "Délit majeur");
 
+    // Agents impliqués : créateur (1er, jamais retiré) + autres agents distincts.
+    // `officerIds` (indexé nulle part car tableau) sert à l'affichage ; le crédit
+    // des stats par agent passe par la table de jointure casierOfficers.
+    const finalOfficerIds = officerSet(agent._id, args.officerIds);
+    const officers = await officerSnapshot(ctx, finalOfficerIds);
+
+    const at = Date.now();
     const entryId = await ctx.db.insert("casierEntries", {
       citizenId: args.citizenId,
-      at: Date.now(),
-      officerIds: [agent._id],
+      at,
+      officerIds: finalOfficerIds,
+      officers,
       arrestType: isDossier ? "DOSSIER" : "RAPPORT",
       defconSnapshot: {
         name: defcon.name,
@@ -489,6 +572,8 @@ export const addEntry = mutation({
       trackingDirty: true,
     });
     for (const s of snaps) await ctx.db.insert("casierCharges", { entryId, ...s });
+    // Une ligne de jointure par agent impliqué (crédit stats via index by_officer).
+    for (const oid of finalOfficerIds) await ctx.db.insert("casierOfficers", { entryId, officerId: oid, at });
 
     const citizen = await ctx.db.get(args.citizenId);
     await writeAudit(ctx, agent, {
@@ -654,5 +739,28 @@ export const updateCharges = mutation({
     await ctx.scheduler.runAfter(0, internal.push.notify, {});
 
     return entryId;
+  },
+});
+
+// Backfill idempotent de la jointure casierOfficers depuis les officerIds déjà
+// présents sur les entrées existantes (arrestations créées avant l'ajout des
+// « agents impliqués »). Sans lui, `me` / `myRangeStats` ne verraient que les
+// arrestations disposant de lignes de jointure. À lancer une fois à la main.
+export const backfillCasierOfficers = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    let scanned = 0, created = 0;
+    for (const e of await ctx.db.query("casierEntries").collect()) {
+      scanned++;
+      const existing = await ctx.db.query("casierOfficers").withIndex("by_entry", (q) => q.eq("entryId", e._id)).collect();
+      const have = new Set(existing.map((r) => r.officerId as string));
+      for (const oid of officerSet(e.createdBy, e.officerIds)) {
+        if (have.has(oid as string)) continue;
+        await ctx.db.insert("casierOfficers", { entryId: e._id, officerId: oid, at: e.at, ...(e.deletedAt ? { deletedAt: e.deletedAt } : {}) });
+        have.add(oid as string);
+        created++;
+      }
+    }
+    return { scanned, created };
   },
 });

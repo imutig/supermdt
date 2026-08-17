@@ -101,7 +101,31 @@ type WeeklyHours =
   | { found: false }
   | { found: true; name: string; matricule: number | null; grade: string; totalMinutes: number; perDay: number[] };
 
+// Résultat AGRÉGÉ d'un tick : une seule Function Call Convex regroupe toutes les
+// lectures que le bot interrogeait séparément à chaque passage. Les tranches
+// coûteuses/temporelles (roll call, récap quotidien) sont null hors de leur
+// fenêtre horaire. Les mutations restent des appels séparés (écritures ponctuelles).
+export type TickResult = {
+  config: BotConfig;
+  ticketConfig: TicketConfig;
+  rollcall: RollcallRef | null;
+  dayStats: DayStats | null;
+  agentsOnDuty: OnDutyAgent[] | null;
+  ticketsDueForClose: { channelId: string; ownerId: string; prenom: string; nom: string }[];
+  interviewReminders: { channelId: string; ownerId: string; interviewById: string | null; interviewAt: number; prenom: string; nom: string; interviewPresence: "CONFIRMED" | "DECLINED" | null }[];
+  accountDMQueue: { code: string; discordId: string; baseUrl: string }[];
+  nexusAlertQueue: { id: string; message: string; discordId: string }[];
+  roleJobsPending: { _id: string; discordId: string; addRoleId: string | null; removeRoleIds: string[]; reason: string | null }[];
+  ceremonyPosts: { channel: string | null; posts: { id: string; content: string }[] };
+  absencesToAnnounce: { id: string; name: string; matricule: number | null; discordId: string | null; from: number; to: number; reason: string }[];
+  sanctionsToAnnounce: SanctionAnnounce[];
+  convocationsToAnnounce: ConvocationAnnounce[];
+  trackingPending: TrackingItem[];
+};
+
 export const mdt = {
+  // UNE requête agrégée par tick (remplace ~15 requêtes séparées). Voir tasks.ts.
+  tick: (now: number) => client.query(anyApi.bot.tick, { secret: env.botSecret, now }) as Promise<TickResult>,
   agentsOnDuty: () => client.query(anyApi.bot.agentsOnDuty, { secret: env.botSecret }) as Promise<OnDutyAgent[]>,
   dayStats: () => client.query(anyApi.bot.dayStats, { secret: env.botSecret }) as Promise<DayStats>,
   overview: () => client.query(anyApi.bot.overview, { secret: env.botSecret }) as Promise<Overview>,

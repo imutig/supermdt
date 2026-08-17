@@ -1370,6 +1370,21 @@ export default defineSchema({
     onDecision: v.boolean(),
   }).index("by_entry", ["entryId"]),
 
+  // Table de jointure « agents impliqués » d'une arrestation (dossier / rapport).
+  // Une ligne par (entrée, officier) : permet de CRÉDITER les stats d'un agent
+  // impliqué via un INDEX par agent (by_officer), sans jamais scanner la table
+  // casierEntries en filtrant sur le tableau officerIds (impossible à indexer).
+  // `at` = date de l'arrestation (copiée de l'entrée) pour borner la plage sans
+  // db.get. Le créateur a aussi sa ligne (il est toujours un agent impliqué).
+  casierOfficers: defineTable({
+    entryId: v.id("casierEntries"),
+    officerId: v.id("agents"),
+    at: v.number(),
+    deletedAt: v.optional(v.number()),
+  })
+    .index("by_officer", ["officerId", "at"])
+    .index("by_entry", ["entryId"]),
+
   // ============ MANDATS (§10.7) ============
   mandatTypes: defineTable({
     name: v.string(),
