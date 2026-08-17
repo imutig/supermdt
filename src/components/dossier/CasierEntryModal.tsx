@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { readableError } from "@/lib/errors";
-import { X, Trash2 } from "lucide-react";
+import { X, Trash2, FileText } from "lucide-react";
+import { CasierDoc } from "@/components/docs/CasierDoc";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { api, type Id } from "@/lib/api";
 import { AgentTag } from "@/components/common/AgentTag";
@@ -54,6 +55,7 @@ export function CasierEntryModal({ entryId, canDelete: canDeleteAny, onClose }: 
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState(false);
   const [editCharges, setEditCharges] = useState(false);
+  const [doc, setDoc] = useState(false);
 
   // Volet arrestation éditable (dérivé de l'entrée).
   const [init, setInit] = useState(false);
@@ -119,6 +121,11 @@ export function CasierEntryModal({ entryId, canDelete: canDeleteAny, onClose }: 
           </div>
           {entry?.closed && <span className="rounded-[5px] px-[8px] py-[3px] text-[11px] font-bold uppercase" style={{ background: "color-mix(in srgb, var(--muted) 16%, transparent)", color: "var(--muted)" }}>Clos</span>}
           {entry && entry.status === "ANNULEE" && <span className="rounded-[5px] px-[8px] py-[3px] text-[11px] font-semibold" style={{ background: "color-mix(in srgb, var(--muted) 14%, transparent)", color: "var(--muted)" }}>Annulée</span>}
+          {entry && (
+            <button onClick={() => setDoc(true)} title="Document officiel (image imprimable)" className="flex items-center gap-[6px] rounded-sm border border-border bg-surface-2 px-[10px] py-[7px] text-[12px] font-semibold text-muted hover:border-border-strong">
+              <FileText className="h-[15px] w-[15px]" /> Document
+            </button>
+          )}
           <button onClick={onClose} className="flex h-[30px] w-[30px] items-center justify-center rounded-sm border border-border bg-surface-2 text-muted hover:border-border-strong"><X className="h-4 w-4" /></button>
         </div>
 
@@ -302,6 +309,7 @@ export function CasierEntryModal({ entryId, canDelete: canDeleteAny, onClose }: 
         onClose={() => setEditCharges(false)}
       />
     )}
+    {doc && <CasierDoc entryId={entryId} onClose={() => setDoc(false)} />}
     </>
   );
 }
