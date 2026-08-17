@@ -214,7 +214,7 @@ export function buildTex(p: ReportPayload): string {
     `\\kpi{${k.arrestations}}{Arrestations}`,
     `\\kpi{${k.contraventions}}{Contraventions}`,
     `\\kpi{${money(k.amendesMontant)}}{Amendes émises}`,
-    `\\kpi{${tex(k.heuresService)}}{Heures de service\\mdtmark}`,
+    `\\kpi{${tex(k.heuresService)}}{Heures de service}`,
     `\\kpi{${k.patrouilles}}{Patrouilles\\mdtmark}`,
     `\\kpi{${k.operations}}{Opérations\\mdtmark}`,
     `\\kpi{${k.appels911}}{Appels 911\\mdtmark}`,

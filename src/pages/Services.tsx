@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Pencil, Trash2, Square, Check, X, Search } from "lucide-react";
+import { Pencil, Trash2, Square, Check, X, Search, RefreshCw } from "lucide-react";
 import { useMutation, useQuery, usePaginatedQuery } from "convex/react";
 import { api, type Id } from "@/lib/api";
 import { useToast } from "@/providers/toast";
@@ -116,8 +116,13 @@ function SessionRow({
 export function Services() {
   const { can } = useCan();
   const canManage = can("services.manage");
-  const [tab, setTab] = useState<"mine" | "all">("mine");
+  const [tab, setTab] = useState<"mine" | "ingame" | "all">("mine");
   const mine = useQuery(api.services.mine);
+  const ingame = useQuery(api.ingameService.myWeekly, tab === "ingame" ? { weeks: 10 } : "skip");
+  const igConfig = useQuery(api.ingameService.config, tab === "all" && canManage ? {} : "skip");
+  const setIgChannel = useMutation(api.ingameService.setChannel);
+  const requestResync = useMutation(api.ingameService.requestResync);
+  const toastP = useToast();
   const [agentId, setAgentId] = useState<Id<"agents"> | null>(null);
   const [q, setQ] = useState("");
   const globalOn = tab === "all" && canManage;
@@ -143,6 +148,9 @@ export function Services() {
       <div className="mb-[16px] flex gap-[2px] rounded-card border border-border bg-surface p-[5px]" style={{ width: "fit-content" }}>
         <button onClick={() => setTab("mine")} className="rounded-[7px] px-[14px] py-[7px] text-[12.5px] font-semibold" style={tab === "mine" ? { background: "var(--accent)", color: "#fff" } : { color: "var(--muted)" }}>
           Mes services
+        </button>
+        <button onClick={() => setTab("ingame")} className="rounded-[7px] px-[14px] py-[7px] text-[12.5px] font-semibold" style={tab === "ingame" ? { background: "var(--accent)", color: "#fff" } : { color: "var(--muted)" }}>
+          Services in-game
         </button>
         {canManage && (
           <button onClick={() => setTab("all")} className="rounded-[7px] px-[14px] py-[7px] text-[12.5px] font-semibold" style={tab === "all" ? { background: "var(--accent)", color: "#fff" } : { color: "var(--muted)" }}>
@@ -180,8 +188,63 @@ export function Services() {
             )}
           </div>
         </>
+      ) : tab === "ingame" ? (
+        <>
+          <div className="mb-[14px] flex flex-wrap gap-3">
+            <div className="rounded-card border border-border bg-surface px-[18px] py-[14px]">
+              <div className="text-[10.5px] font-bold uppercase tracking-[0.09em] text-faint">Total in-game (depuis mes débuts)</div>
+              <div className="mt-1 font-data text-[24px] font-bold">{ingame ? ingame.totalDisplay : "…"}</div>
+            </div>
+          </div>
+          {ingame && !ingame.linked && (
+            <div className="mb-[12px] rounded-card border px-[14px] py-[10px] text-[12.5px]" style={{ borderColor: "color-mix(in srgb, var(--warning) 40%, var(--border))", background: "color-mix(in srgb, var(--warning) 7%, var(--surface))", color: "var(--warning)" }}>
+              Ton compte Discord n'est pas lié : lie-le pour associer automatiquement tes services in-game.
+            </div>
+          )}
+          <div className="overflow-hidden rounded-card border border-border bg-surface">
+            <div className="grid grid-cols-[1.6fr_1fr] gap-3 border-b border-border px-4 py-[10px] text-[10px] font-bold uppercase tracking-[0.08em] text-faint">
+              <span>Semaine (lun. → dim.)</span><span>Temps en service</span>
+            </div>
+            {ingame === undefined ? (
+              <div className="p-4"><SkeletonRows rows={5} /></div>
+            ) : ingame.weeks.length === 0 ? (
+              <EmptyState title="Aucun service in-game" message="Tes prises de service en jeu apparaîtront ici après la synchronisation." />
+            ) : (
+              ingame.weeks.map((w) => (
+                <div key={w.weekStart} className="grid grid-cols-[1.6fr_1fr] gap-3 border-b border-border px-4 py-[10px] text-[12.5px] last:border-b-0">
+                  <span className="font-semibold">{w.label}<span className="ml-2 font-data text-[11px] font-normal text-faint">{new Date(w.weekStart).toLocaleDateString("fr-FR", { day: "2-digit", month: "short" })} – {new Date(w.weekEnd).toLocaleDateString("fr-FR", { day: "2-digit", month: "short" })}</span></span>
+                  <span className="font-data font-semibold" style={{ color: w.seconds > 0 ? "var(--text)" : "var(--faint)" }}>{w.display}</span>
+                </div>
+              ))
+            )}
+          </div>
+        </>
       ) : (
         <>
+          {/* Configuration & resynchronisation des services in-game */}
+          <div className="mb-[16px] rounded-card border border-border bg-surface p-[15px]">
+            <div className="mb-[10px] flex items-center gap-2">
+              <div className="flex-1 text-[12px] font-bold uppercase tracking-[0.08em] text-faint">Services in-game (salon VIZU)</div>
+              {igConfig?.lastSyncAt && <span className="text-[11px] text-faint">Dernière synchro : {new Date(igConfig.lastSyncAt).toLocaleString("fr-FR")}</span>}
+            </div>
+            <div className="flex flex-wrap items-end gap-3">
+              {can("rbac.manage") && (
+                <label className="flex flex-col gap-[4px]">
+                  <span className="text-[10.5px] font-semibold uppercase text-faint">ID du salon Discord</span>
+                  <input defaultValue={igConfig?.channelId ?? ""} onBlur={(e) => void toastP.guard(setIgChannel({ channelId: e.target.value }), "Enregistrement impossible")} placeholder="ID du salon" className="h-9 w-[240px] rounded-sm border border-border bg-surface-2 px-2 font-data text-[13px] outline-none focus:border-accent" />
+                </label>
+              )}
+              <button
+                disabled={!igConfig?.channelId || igConfig?.resyncPending}
+                onClick={async () => { const r = await toastP.guard(requestResync({}), "Resynchro impossible"); if (r !== undefined) toastP.success("Resynchronisation demandée — le bot relit l'historique."); }}
+                className="flex items-center gap-[7px] rounded-sm border border-border bg-surface-2 px-[14px] py-[9px] text-[13px] font-semibold hover:border-accent disabled:opacity-50"
+              >
+                <RefreshCw className={`h-[15px] w-[15px] ${igConfig?.resyncPending ? "animate-spin" : ""}`} /> {igConfig?.resyncPending ? "Resynchro en cours…" : "Resynchroniser"}
+              </button>
+              {igConfig != null && <span className="text-[12px] text-muted">{igConfig.total} service(s) importé(s)</span>}
+            </div>
+            <div className="mt-[8px] text-[11px] text-faint">Le bot lit le salon par intervalles (nouveaux messages uniquement) ; la resynchronisation relit tout l'historique.</div>
+          </div>
           {/* Filtre serveur par agent (annuaire borné, recherche nom / badge) */}
           <div className="relative mb-[14px] max-w-[420px]">
             {selectedAgent ? (

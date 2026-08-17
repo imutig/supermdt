@@ -755,6 +755,24 @@ export default defineSchema({
     updatedAt: v.number(),
   }),
 
+  // Services IN-GAME lus depuis le salon Discord « VIZU | Service Log ». Chaque
+  // prise de service en jeu = un embed ; dédupliqués par messageId. Indépendants
+  // des serviceSessions (service MDT). Rétroactifs (historique lu au 1er sync).
+  inGameServices: defineTable({
+    messageId: v.string(), // id du message Discord source (dédup)
+    discordId: v.string(),
+    agentId: v.optional(v.id("agents")), // apparié si le Discord est lié à un agent
+    ingameName: v.optional(v.string()),
+    ingameId: v.optional(v.string()),
+    startedAt: v.number(),
+    endedAt: v.number(),
+    seconds: v.number(),
+    createdAt: v.number(),
+  })
+    .index("by_message", ["messageId"])
+    .index("by_agent", ["agentId"])
+    .index("by_discord", ["discordId"]),
+
   // Rapport hebdomadaire d'activité (à l'attention du Gouvernement RP) : sections
   // rédigées à la main + agents à l'honneur curatés + référence du dernier PDF.
   // Les données chiffrées sont agrégées à la volée à la génération, pas stockées.
@@ -1784,6 +1802,11 @@ export default defineSchema({
     // Date (YYYY-MM-DD, Paris) du dernier récap quotidien envoyé : persiste
     // l'anti-doublon au-delà d'un redéploiement du bot.
     botLastDailyRecap: v.optional(v.string()),
+    // Services in-game (salon « VIZU | Service Log »).
+    botIngameServiceChannel: v.optional(v.string()), // salon à lire (vide = désactivé)
+    ingameServiceLastMsgId: v.optional(v.string()),  // curseur : dernier message traité
+    ingameServiceResync: v.optional(v.boolean()),    // demande de resync complet (historique)
+    ingameServiceLastSyncAt: v.optional(v.number()), // horodatage du dernier passage
     updatedBy: v.optional(v.id("agents")),
     updatedAt: v.number(),
   }),

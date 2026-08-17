@@ -3,6 +3,7 @@ import { mdt } from "./convex.js";
 import { presenceEmbed, dailyEmbed, absencePublishEmbed, sanctionEmbed, convocationEmbed, trackingEmbed, ftoAnnounceEmbed } from "./embeds.js";
 import { openRollcall, closeRollcall, remindNonVoters, LSPD_ROLE } from "./rollcall.js";
 import { reconcilePromoCategories, reconcilePromoDeletions, deprogramInterview, parisWallToEpoch, archiveAndDeleteChannel } from "./tickets.js";
+import { syncInGameServices } from "./ingame.js";
 import { baseEmbed, BRAND } from "./theme.js";
 
 // Les salons et l'heure du récap sont lus depuis le MDT (page Configuration),
@@ -173,6 +174,9 @@ export function startTasks(client: Client) {
     // --- Catégories de promo : crée celles qui manquent, nettoie les supprimées ---
     await reconcilePromoCategories(client).catch(() => {});
     await reconcilePromoDeletions(client).catch(() => {});
+
+    // --- Services in-game (salon VIZU) : incrémental (throttlé) ou resync complet ---
+    await syncInGameServices(client).catch(() => {});
 
     // --- Entretiens à T-15 min ---
     // Confirmé : rappel (MP candidat + ping instructeur). Non confirmé :

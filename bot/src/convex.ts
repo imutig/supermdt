@@ -165,6 +165,13 @@ export const mdt = {
   ceremonyPostsToSend: () => client.query(anyApi.bot.ceremonyPostsToSend, { secret: env.botSecret }) as Promise<{ channel: string | null; posts: { id: string; content: string }[] }>,
   markCeremonyPostSent: (id: string) => client.mutation(anyApi.bot.markCeremonyPostSent, { secret: env.botSecret, id }) as Promise<void>,
   markFtoAnnouncement: (id: string) => client.mutation(anyApi.bot.markFtoAnnouncement, { secret: env.botSecret, id }) as Promise<void>,
+
+  // Services in-game (salon « VIZU | Service Log »).
+  ingameSyncState: () => client.query(anyApi.ingameService.syncState, { secret: env.botSecret }) as Promise<{ channelId: string | null; lastMsgId: string | null; resync: boolean }>,
+  ingameUpsert: (a: { messageId: string; discordId: string; startedAt: number; endedAt: number; ingameName?: string; ingameId?: string }) =>
+    client.mutation(anyApi.ingameService.upsert, { secret: env.botSecret, ...a }) as Promise<{ created: boolean }>,
+  ingameSetCursor: (a: { lastMsgId?: string; clearResync?: boolean }) =>
+    client.mutation(anyApi.ingameService.setCursor, { secret: env.botSecret, ...a }) as Promise<void>,
   roleJobsPending: () => client.query(anyApi.bot.roleJobsPending, { secret: env.botSecret }) as Promise<{ _id: string; discordId: string; addRoleId: string | null; removeRoleIds: string[]; reason: string | null }[]>,
   markRoleJob: (jobId: string, status: "DONE" | "ERROR", error?: string) => client.mutation(anyApi.bot.markRoleJob, { secret: env.botSecret, jobId, status, error }) as Promise<void>,
 

@@ -5,6 +5,7 @@ import type { Id } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
 import { requireAgent, requirePermission } from "./rbac";
 import { parisParts, parisWallToEpoch } from "./lib/paris";
+import { stationInGameSeconds } from "./ingameService";
 
 // Rapport hebdomadaire d'activité (à l'attention du Gouvernement RP). Les données
 // chiffrées sont agrégées à la volée sur la période ; les sections rédigées à la
@@ -85,13 +86,9 @@ async function aggregate(ctx: QueryCtx, from: number, to: number) {
   const amendes = (await ctx.db.query("amendes").collect()).filter((a) => inRange(a._creationTime) && !a.deletedAt);
   const amendesMontant = amendes.reduce((s, a) => s + (a.montant ?? 0), 0);
 
-  // Heures de service (chevauchement des sessions avec la période).
-  let serviceSec = 0;
-  for (const s of await ctx.db.query("serviceSessions").collect()) {
-    const end = s.endedAt ?? to;
-    const a = Math.max(s.startedAt, from), b = Math.min(end, to);
-    if (b > a) serviceSec += Math.floor((b - a) / 1000);
-  }
+  // Heures de service IN-GAME (chevauchement avec la période, réparti aux bornes
+  // de semaine). Source = salon « VIZU | Service Log » synchronisé par le bot.
+  const serviceSec = await stationInGameSeconds(ctx, from, to);
 
   // Opérations, patrouilles, appels 911, saisies, sanctions, avis de recherche.
   const operationsRows = (await ctx.db.query("operations").collect()).filter((o) => inRange(o.startedAt));

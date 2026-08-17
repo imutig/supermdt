@@ -12,7 +12,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 // sont donc publiques mais protégées par un secret partagé (variable Convex
 // BOT_SECRET, jamais dans le bundle client). Toute fonction exposée ici est en
 // LECTURE SEULE - le bot n'écrit rien dans le MDT.
-function assertBot(secret: string) {
+export function assertBot(secret: string) {
   const expected = process.env.BOT_SECRET;
   if (!expected) throw new ConvexError("BOT_SECRET non configuré côté Convex.");
   if (secret !== expected) throw new ConvexError("Secret invalide.");
