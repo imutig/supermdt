@@ -71,6 +71,21 @@ export const setStatus = mutation({
     if (a.nexusId) {
       await ctx.scheduler.runAfter(0, internal.nexusSync.patchAmendeStatus, { amendeId, agentId: agent._id });
     }
+    // Suivi Discord : le statut d'amende apparaît dans l'embed du dossier/de la
+    // contravention lié — on le marque « sale » pour que le bot ré-édite l'embed.
+    if (a.casierEntryId) {
+      const ce = await ctx.db.get(a.casierEntryId);
+      if (ce && !ce.deletedAt) {
+        await ctx.db.patch(a.casierEntryId, { trackingDirty: true });
+        await ctx.scheduler.runAfter(0, internal.push.notify, {});
+      }
+    } else if (a.citationId) {
+      const ci = await ctx.db.get(a.citationId);
+      if (ci && !ci.deletedAt) {
+        await ctx.db.patch(a.citationId, { trackingDirty: true });
+        await ctx.scheduler.runAfter(0, internal.push.notify, {});
+      }
+    }
     const citizen = await ctx.db.get(a.citizenId);
     await writeAudit(ctx, agent, {
       action: "amende.status",

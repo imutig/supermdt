@@ -1,6 +1,6 @@
 import { type Client, type TextChannel } from "discord.js";
 import { mdt } from "./convex.js";
-import { presenceEmbed, dailyEmbed, absencePublishEmbed, sanctionEmbed, convocationEmbed } from "./embeds.js";
+import { presenceEmbed, dailyEmbed, absencePublishEmbed, sanctionEmbed, convocationEmbed, trackingEmbed } from "./embeds.js";
 import { openRollcall, closeRollcall, remindNonVoters, LSPD_ROLE } from "./rollcall.js";
 import { reconcilePromoCategories, reconcilePromoDeletions, deprogramInterview, parisWallToEpoch, finalizeAutoClose } from "./tickets.js";
 import { baseEmbed, BRAND } from "./theme.js";
@@ -343,6 +343,50 @@ export function startTasks(client: Client) {
           }
         }
       } catch (err) { console.error("[convocation] publication :", err); }
+    }
+
+    // --- Suivi des dossiers / contraventions (embed unique édité en place) ---
+    // Un seul salon : chaque dossier d'arrestation et contravention y est posté,
+    // puis le MÊME message est ré-édité à chaque changement (chefs, clôture,
+    // statut d'amende). On ne draine que les lignes marquées « sales » (index).
+    if (cfg.trackingChannel) {
+      try {
+        const items = await mdt.trackingPending();
+        if (items.length) {
+          const chan = await channel(client, cfg.trackingChannel);
+          for (const item of items) {
+            try {
+              if (item.deleted) {
+                // Annulé/supprimé : on retire le message existant, puis on efface
+                // l'état de suivi (plus rien à ré-éditer).
+                if (item.trackingMessageId && item.trackingChannelId) {
+                  const oldChan = await channel(client, item.trackingChannelId);
+                  if (oldChan) {
+                    const msg = await oldChan.messages.fetch(item.trackingMessageId).catch(() => null);
+                    if (msg) await msg.delete().catch(() => {});
+                  }
+                }
+                await mdt.trackingClear(item.kind, item.id);
+                continue;
+              }
+              if (!chan) continue; // salon injoignable : on réessaiera au prochain tick.
+              const embed = trackingEmbed(item);
+              // Message déjà posté DANS le salon courant : on ré-édite en place.
+              if (item.trackingMessageId && item.trackingChannelId === cfg.trackingChannel) {
+                const msg = await chan.messages.fetch(item.trackingMessageId).catch(() => null);
+                if (msg) {
+                  await msg.edit({ embeds: [embed] });
+                  await mdt.trackingMark(item.kind, item.id, msg.id, cfg.trackingChannel);
+                  continue;
+                }
+              }
+              // Sinon (jamais posté, ou salon de suivi changé) : nouveau message.
+              const sent = await chan.send({ embeds: [embed] });
+              await mdt.trackingMark(item.kind, item.id, sent.id, cfg.trackingChannel);
+            } catch (e) { console.error("[tracking] item échoué :", e); }
+          }
+        }
+      } catch (err) { console.error("[tracking] publication :", err); }
     }
 
     // --- Publication des annonces de CÉRÉMONIE (annonce + résultat) ---

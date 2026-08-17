@@ -42,7 +42,28 @@ type BotConfig = {
   rollcallPingEnabled: boolean;
   sanctionsChannel: string | null;
   sanctionsPingRole: string | null;
+  trackingChannel: string | null;
   lastDailyRecap: string | null;
+};
+
+// Un dossier d'arrestation / une contravention à (re)publier dans le salon de
+// suivi (embed édité en place).
+export type TrackingItem = {
+  kind: "casier" | "citation";
+  id: string;
+  trackingMessageId: string | null;
+  trackingChannelId: string | null;
+  citizenId: string;
+  citizenName: string;
+  label: string;
+  charges: string[];
+  officer: string;
+  totalFine: number;
+  amendeStatut: string | null;
+  closed: boolean;
+  at: number;
+  deleted: boolean;
+  url: string | null;
 };
 
 export type SanctionAnnounce = {
@@ -111,6 +132,11 @@ export const mdt = {
   markSanctionAnnounced: (id: string) => client.mutation(anyApi.bot.markSanctionAnnounced, { secret: env.botSecret, id }) as Promise<void>,
   convocationsToAnnounce: () => client.query(anyApi.bot.convocationsToAnnounce, { secret: env.botSecret }) as Promise<ConvocationAnnounce[]>,
   markConvocationAnnounced: (id: string) => client.mutation(anyApi.bot.markConvocationAnnounced, { secret: env.botSecret, id }) as Promise<void>,
+  trackingPending: () => client.query(anyApi.bot.trackingPending, { secret: env.botSecret }) as Promise<TrackingItem[]>,
+  trackingMark: (kind: "casier" | "citation", id: string, messageId: string, channelId: string) =>
+    client.mutation(anyApi.bot.trackingMark, { secret: env.botSecret, kind, id, messageId, channelId }) as Promise<void>,
+  trackingClear: (kind: "casier" | "citation", id: string) =>
+    client.mutation(anyApi.bot.trackingClear, { secret: env.botSecret, kind, id }) as Promise<void>,
   ceremonyPostsToSend: () => client.query(anyApi.bot.ceremonyPostsToSend, { secret: env.botSecret }) as Promise<{ channel: string | null; posts: { id: string; content: string }[] }>,
   markCeremonyPostSent: (id: string) => client.mutation(anyApi.bot.markCeremonyPostSent, { secret: env.botSecret, id }) as Promise<void>,
   roleJobsPending: () => client.query(anyApi.bot.roleJobsPending, { secret: env.botSecret }) as Promise<{ _id: string; discordId: string; addRoleId: string | null; removeRoleIds: string[]; reason: string | null }[]>,

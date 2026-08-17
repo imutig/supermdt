@@ -2,6 +2,7 @@ import { mutation, query } from "./_generated/server";
 import { v, ConvexError } from "convex/values";
 import { internal } from "./_generated/api";
 import { inclusiveDaysParis } from "./lib/paris";
+import { chargeDisplayName } from "./lib/charges";
 import type { QueryCtx, MutationCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 
@@ -384,6 +385,7 @@ export const config = query({
       rollcallPingEnabled: cfg?.botRollcallPingEnabled ?? false,
       sanctionsChannel: cfg?.botSanctionsChannel ?? null,
       sanctionsPingRole: cfg?.botSanctionsPingRole ?? null,
+      trackingChannel: cfg?.botTrackingChannel ?? null,
       lastDailyRecap: cfg?.botLastDailyRecap ?? null,
     };
   },
@@ -805,6 +807,146 @@ export const markConvocationAnnounced = mutation({
   handler: async (ctx, { secret, id }) => {
     assertBot(secret);
     await ctx.db.patch(id, { discordAnnounced: true });
+  },
+});
+
+// ---- Suivi des dossiers d'arrestation & contraventions (embed édité en place) ----
+// Le bot poste UN embed par dossier / contravention dans le salon de suivi, et le
+// ré-édite (même message) à chaque changement. On ne draine QUE les lignes
+// marquées `trackingDirty` via l'index dédié — jamais un scan de table.
+
+// Premier officier affichable d'une entrée de casier (nom RP).
+async function firstCasierOfficer(ctx: QueryCtx, e: Doc<"casierEntries">): Promise<string> {
+  if (e.officers && e.officers.length) return e.officers[0].name;
+  const oid = e.officerIds[0];
+  if (oid) {
+    const a = await ctx.db.get(oid);
+    if (a) return `${a.prenomRP} ${a.nomRP}`;
+  }
+  return "-";
+}
+
+export const trackingPending = query({
+  args: { secret: v.string() },
+  handler: async (ctx, { secret }) => {
+    assertBot(secret);
+    const cfg = await ctx.db.query("integrationConfig").first();
+    const base = cfg?.baseUrl?.trim().replace(/\/+$/, "");
+    const link = (citizenId: string) => (base ? `${base}/citoyen/${citizenId}` : null);
+
+    const out: {
+      kind: "casier" | "citation";
+      id: string;
+      trackingMessageId: string | null;
+      trackingChannelId: string | null;
+      citizenId: string;
+      citizenName: string;
+      label: string;
+      charges: string[];
+      officer: string;
+      totalFine: number;
+      amendeStatut: string | null;
+      closed: boolean;
+      at: number;
+      deleted: boolean;
+      url: string | null;
+    }[] = [];
+
+    // Dossiers / rapports d'arrestation à (re)publier.
+    const casiers = await ctx.db
+      .query("casierEntries")
+      .withIndex("by_tracking_dirty", (q) => q.eq("trackingDirty", true))
+      .take(25);
+    for (const e of casiers) {
+      const citizen = await ctx.db.get(e.citizenId);
+      const charges = await ctx.db.query("casierCharges").withIndex("by_entry", (q) => q.eq("entryId", e._id)).collect();
+      const amende = (await ctx.db.query("amendes").withIndex("by_casier", (q) => q.eq("casierEntryId", e._id)).collect()).find((a) => !a.deletedAt);
+      out.push({
+        kind: "casier",
+        id: e._id as string,
+        trackingMessageId: e.trackingMessageId ?? null,
+        trackingChannelId: e.trackingChannelId ?? null,
+        citizenId: e.citizenId as string,
+        citizenName: citizen ? `${citizen.prenom} ${citizen.nom}` : "-",
+        label: e.arrestType === "DOSSIER" ? "Dossier d'arrestation" : "Rapport d'arrestation",
+        charges: charges.map((c) => chargeDisplayName(c.snapshot.name, c.attemptType)),
+        officer: await firstCasierOfficer(ctx, e),
+        totalFine: e.totalFine,
+        amendeStatut: amende?.statut ?? null,
+        closed: e.closed ?? false,
+        at: e.at,
+        deleted: !!e.deletedAt || e.status === "ANNULEE",
+        url: link(e.citizenId as string),
+      });
+    }
+
+    // Contraventions à (re)publier.
+    const citations = await ctx.db
+      .query("citations")
+      .withIndex("by_tracking_dirty", (q) => q.eq("trackingDirty", true))
+      .take(25);
+    for (const c of citations) {
+      const citizen = await ctx.db.get(c.citizenId);
+      const charges = await ctx.db.query("citationCharges").withIndex("by_citation", (q) => q.eq("citationId", c._id)).collect();
+      const amende = (await ctx.db.query("amendes").withIndex("by_citation", (q) => q.eq("citationId", c._id)).collect()).find((a) => !a.deletedAt);
+      let officer = c.officerName ?? "-";
+      if (!c.officerName) {
+        const a = await ctx.db.get(c.officerId);
+        if (a) officer = `${a.prenomRP} ${a.nomRP}`;
+      }
+      out.push({
+        kind: "citation",
+        id: c._id as string,
+        trackingMessageId: c.trackingMessageId ?? null,
+        trackingChannelId: c.trackingChannelId ?? null,
+        citizenId: c.citizenId as string,
+        citizenName: citizen ? `${citizen.prenom} ${citizen.nom}` : "-",
+        label: "Contravention",
+        charges: charges.map((ch) => chargeDisplayName(ch.snapshot.name, ch.attemptType)),
+        officer,
+        totalFine: c.totalFine,
+        amendeStatut: amende?.statut ?? null,
+        closed: false,
+        at: c.at,
+        deleted: !!c.deletedAt || c.status === "ANNULEE",
+        url: link(c.citizenId as string),
+      });
+    }
+
+    return out;
+  },
+});
+
+// Après un envoi/édition réussi : mémorise le message + le salon, efface le drapeau.
+export const trackingMark = mutation({
+  args: {
+    secret: v.string(),
+    kind: v.union(v.literal("casier"), v.literal("citation")),
+    id: v.string(),
+    messageId: v.string(),
+    channelId: v.string(),
+  },
+  handler: async (ctx, { secret, kind, id, messageId, channelId }) => {
+    assertBot(secret);
+    const patch = { trackingMessageId: messageId, trackingChannelId: channelId, trackingDirty: false };
+    if (kind === "casier") await ctx.db.patch(id as Id<"casierEntries">, patch);
+    else await ctx.db.patch(id as Id<"citations">, patch);
+  },
+});
+
+// Cas supprimé/annulé : le message a été retiré côté Discord. On efface le
+// drapeau ET l'id du message (rien à ré-éditer).
+export const trackingClear = mutation({
+  args: {
+    secret: v.string(),
+    kind: v.union(v.literal("casier"), v.literal("citation")),
+    id: v.string(),
+  },
+  handler: async (ctx, { secret, kind, id }) => {
+    assertBot(secret);
+    const patch = { trackingDirty: false, trackingMessageId: undefined };
+    if (kind === "casier") await ctx.db.patch(id as Id<"casierEntries">, patch);
+    else await ctx.db.patch(id as Id<"citations">, patch);
   },
 });
 

@@ -120,6 +120,7 @@ export const botConfig = query({
       sanctionsChannel: c?.botSanctionsChannel ?? "",
       sanctionsPingRole: c?.botSanctionsPingRole ?? "",
       ceremonyChannel: c?.botCeremonyChannel ?? "",
+      trackingChannel: c?.botTrackingChannel ?? "",
     };
   },
 });
@@ -139,6 +140,7 @@ export const setBotConfig = mutation({
     sanctionsChannel: v.optional(v.string()),
     sanctionsPingRole: v.optional(v.string()),
     ceremonyChannel: v.optional(v.string()),
+    trackingChannel: v.optional(v.string()),
   },
   handler: async (ctx, a) => {
     const agent = await requireAgent(ctx);
@@ -174,6 +176,7 @@ export const setBotConfig = mutation({
       botSanctionsChannel: chan(a.sanctionsChannel),
       botSanctionsPingRole: role(a.sanctionsPingRole),
       botCeremonyChannel: chan(a.ceremonyChannel),
+      botTrackingChannel: chan(a.trackingChannel),
       updatedBy: agent._id,
       updatedAt: Date.now(),
     };

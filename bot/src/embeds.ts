@@ -235,6 +235,33 @@ export function errorEmbed(message: string): EmbedBuilder {
   return baseEmbed(BRAND.warning).setTitle("Impossible").setDescription(message);
 }
 
+// Embed de suivi d'un dossier d'arrestation / d'une contravention. Réutilisé
+// (même message édité en place) tant que la ligne existe ; passe au rouge quand
+// elle est annulée/supprimée, au gris quand le dossier est clôturé.
+export function trackingEmbed(item: import("./convex.js").TrackingItem): EmbedBuilder {
+  const color = item.deleted ? BRAND.danger : item.closed ? BRAND.muted : BRAND.warning;
+  const icon = item.kind === "casier" ? "📁" : "🎫";
+  const chargeText = item.charges.length
+    ? item.charges.map((c) => `• ${c}`).join("\n").slice(0, 1000)
+    : "-";
+  const amendeLine = item.totalFine > 0
+    ? `${money(item.totalFine)}${item.amendeStatut ? ` · ${item.amendeStatut}` : ""}`
+    : "Aucune";
+
+  const e = baseEmbed(color)
+    .setTitle(`${icon} ${item.label} — ${item.citizenName}`)
+    .addFields(
+      { name: "Chefs d'inculpation", value: chargeText },
+      { name: "Amende", value: amendeLine, inline: true },
+      { name: "Officier", value: item.officer || "-", inline: true },
+      { name: "Date", value: `<t:${Math.floor(item.at / 1000)}:f>`, inline: true },
+    );
+  if (item.url) e.setURL(item.url);
+  if (item.deleted) e.addFields({ name: "​", value: "🚫 **Annulé / supprimé**" });
+  else if (item.closed) e.addFields({ name: "​", value: "🔒 *Dossier clôturé*" });
+  return e;
+}
+
 // Signature Internal Affairs commune aux sanctions et convocations.
 const IA_FOOTER = "Internal Affairs Division · Station 13 · Los Santos Police Department";
 const mat5 = (m: number | null) => (m != null ? String(m).padStart(5, "0") : null);

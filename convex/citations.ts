@@ -189,7 +189,8 @@ export const remove = mutation({
     // L'agent qui a établi l'acte peut l'annuler ; au-delà, la permission.
     await requireOwnOrPermission(ctx, agent, c.createdBy, "contraventions.annul");
     const citizen = await ctx.db.get(c.citizenId);
-    await ctx.db.patch(citationId, { deletedAt: Date.now(), deletedBy: agent._id });
+    // Suivi Discord : marquer sale pour que le bot retire/annule l'embed.
+    await ctx.db.patch(citationId, { deletedAt: Date.now(), deletedBy: agent._id, trackingDirty: true });
     await writeAudit(ctx, agent, {
       action: "citation.delete",
       resourceType: "citation",
@@ -206,6 +207,7 @@ export const remove = mutation({
       url: await deepLink(ctx, `/citoyen/${c.citizenId}`),
       footer: `Annulée par ${agent.prenomRP} ${agent.nomRP}`,
     });
+    await ctx.scheduler.runAfter(0, internal.push.notify, {});
   },
 });
 
@@ -276,6 +278,8 @@ export const create = mutation({
       notes: args.notes,
       status: "EMISE",
       createdBy: agent._id,
+      // Suivi Discord : à publier dans le salon de suivi (embed).
+      trackingDirty: true,
     });
     for (const s of snaps) await ctx.db.insert("citationCharges", { citationId: id, ...s });
 
@@ -325,6 +329,8 @@ export const create = mutation({
     }
 
     await touchStats(ctx);
+    // Prévient le bot qu'il y a un embed de suivi à poster (best-effort).
+    await ctx.scheduler.runAfter(0, internal.push.notify, {});
     return id;
   },
 });
@@ -359,7 +365,8 @@ export const updateCharges = mutation({
     for (const ch of old) await ctx.db.delete(ch._id);
     for (const s of snaps) await ctx.db.insert("citationCharges", { citationId, ...s });
 
-    await ctx.db.patch(citationId, { totalFine });
+    // Suivi Discord : l'embed du salon de suivi doit refléter les nouveaux chefs.
+    await ctx.db.patch(citationId, { totalFine, trackingDirty: true });
 
     const citizen = await ctx.db.get(c.citizenId);
     const objet = snaps.map((s) => s.snapshot.name).join(" + ") || undefined; // noms bruts (jamais préfixés, va vers Nexus)
@@ -401,6 +408,7 @@ export const updateCharges = mutation({
       metadata: { totalFine, charges: snaps.length },
     });
     await touchStats(ctx);
+    await ctx.scheduler.runAfter(0, internal.push.notify, {});
     return citationId;
   },
 });

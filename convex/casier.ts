@@ -308,7 +308,8 @@ export const updateArrest = mutation({
       f.arrestType === "DOSSIER"
         ? f
         : { ...f, linkedReportId: undefined, vehicleIds: undefined, weaponIds: undefined, dossierStatus: undefined };
-    await ctx.db.patch(entryId, patch);
+    // Suivi Discord : l'embed du salon de suivi doit refléter la modification.
+    await ctx.db.patch(entryId, { ...patch, trackingDirty: true });
     const citizen = await ctx.db.get(e.citizenId);
     await writeAudit(ctx, agent, {
       action: "casier.arrest_update",
@@ -324,6 +325,7 @@ export const updateArrest = mutation({
       url: await deepLink(ctx, `/citoyen/${e.citizenId}`),
       footer: `Modifié par ${agent.prenomRP} ${agent.nomRP}`,
     });
+    await ctx.scheduler.runAfter(0, internal.push.notify, {});
   },
 });
 
@@ -335,7 +337,7 @@ export const closeDossier = mutation({
     await requirePermission(ctx, agent, "casier.edit");
     const e = await ctx.db.get(entryId);
     if (!e) throw new ConvexError("Entrée introuvable.");
-    await ctx.db.patch(entryId, { closed: true, closedAt: Date.now(), closedBy: agent._id });
+    await ctx.db.patch(entryId, { closed: true, closedAt: Date.now(), closedBy: agent._id, trackingDirty: true });
     await writeAudit(ctx, agent, { action: "casier.dossier_close", resourceType: "casierEntry", resourceId: entryId });
     const closedCitizen = await ctx.db.get(e.citizenId);
     await notify(ctx, "casier.closed", {
@@ -345,6 +347,7 @@ export const closeDossier = mutation({
       url: await deepLink(ctx, `/citoyen/${e.citizenId}`),
       footer: `Clôturé par ${agent.prenomRP} ${agent.nomRP}`,
     });
+    await ctx.scheduler.runAfter(0, internal.push.notify, {});
   },
 });
 export const reopenDossier = mutation({
@@ -355,7 +358,7 @@ export const reopenDossier = mutation({
     await requirePermission(ctx, agent, "casier.editClosed");
     const e = await ctx.db.get(entryId);
     if (!e) throw new ConvexError("Entrée introuvable.");
-    await ctx.db.patch(entryId, { closed: false, closedAt: undefined, closedBy: undefined });
+    await ctx.db.patch(entryId, { closed: false, closedAt: undefined, closedBy: undefined, trackingDirty: true });
     await writeAudit(ctx, agent, { action: "casier.dossier_reopen", resourceType: "casierEntry", resourceId: entryId });
     const reopenedCitizen = await ctx.db.get(e.citizenId);
     await notify(ctx, "casier.reopen", {
@@ -365,6 +368,7 @@ export const reopenDossier = mutation({
       url: await deepLink(ctx, `/citoyen/${e.citizenId}`),
       footer: `Rouvert par ${agent.prenomRP} ${agent.nomRP}`,
     });
+    await ctx.scheduler.runAfter(0, internal.push.notify, {});
   },
 });
 
@@ -379,7 +383,8 @@ export const remove = mutation({
     // L'agent qui a établi l'acte peut l'annuler ; au-delà, la permission.
     await requireOwnOrPermission(ctx, agent, e.createdBy, "casier.annul");
     const citizen = await ctx.db.get(e.citizenId);
-    await ctx.db.patch(entryId, { deletedAt: Date.now(), deletedBy: agent._id });
+    // Suivi Discord : marquer sale pour que le bot retire/annule l'embed.
+    await ctx.db.patch(entryId, { deletedAt: Date.now(), deletedBy: agent._id, trackingDirty: true });
     await writeAudit(ctx, agent, {
       action: "casier.entry_delete",
       resourceType: "casierEntry",
@@ -395,6 +400,7 @@ export const remove = mutation({
       url: await deepLink(ctx, `/citoyen/${e.citizenId}`),
       footer: `Supprimée par ${agent.prenomRP} ${agent.nomRP}`,
     });
+    await ctx.scheduler.runAfter(0, internal.push.notify, {});
   },
 });
 
@@ -475,6 +481,8 @@ export const addEntry = mutation({
       forceUsed: isDossier ? args.forceUsed : undefined,
       status: "EMISE",
       createdBy: agent._id,
+      // Suivi Discord : à publier dans le salon de suivi (embed).
+      trackingDirty: true,
     });
     for (const s of snaps) await ctx.db.insert("casierCharges", { entryId, ...s });
 
@@ -538,6 +546,8 @@ export const addEntry = mutation({
       });
     }
 
+    // Prévient le bot qu'il y a un embed de suivi à poster (best-effort).
+    await ctx.scheduler.runAfter(0, internal.push.notify, {});
     return entryId;
   },
 });
@@ -578,7 +588,8 @@ export const updateCharges = mutation({
     for (const s of snaps) await ctx.db.insert("casierCharges", { entryId, ...s });
 
     // Patch des totaux (calcul inchangé, tentative / complicité = label seul).
-    await ctx.db.patch(entryId, { totalFine, totalJailSeconds: totalJail, dojRequired, sanctions });
+    // Suivi Discord : l'embed du salon de suivi doit refléter les nouveaux chefs.
+    await ctx.db.patch(entryId, { totalFine, totalJailSeconds: totalJail, dojRequired, sanctions, trackingDirty: true });
 
     const citizen = await ctx.db.get(e.citizenId);
     const objet = snaps.map((s) => s.snapshot.name).join(" + ") || undefined; // noms bruts (jamais préfixés, va vers Nexus)
@@ -636,6 +647,7 @@ export const updateCharges = mutation({
       url: await deepLink(ctx, `/citoyen/${e.citizenId}`),
       footer: `Modifié par ${agent.prenomRP} ${agent.nomRP}`,
     });
+    await ctx.scheduler.runAfter(0, internal.push.notify, {});
 
     return entryId;
   },

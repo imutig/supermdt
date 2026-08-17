@@ -1327,6 +1327,11 @@ export default defineSchema({
       }),
     ),
     baremeAmende: v.optional(v.string()),
+    // Suivi Discord (salon de suivi) : id du message posté (édité en place),
+    // salon où il a été posté, et drapeau « à (re)publier / mettre à jour ».
+    trackingMessageId: v.optional(v.string()),
+    trackingChannelId: v.optional(v.string()),
+    trackingDirty: v.optional(v.boolean()),
   })
     .index("by_citizen", ["citizenId"])
     .index("by_deleted", ["deletedAt"])
@@ -1338,7 +1343,10 @@ export default defineSchema({
     .index("by_creator", ["createdBy"])
     // Casiers VIVANTS triés par date : q.eq("deletedAt", undefined).order("desc").
     // Évite de lire les casiers archivés dans les listes chaudes (accueil, historique).
-    .index("by_live_at", ["deletedAt", "at"]),
+    .index("by_live_at", ["deletedAt", "at"])
+    // Suivi Discord : le bot ne draine QUE les entrées à mettre à jour (jamais un
+    // scan de toute la table). q.eq("trackingDirty", true).
+    .index("by_tracking_dirty", ["trackingDirty"]),
 
   casierCharges: defineTable({
     entryId: v.id("casierEntries"),
@@ -1648,6 +1656,10 @@ export default defineSchema({
     botSanctionsPingRole: v.optional(v.string()),
     // Cérémonies : salon où poster l'annonce ET le résultat de cérémonie.
     botCeremonyChannel: v.optional(v.string()),
+    // Suivi des dossiers/contraventions : salon unique où chaque dossier
+    // d'arrestation et contravention est posté en embed, édité en place à chaque
+    // changement (chefs, clôture, statut d'amende). Vide = fonction désactivée.
+    botTrackingChannel: v.optional(v.string()),
     // Date (YYYY-MM-DD, Paris) du dernier récap quotidien envoyé : persiste
     // l'anti-doublon au-delà d'un redéploiement du bot.
     botLastDailyRecap: v.optional(v.string()),
@@ -1778,6 +1790,11 @@ export default defineSchema({
     montantMajore: v.optional(v.number()),
     articleLoi: v.optional(v.string()),
     referenceJuridique: v.optional(v.string()),
+    // Suivi Discord (salon de suivi) : id du message posté (édité en place),
+    // salon où il a été posté, et drapeau « à (re)publier / mettre à jour ».
+    trackingMessageId: v.optional(v.string()),
+    trackingChannelId: v.optional(v.string()),
+    trackingDirty: v.optional(v.boolean()),
   })
     .index("by_citizen", ["citizenId"])
     .index("by_vehicle", ["vehicleId"])
@@ -1787,7 +1804,10 @@ export default defineSchema({
     // Contraventions d'un officier (compteurs perso sans scanner toute la table).
     .index("by_officer", ["officerId"])
     // Contraventions VIVANTES triées par date (listes chaudes sans lignes archivées).
-    .index("by_live_at", ["deletedAt", "at"]),
+    .index("by_live_at", ["deletedAt", "at"])
+    // Suivi Discord : le bot ne draine QUE les contraventions à mettre à jour
+    // (jamais un scan de toute la table). q.eq("trackingDirty", true).
+    .index("by_tracking_dirty", ["trackingDirty"]),
 
   // Amendes : entité « argent » (miroir de l'amende NexusMDT /api/amendes).
   // AUTO-créée à la création d'un casier (dossier/rapport d'arrestation) ou d'une
