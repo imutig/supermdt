@@ -755,6 +755,27 @@ export default defineSchema({
     updatedAt: v.number(),
   }),
 
+  // Rapport hebdomadaire d'activité (à l'attention du Gouvernement RP) : sections
+  // rédigées à la main + agents à l'honneur curatés + référence du dernier PDF.
+  // Les données chiffrées sont agrégées à la volée à la génération, pas stockées.
+  weeklyReports: defineTable({
+    weekStart: v.number(), // borne de début (epoch ms) — clé de la semaine
+    weekEnd: v.number(),
+    motChef: v.optional(v.string()),
+    analyseCrime: v.optional(v.string()),
+    operationsNotables: v.optional(v.string()),
+    pointRH: v.optional(v.string()),
+    objectifs: v.optional(v.string()),
+    dataNote: v.optional(v.string()),
+    honneur: v.optional(
+      v.array(v.object({ name: v.string(), matricule: v.optional(v.string()), reason: v.optional(v.string()) })),
+    ),
+    pdfStorageId: v.optional(v.id("_storage")),
+    generatedAt: v.optional(v.number()),
+    updatedBy: v.optional(v.id("agents")),
+    updatedAt: v.number(),
+  }).index("by_weekStart", ["weekStart"]),
+
   // File d'annonces Discord « Tuteur -> Tutorés » (drainée par le bot, comme les
   // publications de cérémonie). Publiée en embed : la description (avec mentions)
   // et le salon sont figés à l'émission. `pingContent` = ping du rôle (contenu du

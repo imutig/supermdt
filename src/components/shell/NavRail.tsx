@@ -22,6 +22,7 @@ import {
   SlidersHorizontal,
   ShieldAlert,
   BarChart3,
+  FileSignature,
   Activity,
   Archive as ArchiveIcon,
   Shield,
@@ -116,6 +117,7 @@ const GROUPS: NavGroup[] = [
     commandOnly: true,
     items: [
       { key: "statistiques", label: "Statistiques", icon: BarChart3, to: "/statistiques", perm: "stats.view" },
+      { key: "rapportgouv", label: "Rapport gouv.", icon: FileSignature, to: "/rapport-gouvernement", perm: "rapportgouv.manage" },
       { key: "analytics", label: "Analytics", icon: Activity, to: "/analytics", perm: "audit.view" },
       { key: "config", label: "Configuration", icon: SlidersHorizontal, to: "/config", perm: "rbac.manage" },
       { key: "synchronisation", label: "Synchronisation", icon: RefreshCw, to: "/synchronisation", perm: "rbac.manage" },

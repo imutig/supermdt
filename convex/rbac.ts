@@ -89,6 +89,8 @@ export const PERMISSION_SLUGS: { slug: string; domain: string; description: stri
   { slug: "firstlincoln.manage", domain: "firstlincoln", description: "Configurer la grille d'évaluation First Lincoln" },
   // Statistiques
   { slug: "stats.view", domain: "stats", description: "Consulter les statistiques de la station" },
+  // Rapport hebdomadaire gouvernemental
+  { slug: "rapportgouv.manage", domain: "rapportgouv", description: "Rédiger et générer le rapport hebdomadaire d'activité" },
   // Dispatch
   { slug: "dispatch.view", domain: "dispatch", description: "Voir le dispatch (patrouilles en service)" },
   { slug: "dispatch.self", domain: "dispatch", description: "Créer/rejoindre une patrouille et changer son statut" },
