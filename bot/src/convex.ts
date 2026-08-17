@@ -117,6 +117,7 @@ export type TickResult = {
   nexusAlertQueue: { id: string; message: string; discordId: string }[];
   roleJobsPending: { _id: string; discordId: string; addRoleId: string | null; removeRoleIds: string[]; reason: string | null }[];
   ceremonyPosts: { channel: string | null; posts: { id: string; content: string }[] };
+  ftoAnnouncements: { id: string; channelId: string; content: string }[];
   absencesToAnnounce: { id: string; name: string; matricule: number | null; discordId: string | null; from: number; to: number; reason: string }[];
   sanctionsToAnnounce: SanctionAnnounce[];
   convocationsToAnnounce: ConvocationAnnounce[];
@@ -163,6 +164,7 @@ export const mdt = {
     client.mutation(anyApi.bot.trackingClear, { secret: env.botSecret, kind, id }) as Promise<void>,
   ceremonyPostsToSend: () => client.query(anyApi.bot.ceremonyPostsToSend, { secret: env.botSecret }) as Promise<{ channel: string | null; posts: { id: string; content: string }[] }>,
   markCeremonyPostSent: (id: string) => client.mutation(anyApi.bot.markCeremonyPostSent, { secret: env.botSecret, id }) as Promise<void>,
+  markFtoAnnouncement: (id: string) => client.mutation(anyApi.bot.markFtoAnnouncement, { secret: env.botSecret, id }) as Promise<void>,
   roleJobsPending: () => client.query(anyApi.bot.roleJobsPending, { secret: env.botSecret }) as Promise<{ _id: string; discordId: string; addRoleId: string | null; removeRoleIds: string[]; reason: string | null }[]>,
   markRoleJob: (jobId: string, status: "DONE" | "ERROR", error?: string) => client.mutation(anyApi.bot.markRoleJob, { secret: env.botSecret, jobId, status, error }) as Promise<void>,
 

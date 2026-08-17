@@ -407,6 +407,16 @@ export function startTasks(client: Client) {
       }
     } catch (err) { console.error("[ceremonie] publication :", err); }
 
+    // --- Publication des annonces FTO « Tuteur -> Tutorés » ---
+    try {
+      for (const p of t.ftoAnnouncements ?? []) {
+        const chan = await channel(client, p.channelId);
+        let ok = false;
+        if (chan) { try { await chan.send({ content: p.content, allowedMentions: { parse: ["users", "roles"] } }); ok = true; } catch (e) { console.error("[fto] annonce échouée :", e); } }
+        if (ok) await mdt.markFtoAnnouncement(p.id);
+      }
+    } catch (err) { console.error("[fto] publication :", err); }
+
     // --- Récapitulatif quotidien ---
     // Logique de FENÊTRE (heure de passée) + anti-doublon PERSISTANT (Convex),
     // et non plus une égalité stricte à la minute (fragile : un tick 5 min pouvait

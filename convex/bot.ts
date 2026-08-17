@@ -631,6 +631,15 @@ export const markCeremonyPostSent = mutation({
   },
 });
 
+// ---- File d'annonce FTO « Tuteur -> Tutorés » (message + ping) ----
+export const markFtoAnnouncement = mutation({
+  args: { secret: v.string(), id: v.id("ftoAnnouncements") },
+  handler: async (ctx, { secret, id }) => {
+    assertBot(secret);
+    await ctx.db.patch(id, { sent: true });
+  },
+});
+
 // ---- File d'annonce des CONVOCATIONS (embed + ping de l'agent) ----
 export const convocationsToAnnounce = query({
   args: { secret: v.string() },
@@ -1616,6 +1625,13 @@ async function readCeremonyPosts(ctx: QueryCtx) {
   return { channel: cfg?.botCeremonyChannel ?? null, posts: rows.map((p) => ({ id: p._id, content: p.content })) };
 }
 
+// Annonces FTO en attente : le salon est figé dans chaque ligne (ping inclus dans
+// le contenu). Le bot poste puis marque `sent`.
+async function readFtoAnnouncements(ctx: QueryCtx) {
+  const rows = (await ctx.db.query("ftoAnnouncements").withIndex("by_sent", (q) => q.eq("sent", false)).collect()).slice(0, 10);
+  return rows.map((p) => ({ id: p._id, channelId: p.channelId, content: p.content }));
+}
+
 async function readConvocationsToAnnounce(ctx: QueryCtx) {
   const rows = (await ctx.db.query("convocations").withIndex("by_announce", (q) => q.eq("discordAnnounced", false)).collect())
     .filter((c) => !c.deletedAt)
@@ -1788,6 +1804,7 @@ export const tick = query({
       nexusAlertQueue: await readNexusAlerts(ctx),
       roleJobsPending: await readRoleJobs(ctx),
       ceremonyPosts: await readCeremonyPosts(ctx),
+      ftoAnnouncements: await readFtoAnnouncements(ctx),
       // Tranches conditionnées au salon configuré (rien à publier sinon).
       absencesToAnnounce: config.absenceChannel ? await readAbsencesToAnnounce(ctx) : [],
       sanctionsToAnnounce: config.sanctionsChannel ? await readSanctionsToAnnounce(ctx) : [],

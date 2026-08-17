@@ -2,6 +2,7 @@ import { v, ConvexError } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
+import { internal } from "./_generated/api";
 import { requireAgent, can } from "./rbac";
 
 // FTO : formation terrain des Officiers 1 Probatoire, encadrés par un tuteur
@@ -116,7 +117,7 @@ export const context = query({
     const formed = await formedGrade(ctx);
     const cfg = await ctx.db.query("ftoConfig").first();
     const canManage = viewer.isOwner || isAcademy(viewer) || (await can(ctx, viewer, "fto.manage"));
-    // Grades opérationnels proposables comme « grade en formation » (config).
+    // Grades opérationnels proposables (grade en formation, tuteurs, prioritaires).
     const grades = canManage ? (await operationalGrades(ctx)).map((g) => ({ _id: g._id, name: g.name })) : [];
     return {
       traineeGradeId: cfg?.traineeGradeId ?? trainee?._id ?? null,
@@ -124,6 +125,10 @@ export const context = query({
       formedGradeName: formed?.name ?? "Officier 1 Confirmé",
       canManage,
       grades,
+      tutorGradeIds: (cfg?.tutorGradeIds ?? []) as string[],
+      priorityGradeIds: (cfg?.priorityGradeIds ?? []) as string[],
+      announceChannelId: cfg?.announceChannelId ?? "",
+      announcePingId: cfg?.announcePingId ?? "",
     };
   },
 });
@@ -206,17 +211,155 @@ export const listGraduated = query({
   },
 });
 
-// Configurer le grade « en formation terrain » (grade formé). Réservé à
-// l'encadrement (académie / fto.manage / owner).
+// Configurer la Formation Terrain (grade en formation, tuteurs éligibles, grades
+// prioritaires, salon/ping d'annonce). Chaque champ est optionnel (patch ciblé).
+// Réservé à l'encadrement (académie / fto.manage / owner).
 export const setConfig = mutation({
-  args: { traineeGradeId: v.union(v.id("grades"), v.null()) },
-  handler: async (ctx, { traineeGradeId }) => {
+  args: {
+    traineeGradeId: v.optional(v.union(v.id("grades"), v.null())),
+    tutorGradeIds: v.optional(v.array(v.id("grades"))),
+    priorityGradeIds: v.optional(v.array(v.id("grades"))),
+    announceChannelId: v.optional(v.string()),
+    announcePingId: v.optional(v.string()),
+  },
+  handler: async (ctx, a) => {
     const viewer = await requireAgent(ctx);
     await assertManage(ctx, viewer);
     const cfg = await ctx.db.query("ftoConfig").first();
-    const patch = { traineeGradeId: traineeGradeId ?? undefined, updatedBy: viewer._id, updatedAt: Date.now() };
+    const patch = {
+      ...(a.traineeGradeId !== undefined ? { traineeGradeId: a.traineeGradeId ?? undefined } : {}),
+      ...(a.tutorGradeIds !== undefined ? { tutorGradeIds: a.tutorGradeIds } : {}),
+      ...(a.priorityGradeIds !== undefined ? { priorityGradeIds: a.priorityGradeIds } : {}),
+      ...(a.announceChannelId !== undefined ? { announceChannelId: a.announceChannelId.trim() || undefined } : {}),
+      ...(a.announcePingId !== undefined ? { announcePingId: a.announcePingId.trim() || undefined } : {}),
+      updatedBy: viewer._id,
+      updatedAt: Date.now(),
+    };
     if (cfg) await ctx.db.patch(cfg._id, patch);
     else await ctx.db.insert("ftoConfig", patch);
+  },
+});
+
+// Tuteurs FTO éligibles : membres de l'académie (quel que soit leur grade) OU
+// agents dont le grade figure dans tutorGradeIds. Actifs, hors owner, hors
+// agents au grade en formation. `priority` = grade prioritaire OU académie.
+async function eligibleTutors(ctx: MutationCtx): Promise<{ agent: Doc<"agents">; priority: boolean }[]> {
+  const cfg = await ctx.db.query("ftoConfig").first();
+  const tutorGrades = new Set((cfg?.tutorGradeIds ?? []).map((g) => g as string));
+  const prioGrades = new Set((cfg?.priorityGradeIds ?? []).map((g) => g as string));
+  const trainee = await traineeGrade(ctx);
+  const out: { agent: Doc<"agents">; priority: boolean }[] = [];
+  for (const a of await ctx.db.query("agents").withIndex("by_status", (q) => q.eq("status", "ACTIVE")).collect()) {
+    if (a.isOwner) continue;
+    if (trainee && a.gradeId === trainee._id) continue; // un tutoré ne tutore pas
+    const academy = !!a.academyRankId;
+    const eligible = academy || (a.gradeId != null && tutorGrades.has(a.gradeId as string));
+    if (!eligible) continue;
+    const priority = academy || (a.gradeId != null && prioGrades.has(a.gradeId as string));
+    out.push({ agent: a, priority });
+  }
+  return out;
+}
+
+// Attribution automatique équilibrée des tuteurs aux officiers en formation.
+// Chaque tutoré va au tuteur le moins chargé ; à égalité, les tuteurs
+// prioritaires (académie + grades prioritaires) sont servis d'abord — ils
+// atteignent donc 2 tutorés avant les autres quand les tuteurs manquent.
+export const autoAssignTutors = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const viewer = await requireAgent(ctx);
+    await assertManage(ctx, viewer);
+    const trainee = await traineeGrade(ctx);
+    if (!trainee) throw new ConvexError("Aucun grade en formation configuré.");
+    const trainees = (await ctx.db.query("agents").withIndex("by_status", (q) => q.eq("status", "ACTIVE")).collect())
+      .filter((a) => a.gradeId === trainee._id && !a.isOwner)
+      .sort((a, b) => (a.matricule ?? 0) - (b.matricule ?? 0));
+    if (trainees.length === 0) throw new ConvexError("Aucun officier en formation à attribuer.");
+
+    const tutors = await eligibleTutors(ctx);
+    if (tutors.length === 0) throw new ConvexError("Aucun tuteur éligible. Sélectionnez des grades de tuteurs.");
+
+    // Ordre : prioritaires d'abord, puis par matricule (départage stable).
+    const ordered = [...tutors].sort((x, y) =>
+      (x.priority === y.priority ? 0 : x.priority ? -1 : 1) || (x.agent.matricule ?? 0) - (y.agent.matricule ?? 0));
+    const counts = new Map(ordered.map((t) => [t.agent._id as string, 0]));
+    const assignment = new Map<string, Id<"agents">>(); // traineeId -> tutorId
+
+    for (const tr of trainees) {
+      // Tuteur le moins chargé, plus tôt dans l'ordre prioritaire à égalité.
+      let best = ordered[0];
+      for (const t of ordered) if ((counts.get(t.agent._id as string) ?? 0) < (counts.get(best.agent._id as string) ?? 0)) best = t;
+      counts.set(best.agent._id as string, (counts.get(best.agent._id as string) ?? 0) + 1);
+      assignment.set(tr._id as string, best.agent._id);
+    }
+
+    // Écrit les tuteurs dans les fiches (crée la fiche au besoin).
+    for (const tr of trainees) {
+      const tutorId = assignment.get(tr._id as string)!;
+      const doc = await sheetDoc(ctx, tr._id);
+      if (doc) await ctx.db.patch(doc._id, { tutorId });
+      else await ctx.db.insert("ftoSheets", { agentId: tr._id, tutorId });
+    }
+
+    const perTutor = [...counts.values()];
+    return {
+      trainees: trainees.length,
+      tutors: tutors.length,
+      maxPerTutor: perTutor.length ? Math.max(...perTutor) : 0,
+    };
+  },
+});
+
+// Émet l'annonce Discord « Tuteur -> Tutorés » (drainée par le bot). Construit la
+// liste depuis les fiches courantes, préfixée du ping configuré.
+export const announceTutors = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const viewer = await requireAgent(ctx);
+    await assertManage(ctx, viewer);
+    const cfg = await ctx.db.query("ftoConfig").first();
+    const channelId = cfg?.announceChannelId?.trim();
+    if (!channelId) throw new ConvexError("Configurez d'abord le salon d'annonce (ID Discord).");
+    const trainee = await traineeGrade(ctx);
+    if (!trainee) throw new ConvexError("Aucun grade en formation configuré.");
+
+    const trainees = (await ctx.db.query("agents").withIndex("by_status", (q) => q.eq("status", "ACTIVE")).collect())
+      .filter((a) => a.gradeId === trainee._id && !a.isOwner);
+
+    // Regroupe les tutorés par tuteur.
+    const byTutor = new Map<string, { tutor: Doc<"agents">; list: Doc<"agents">[] }>();
+    const orphans: Doc<"agents">[] = [];
+    for (const tr of trainees) {
+      const doc = await sheetDoc(ctx, tr._id);
+      const tutorId = doc?.tutorId;
+      if (!tutorId) { orphans.push(tr); continue; }
+      const t = await ctx.db.get(tutorId);
+      if (!t) { orphans.push(tr); continue; }
+      const entry = byTutor.get(tutorId as string) ?? { tutor: t, list: [] };
+      entry.list.push(tr);
+      byTutor.set(tutorId as string, entry);
+    }
+
+    const name = (a: Doc<"agents">) => `${a.matricule != null ? `#${a.matricule} ` : ""}${a.prenomRP} ${a.nomRP}`;
+    const lines: string[] = [];
+    if (cfg?.announcePingId?.trim()) lines.push(`<@&${cfg.announcePingId.trim()}>`);
+    lines.push(`📋 **Attribution des tuteurs — Formation Terrain**`, "");
+    const groups = [...byTutor.values()].sort((a, b) => (a.tutor.matricule ?? 0) - (b.tutor.matricule ?? 0));
+    if (groups.length === 0 && orphans.length === 0) throw new ConvexError("Aucune attribution à annoncer.");
+    for (const g of groups) lines.push(`**${name(g.tutor)}** → ${g.list.map(name).join(", ")}`);
+    if (orphans.length) lines.push("", `⚠️ *Sans tuteur* : ${orphans.map(name).join(", ")}`);
+
+    await ctx.db.insert("ftoAnnouncements", {
+      channelId,
+      content: lines.join("\n").slice(0, 1900),
+      createdBy: viewer._id,
+      createdAt: Date.now(),
+      sent: false,
+    });
+    // Réveille le bot (best-effort ; le poll de sécurité rattrape sinon).
+    await ctx.scheduler.runAfter(0, internal.push.notify, {});
+    return { tutors: groups.length, trainees: trainees.length };
   },
 });
 

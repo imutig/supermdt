@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { useNavigate, Navigate } from "react-router-dom";
 import { usePortals } from "@/hooks/usePortals";
-import { ShieldCheck, ChevronRight, Settings, Plus, Trash2, ChevronUp, ChevronDown, ArrowLeft, Star, ListChecks, SplitSquareHorizontal, Lock, History, Search } from "lucide-react";
+import { ShieldCheck, ChevronRight, Settings, Plus, Trash2, ChevronUp, ChevronDown, ArrowLeft, Star, ListChecks, SplitSquareHorizontal, Lock, History, Search, Wand2, Megaphone } from "lucide-react";
 import { api } from "@/lib/api";
 import type { Id } from "convex/_generated/dataModel";
 import { useCan } from "@/hooks/useCan";
@@ -31,11 +31,23 @@ export function LspaFto() {
   const graduated = useQuery(api.fto.listGraduated, tab === "history" ? {} : "skip");
   const [configuring, setConfiguring] = useState(false);
   const [q, setQ] = useState("");
+  const autoAssign = useMutation(api.fto.autoAssignTutors);
+  const announce = useMutation(api.fto.announceTutors);
+  const toast = useToast();
 
   // Réservé à la Formation Terrain : Officier confirmé+, académie, owner.
   if (me === undefined) return null;
   if (!me?.fieldTrainingAccess) return <Navigate to="/lspa" replace />;
   const canManage = me.agent.isOwner || academyMember || can("fto.manage");
+
+  const doAutoAssign = async () => {
+    const r = await toast.guard(autoAssign({}), "Attribution impossible");
+    if (r) toast.success(`Attribution : ${r.trainees} tutoré(s) répartis sur ${r.tutors} tuteur(s) (max ${r.maxPerTutor}/tuteur).`);
+  };
+  const doAnnounce = async () => {
+    const r = await toast.guard(announce({}), "Annonce impossible");
+    if (r) toast.success(`Annonce envoyée : ${r.tutors} tuteur(s), ${r.trainees} tutoré(s).`);
+  };
   const traineeLabel = ctx?.traineeGradeName ?? "Officier 1 Probatoire";
   const formedLabel = ctx?.formedGradeName ?? "Officier 1 Confirmé";
 
@@ -52,7 +64,13 @@ export function LspaFto() {
           <h1 className="m-0 text-[21px] font-bold tracking-tight">Formation Terrain</h1>
           <div className="mt-[3px] text-[13px] text-muted">Les {traineeLabel} en formation, encadrés par leur tuteur jusqu'au passage {formedLabel}.</div>
         </div>
-        {canManage && <Button onClick={() => setConfiguring(true)}><Settings className="h-[15px] w-[15px]" /> Configurer</Button>}
+        {canManage && (
+          <div className="flex flex-wrap gap-[8px]">
+            <Button variant="primary" onClick={doAutoAssign}><Wand2 className="h-[15px] w-[15px]" /> Attribuer les tuteurs</Button>
+            <Button onClick={doAnnounce}><Megaphone className="h-[15px] w-[15px]" /> Annoncer</Button>
+            <Button onClick={() => setConfiguring(true)}><Settings className="h-[15px] w-[15px]" /> Configurer</Button>
+          </div>
+        )}
       </div>
 
       {/* Onglets : en formation / historique (fiches des agents formés) */}
@@ -132,7 +150,16 @@ const KINDS = [
   { value: "CHECK", label: "Validation", icon: ListChecks },
 ] as const;
 
-function FtoConfigModal({ ctx, onClose }: { ctx: { traineeGradeId: string | null; grades: { _id: string; name: string }[] } | undefined; onClose: () => void }) {
+type FtoCtx = {
+  traineeGradeId: string | null;
+  grades: { _id: string; name: string }[];
+  tutorGradeIds: string[];
+  priorityGradeIds: string[];
+  announceChannelId: string;
+  announcePingId: string;
+};
+
+function FtoConfigModal({ ctx, onClose }: { ctx: FtoCtx | undefined; onClose: () => void }) {
   const items = useQuery(api.fto.listItems);
   const seed = useMutation(api.fto.seedDefault);
   const move = useMutation(api.fto.moveItem);
@@ -142,6 +169,14 @@ function FtoConfigModal({ ctx, onClose }: { ctx: { traineeGradeId: string | null
   const [editing, setEditing] = useState<"new" | { _id: string; section: string; label: string; kind: string } | null>(null);
 
   if (editing) return <ItemForm item={editing === "new" ? null : editing} onClose={() => setEditing(null)} />;
+
+  const grades = ctx?.grades ?? [];
+  const tutorSet = new Set(ctx?.tutorGradeIds ?? []);
+  const prioSet = new Set(ctx?.priorityGradeIds ?? []);
+  const toggle = (set: Set<string>, id: string) => { const n = new Set(set); n.has(id) ? n.delete(id) : n.add(id); return [...n]; };
+  const saveTutors = (ids: string[]) => void toast.guard(setConfig({ tutorGradeIds: ids as Id<"grades">[] }), "Enregistrement impossible");
+  const savePriority = (ids: string[]) => void toast.guard(setConfig({ priorityGradeIds: ids as Id<"grades">[] }), "Enregistrement impossible");
+  const F = "h-9 w-full rounded-sm border border-border bg-surface-2 px-3 text-[13px] outline-none focus:border-accent";
 
   return (
     <Modal title="Configurer la Formation Terrain" icon={<Settings className="h-[17px] w-[17px]" />} onClose={onClose} width={560}
@@ -160,6 +195,46 @@ function FtoConfigModal({ ctx, onClose }: { ctx: { traineeGradeId: string | null
         </select>
         <span className="text-[11px] text-faint">Les agents à ce grade apparaissent en formation ; promus au-dessus, leur fiche passe à l'historique.</span>
       </label>
+
+      {/* Attribution automatique : grades pouvant être tuteurs + grades prioritaires */}
+      <div className="mb-[14px] rounded-sm border border-border bg-surface-2 p-[12px]">
+        <div className="mb-[8px] text-[11px] font-bold uppercase tracking-[0.07em] text-faint">Attribution automatique des tuteurs</div>
+        <div className="mb-[9px]">
+          <div className="mb-[5px] text-[12px] font-semibold">Grades pouvant être tuteurs</div>
+          <div className="flex flex-wrap gap-[6px]">
+            {grades.map((g) => {
+              const on = tutorSet.has(g._id);
+              return <button key={g._id} onClick={() => saveTutors(toggle(tutorSet, g._id))} className="rounded-[6px] border px-[9px] py-[4px] text-[11.5px] font-semibold" style={on ? { background: "var(--accent-soft)", borderColor: "var(--accent)", color: "var(--accent)" } : { background: "var(--surface)", borderColor: "var(--border)", color: "var(--muted)" }}>{g.name}</button>;
+            })}
+          </div>
+        </div>
+        <div>
+          <div className="mb-[5px] text-[12px] font-semibold">Grades prioritaires <span className="font-normal text-faint">(2 tutorés en priorité)</span></div>
+          <div className="flex flex-wrap gap-[6px]">
+            {grades.map((g) => {
+              const on = prioSet.has(g._id);
+              return <button key={g._id} onClick={() => savePriority(toggle(prioSet, g._id))} className="rounded-[6px] border px-[9px] py-[4px] text-[11.5px] font-semibold" style={on ? { background: "color-mix(in srgb, var(--warning) 16%, transparent)", borderColor: "var(--warning)", color: "var(--warning)" } : { background: "var(--surface)", borderColor: "var(--border)", color: "var(--muted)" }}>{g.name}</button>;
+            })}
+          </div>
+        </div>
+        <div className="mt-[8px] text-[11px] text-faint">Les membres de la Police Academy sont tuteurs éligibles et prioritaires par défaut, quel que soit leur grade.</div>
+      </div>
+
+      {/* Annonce Discord de l'attribution */}
+      <div className="mb-[14px] rounded-sm border border-border bg-surface-2 p-[12px]">
+        <div className="mb-[8px] text-[11px] font-bold uppercase tracking-[0.07em] text-faint">Annonce Discord</div>
+        <div className="grid grid-cols-1 gap-[8px] sm:grid-cols-2">
+          <label className="flex flex-col gap-[4px]">
+            <span className="text-[11px] font-semibold text-muted">Salon (ID)</span>
+            <input defaultValue={ctx?.announceChannelId ?? ""} onBlur={(e) => void toast.guard(setConfig({ announceChannelId: e.target.value }), "Enregistrement impossible")} placeholder="123456789012345678" className={F} />
+          </label>
+          <label className="flex flex-col gap-[4px]">
+            <span className="text-[11px] font-semibold text-muted">Rôle à ping (ID)</span>
+            <input defaultValue={ctx?.announcePingId ?? ""} onBlur={(e) => void toast.guard(setConfig({ announcePingId: e.target.value }), "Enregistrement impossible")} placeholder="(optionnel)" className={F} />
+          </label>
+        </div>
+        <div className="mt-[8px] text-[11px] text-faint">Le bouton « Annoncer » poste la liste Tuteur → Tutorés dans ce salon, avec le ping.</div>
+      </div>
 
       <div className="mb-[8px] text-[11px] font-bold uppercase tracking-[0.07em] text-faint">Critères de la fiche</div>
       {items === undefined ? <SkeletonRows rows={6} /> : items.length === 0 ? (

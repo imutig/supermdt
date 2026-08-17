@@ -740,9 +740,28 @@ export default defineSchema({
   // ce grade bascule automatiquement dans l'historique.
   ftoConfig: defineTable({
     traineeGradeId: v.optional(v.id("grades")),
+    // Grades dont les membres peuvent être tuteurs FTO (les membres de l'académie
+    // le sont toujours, quel que soit leur grade).
+    tutorGradeIds: v.optional(v.array(v.id("grades"))),
+    // Grades prioritaires pour recevoir 2 tutorés quand les tuteurs manquent
+    // (l'académie est prioritaire par défaut).
+    priorityGradeIds: v.optional(v.array(v.id("grades"))),
+    // Annonce Discord de l'attribution : salon et ping (IDs Discord).
+    announceChannelId: v.optional(v.string()),
+    announcePingId: v.optional(v.string()),
     updatedBy: v.optional(v.id("agents")),
     updatedAt: v.number(),
   }),
+
+  // File d'annonces Discord « Tuteur -> Tutorés » (drainée par le bot, comme les
+  // publications de cérémonie). Le contenu et le salon sont figés à l'émission.
+  ftoAnnouncements: defineTable({
+    channelId: v.string(),
+    content: v.string(),
+    createdBy: v.optional(v.id("agents")),
+    createdAt: v.number(),
+    sent: v.boolean(),
+  }).index("by_sent", ["sent"]),
 
   // ---------- First Lincoln : évaluation de la première patrouille encadrée ----------
   // Grille configurable de critères d'évaluation d'un « First Lincoln ».
