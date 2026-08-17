@@ -1,6 +1,6 @@
 import {
   ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder,
-  type Client, type TextChannel, type ButtonInteraction,
+  type Client, type TextChannel, type ButtonInteraction, type Guild, type GuildMember, type Collection,
 } from "discord.js";
 import { mdt, type RollcallState, type RollStatus } from "./convex.js";
 import { baseEmbed, BRAND } from "./theme.js";
@@ -16,14 +16,28 @@ export const LSPD_ROLE = "1434397107086692452";
 // (pour le roll call du lendemain).
 export const ROLLCALL_ROLE = "1538912557153390694";
 
+// Cache court des membres : `guild.members.fetch()` (opcode 8) est fortement
+// rate-limité. On mutualise le résultat pendant 2 min et, en cas d'échec, on
+// retombe sur le dernier cache connu plutôt que d'abandonner.
+let membersCache: { at: number; members: Collection<string, GuildMember> } | null = null;
+async function fetchMembersCached(guild: Guild): Promise<Collection<string, GuildMember>> {
+  if (membersCache && Date.now() - membersCache.at < 120_000) return membersCache.members;
+  try {
+    const m = await guild.members.fetch();
+    membersCache = { at: Date.now(), members: m };
+    return m;
+  } catch (e) {
+    console.error("[rollcall] énumération des membres (rate limit ?) :", e);
+    return membersCache?.members ?? guild.members.cache;
+  }
+}
+
 // Synchronise l'appartenance au rôle roll-call : présent chez tout agent LSPD non
 // absent, absent partout ailleurs. Utilisé à l'ouverture et à la clôture.
 export async function syncRollcallRole(client: Client) {
   const guild = client.guilds.cache.first();
   if (!guild) return;
-  let members;
-  try { members = await guild.members.fetch(); }
-  catch (e) { console.error("[rollcall] énumération des membres impossible (active « Server Members Intent » ?) :", e); return; }
+  const members = await fetchMembersCached(guild);
   const absent = new Set(await mdt.absentDiscordIds().catch(() => [] as string[]));
   let added = 0, removed = 0;
   const ops: Promise<unknown>[] = [];
@@ -170,11 +184,13 @@ export async function openRollcall(client: Client, opts: {
 export async function remindNonVoters(client: Client, rc: { _id: string; channelId: string; messageId: string }) {
   const guild = client.guilds.cache.first();
   if (!guild) return;
-  let members;
-  try { members = await guild.members.fetch(); }
-  catch (e) { console.error("[rollcall] énumération des membres impossible (active « Server Members Intent » ?) :", e); return; }
-  const pending = [...members.values()].filter((m) => !m.user.bot && m.roles.cache.has(ROLLCALL_ROLE));
-  if (pending.length === 0) return; // tout le monde a voté (ou est absent) : rien à relancer.
+  // On NE fait plus de guild.members.fetch() ici : ça déclenchait un opcode 8
+  // rate-limité qui faisait échouer toute la relance. Le ping cible directement
+  // le rôle roll-call (maintenu par le bot). On s'appuie sur le cache pour éviter
+  // un ping à vide, mais on relance dès qu'il y a le moindre doute (cache froid).
+  const role = guild.roles.cache.get(ROLLCALL_ROLE);
+  const pending = role ? role.members.size : 0;
+  if (pending === 0 && guild.members.cache.size > 3) return; // rôle vide + cache chaud -> tout le monde a répondu
   const chan = await channel(client, rc.channelId);
   if (!chan) return;
   const link = `https://discord.com/channels/${guild.id}/${rc.channelId}/${rc.messageId}`;
@@ -184,7 +200,7 @@ export async function remindNonVoters(client: Client, rc: { _id: string; channel
   }).catch(() => null);
   // Mémorise ce message pour le supprimer avec le roll call du lendemain.
   if (msg) await mdt.rollcallAddReminderMsgs(rc._id, [msg.id]).catch(() => {});
-  console.log(`[rollcall] relance envoyée à ${pending.length} non-votant(s) via le rôle.`);
+  console.log(`[rollcall] relance envoyée via le rôle roll-call.`);
 }
 
 export async function closeRollcall(client: Client, rollcallId: string, channelId: string, messageId: string) {
