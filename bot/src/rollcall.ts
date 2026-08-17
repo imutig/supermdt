@@ -7,9 +7,36 @@ import { baseEmbed, BRAND } from "./theme.js";
 
 const LABELS: Record<RollStatus, string> = { PRESENT: "Présent", RETARD: "En retard", ABSENT: "Absent" };
 
-// Rôle LSPD : mentionné à la publication du roll call, et base des relances
-// (on ne re-ping que ses membres n'ayant pas encore voté).
+// Rôle LSPD : base d'éligibilité au roll call (tout le personnel).
 export const LSPD_ROLE = "1434397107086692452";
+
+// Rôle « LSPD - Roll-call » auto-géré : porté par les agents LSPD non absents qui
+// n'ont pas encore voté. Il est ping à l'ouverture et à chaque relance ; retiré
+// au votant dès qu'il répond ; ré-attribué à tous les éligibles à la clôture
+// (pour le roll call du lendemain).
+export const ROLLCALL_ROLE = "1538912557153390694";
+
+// Synchronise l'appartenance au rôle roll-call : présent chez tout agent LSPD non
+// absent, absent partout ailleurs. Utilisé à l'ouverture et à la clôture.
+export async function syncRollcallRole(client: Client) {
+  const guild = client.guilds.cache.first();
+  if (!guild) return;
+  let members;
+  try { members = await guild.members.fetch(); }
+  catch (e) { console.error("[rollcall] énumération des membres impossible (active « Server Members Intent » ?) :", e); return; }
+  const absent = new Set(await mdt.absentDiscordIds().catch(() => [] as string[]));
+  let added = 0, removed = 0;
+  const ops: Promise<unknown>[] = [];
+  for (const m of members.values()) {
+    if (m.user.bot) continue;
+    const eligible = m.roles.cache.has(LSPD_ROLE) && !absent.has(m.id);
+    const has = m.roles.cache.has(ROLLCALL_ROLE);
+    if (eligible && !has) ops.push(m.roles.add(ROLLCALL_ROLE).then(() => { added++; }).catch(() => {}));
+    else if (!eligible && has) ops.push(m.roles.remove(ROLLCALL_ROLE).then(() => { removed++; }).catch(() => {}));
+  }
+  await Promise.allSettled(ops);
+  console.log(`[rollcall] rôle roll-call synchronisé (+${added} / -${removed}).`);
+}
 
 // Boutons de vote, préfixés du rollcall pour survivre à un redémarrage du bot.
 function buttons(rollcallId: string) {
@@ -113,10 +140,13 @@ export async function openRollcall(client: Client, opts: {
   // n'envoie rien.
   const res = await mdt.rollcallReserve(date, channelId, endsAt, ceremony, ceremonyTime, displayTime).catch(() => null);
   if (!res || !res.created) return;
+  // Réattribue le rôle roll-call à tous les éligibles avant de publier (reset du
+  // jour) : la mention ne touchera que les agents non absents.
+  await syncRollcallRole(client);
   const prev = await mdt.rollcallPrevious(date).catch(() => null);
   const state: RollcallState = { endsAt, closed: false, ceremony: !!ceremony, ceremonyTime: ceremonyTime ?? null, displayTime: displayTime ?? null, present: [], retard: [], absent: [] };
-  // Première mention : le rôle LSPD à la publication.
-  const ping = { content: `<@&${LSPD_ROLE}>`, allowedMentions: { roles: [LSPD_ROLE] } };
+  // Première mention : le rôle roll-call à la publication.
+  const ping = { content: `<@&${ROLLCALL_ROLE}>`, allowedMentions: { roles: [ROLLCALL_ROLE] } };
   const sent = await chan.send({ ...ping, embeds: [rollcallEmbed(state)], components: buttons(res._id) });
   await mdt.rollcallSetMessage(res._id, sent.id).catch(() => {});
   // Supprime le message du roll call précédent ET ses messages de relance
@@ -134,40 +164,34 @@ export async function openRollcall(client: Client, opts: {
   console.log(`[rollcall] roll call ouvert (${date}).`);
 }
 
-// Relance : mentionne les membres du rôle LSPD qui n'ont PAS encore voté au
-// roll call du jour (ceux qui ont voté ne sont plus ping).
+// Relance : ping le rôle roll-call, qui ne porte plus que les agents non absents
+// n'ayant pas encore voté (le vote retire le rôle). Rien à faire si le rôle est
+// vide (tout le monde a répondu / est absent).
 export async function remindNonVoters(client: Client, rc: { _id: string; channelId: string; messageId: string }) {
   const guild = client.guilds.cache.first();
   if (!guild) return;
   let members;
   try { members = await guild.members.fetch(); }
   catch (e) { console.error("[rollcall] énumération des membres impossible (active « Server Members Intent » ?) :", e); return; }
-  const lspd = [...members.values()].filter((m) => !m.user.bot && m.roles.cache.has(LSPD_ROLE));
-  if (lspd.length === 0) return;
-  const voters = new Set(await mdt.rollcallVoters(rc._id).catch(() => [] as string[]));
-  // Les agents en absence approuvée ne sont pas relancés.
-  const absent = new Set(await mdt.absentDiscordIds().catch(() => [] as string[]));
-  const nonVoters = lspd.filter((m) => !voters.has(m.id) && !absent.has(m.id)).map((m) => m.id);
-  if (nonVoters.length === 0) return; // tout le monde a voté (ou est absent) : rien à relancer.
+  const pending = [...members.values()].filter((m) => !m.user.bot && m.roles.cache.has(ROLLCALL_ROLE));
+  if (pending.length === 0) return; // tout le monde a voté (ou est absent) : rien à relancer.
   const chan = await channel(client, rc.channelId);
   if (!chan) return;
   const link = `https://discord.com/channels/${guild.id}/${rc.channelId}/${rc.messageId}`;
-  // Discord limite le nombre de mentions par message : on découpe par 90.
-  const sentIds: string[] = [];
-  for (let i = 0; i < nonVoters.length; i += 90) {
-    const chunk = nonVoters.slice(i, i + 90);
-    const head = i === 0 ? `📣 **Roll call** - vous n'avez pas encore indiqué votre présence. Merci de voter : ${link}\n` : "";
-    const msg = await chan.send({ content: `${head}${chunk.map((id) => `<@${id}>`).join(" ")}`, allowedMentions: { users: chunk } }).catch(() => null);
-    if (msg) sentIds.push(msg.id);
-  }
-  // Mémorise ces messages pour les supprimer avec le roll call du lendemain.
-  if (sentIds.length) await mdt.rollcallAddReminderMsgs(rc._id, sentIds).catch(() => {});
-  console.log(`[rollcall] relance envoyée à ${nonVoters.length} non-votant(s).`);
+  const msg = await chan.send({
+    content: `📣 **Roll call** - vous n'avez pas encore indiqué votre présence. Merci de voter : ${link}\n<@&${ROLLCALL_ROLE}>`,
+    allowedMentions: { roles: [ROLLCALL_ROLE] },
+  }).catch(() => null);
+  // Mémorise ce message pour le supprimer avec le roll call du lendemain.
+  if (msg) await mdt.rollcallAddReminderMsgs(rc._id, [msg.id]).catch(() => {});
+  console.log(`[rollcall] relance envoyée à ${pending.length} non-votant(s) via le rôle.`);
 }
 
 export async function closeRollcall(client: Client, rollcallId: string, channelId: string, messageId: string) {
   await mdt.rollcallClose(rollcallId);
   await refresh(client, rollcallId, channelId, messageId);
+  // Ré-attribue le rôle roll-call à tous les éligibles pour l'appel du lendemain.
+  await syncRollcallRole(client);
   console.log("[rollcall] appel clos.");
 }
 
@@ -189,6 +213,12 @@ export async function handleRollcallButton(interaction: ButtonInteraction) {
       return;
     }
     await interaction.reply({ content: `Présence enregistrée : **${LABELS[status as RollStatus]}**.`, flags: 64 });
+    // Le votant ne sera plus ping aux relances : on lui retire le rôle roll-call.
+    if (interaction.guild) {
+      interaction.guild.members.fetch(interaction.user.id)
+        .then((m) => m.roles.remove(ROLLCALL_ROLE))
+        .catch(() => { /* best-effort (perms / hiérarchie) */ });
+    }
     if (interaction.message) await refresh(interaction.client, rollcallId, interaction.channelId, interaction.message.id);
   } catch (err) {
     console.error("[rollcall] traitement du vote impossible :", err);
