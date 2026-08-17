@@ -55,6 +55,11 @@ export const upsert = mutation({
       seconds: Math.floor((a.endedAt - a.startedAt) / 1000),
       createdAt: Date.now(),
     });
+    // Compteur maintenu sur integrationConfig : évite de rescanner toute la table
+    // à chaque lecture de `config` (query réactive) — l'import initial la faisait
+    // relire en O(n²). Insertions séquentielles côté bot → pas de contention.
+    const cfg = await ctx.db.query("integrationConfig").first();
+    if (cfg) await ctx.db.patch(cfg._id, { ingameServiceCount: (cfg.ingameServiceCount ?? 0) + 1 });
     return { created: true as const };
   },
 });
@@ -66,9 +71,13 @@ export const setCursor = mutation({
   handler: async (ctx, { secret, lastMsgId, clearResync }) => {
     assertBot(secret);
     const cfg = await ctx.db.query("integrationConfig").first();
+    // Fin d'une resync complète : on recale le compteur en scannant la table UNE
+    // fois (rare, piloté par l'admin). Entre deux resyncs, `upsert` l'incrémente.
+    const recount = clearResync ? (await ctx.db.query("inGameServices").collect()).length : undefined;
     const patch = {
       ...(lastMsgId ? { ingameServiceLastMsgId: lastMsgId } : {}),
       ...(clearResync ? { ingameServiceResync: false } : {}),
+      ...(recount !== undefined ? { ingameServiceCount: recount } : {}),
       ingameServiceLastSyncAt: Date.now(),
       updatedAt: Date.now(),
     };
@@ -164,8 +173,24 @@ export const config = query({
       channelId: cfg?.botIngameServiceChannel ?? "",
       lastSyncAt: cfg?.ingameServiceLastSyncAt ?? null,
       resyncPending: cfg?.ingameServiceResync === true,
-      total: (await ctx.db.query("inGameServices").collect()).length,
+      // Compteur maintenu (voir upsert) — plus de scan intégral de la table ici.
+      total: cfg?.ingameServiceCount ?? 0,
     };
+  },
+});
+
+// Backfill unique du compteur (à lancer une fois après déploiement, puis maintenu
+// par upsert + setCursor). Gardé par le secret bot pour être exécutable en CLI.
+// `npx convex run --prod ingameService:backfillCount '{"secret":"<BOT_SECRET>"}'`.
+export const backfillCount = mutation({
+  args: { secret: v.string() },
+  handler: async (ctx, { secret }) => {
+    assertBot(secret);
+    const cfg = await ctx.db.query("integrationConfig").first();
+    if (!cfg) return 0;
+    const n = (await ctx.db.query("inGameServices").collect()).length;
+    await ctx.db.patch(cfg._id, { ingameServiceCount: n });
+    return n;
   },
 });
 

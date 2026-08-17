@@ -1807,6 +1807,7 @@ export default defineSchema({
     ingameServiceLastMsgId: v.optional(v.string()),  // curseur : dernier message traité
     ingameServiceResync: v.optional(v.boolean()),    // demande de resync complet (historique)
     ingameServiceLastSyncAt: v.optional(v.number()), // horodatage du dernier passage
+    ingameServiceCount: v.optional(v.number()),      // compteur maintenu (évite de scanner la table)
     updatedBy: v.optional(v.id("agents")),
     updatedAt: v.number(),
   }),
