@@ -87,20 +87,23 @@ async function assertManage(ctx: QueryCtx | MutationCtx, viewer: Doc<"agents">) 
   throw new ConvexError("Réservé à l'encadrement de l'académie.");
 }
 
-// Avancement (%) d'une fiche : part des critères actifs renseignés.
+// Aptitude (%) d'une fiche = moyenne pondérée des critères, pas un simple taux de
+// remplissage. Un critère non noté OU noté « Exécrable » (niveau 0) ne vaut rien ;
+// « Très Bien » (niveau 4) vaut 1. CHECK_TP : théorie et pratique valent 0,5
+// chacune ; CHECK : validé = 1. Le % reflète l'aptitude à passer la First Lincoln.
 async function sheetProgress(ctx: QueryCtx | MutationCtx, agentId: Id<"agents">, items: Doc<"ftoItems">[]): Promise<number> {
   if (items.length === 0) return 0;
   const entries = await ctx.db.query("ftoEntries").withIndex("by_agent", (q) => q.eq("agentId", agentId)).collect();
   const byItem = new Map(entries.map((e) => [e.itemId as string, e]));
-  let filled = 0;
+  let score = 0;
   for (const it of items) {
     const e = byItem.get(it._id as string);
     if (!e) continue;
-    if (it.kind === "SCALE" && typeof e.level === "number") filled++;
-    else if (it.kind === "CHECK_TP" && (e.theorie || e.pratique)) filled++;
-    else if (it.kind === "CHECK" && e.checked) filled++;
+    if (it.kind === "SCALE") { if (typeof e.level === "number") score += e.level / 4; }
+    else if (it.kind === "CHECK_TP") score += (e.theorie ? 0.5 : 0) + (e.pratique ? 0.5 : 0);
+    else if (it.kind === "CHECK") { if (e.checked) score += 1; }
   }
-  return Math.round((filled / items.length) * 100);
+  return Math.round((score / items.length) * 100);
 }
 
 // Libellés de la Formation Terrain : grade en formation + grade confirmé (pour
@@ -159,7 +162,8 @@ export const listOffi1 = query({
         progress: await sheetProgress(ctx, a._id, items),
       });
     }
-    return out.sort((a, b) => a.name.localeCompare(b.name));
+    // Classé par aptitude décroissante (les plus prêts pour la First Lincoln en tête).
+    return out.sort((a, b) => b.progress - a.progress || a.name.localeCompare(b.name));
   },
 });
 
@@ -198,7 +202,7 @@ export const listGraduated = query({
         progress: await sheetProgress(ctx, a._id, items),
       });
     }
-    return out.sort((a, b) => a.name.localeCompare(b.name));
+    return out.sort((a, b) => b.progress - a.progress || a.name.localeCompare(b.name));
   },
 });
 

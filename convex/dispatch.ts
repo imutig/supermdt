@@ -253,19 +253,22 @@ async function defaultStatusId(ctx: MutationCtx): Promise<Id<"dispatchStatuses">
   return (statuses.find((s) => s.isDefault) ?? statuses[0])?._id;
 }
 
-// Recalcule le texte de recherche d'une patrouille (indicatif + noms/matricules des
-// agents présents). Figé TANT QUE la patrouille vit : une fois terminée, on ne
-// touche plus au snapshot (ses membres ont pu être supprimés à la dissolution).
-async function updatePatrolSearch(ctx: MutationCtx, patrolId: Id<"patrols">) {
+// Enrichit (par union, jamais par remplacement) le texte de recherche d'une
+// patrouille avec son indicatif courant et les noms/matricules des agents
+// fournis. On accumule : un agent qui a quitté la patrouille avant sa
+// dissolution — ou l'indicatif précédent — reste ainsi recherchable.
+async function addPatrolSearchTokens(ctx: MutationCtx, patrolId: Id<"patrols">, agentIds: Id<"agents">[]) {
   const p = await ctx.db.get(patrolId);
-  if (!p || p.endedAt) return;
-  const links = await ctx.db.query("patrolMembers").withIndex("by_patrol", (q) => q.eq("patrolId", patrolId)).collect();
-  const parts = [p.label];
-  for (const m of links) {
-    const a = await ctx.db.get(m.agentId);
-    if (a) parts.push(`${a.prenomRP} ${a.nomRP}`, a.matricule != null ? String(a.matricule) : "");
+  if (!p) return;
+  const words = new Set((p.searchText ?? "").split(/\s+/).filter(Boolean));
+  for (const w of norm(p.label).split(/\s+/)) if (w) words.add(w);
+  for (const id of agentIds) {
+    const a = await ctx.db.get(id);
+    if (!a) continue;
+    for (const w of norm(`${a.prenomRP} ${a.nomRP}`).split(/\s+/)) if (w) words.add(w);
+    if (a.matricule != null) words.add(String(a.matricule));
   }
-  await ctx.db.patch(patrolId, { searchText: norm(parts.filter(Boolean).join(" ")) });
+  await ctx.db.patch(patrolId, { searchText: [...words].join(" ") });
 }
 
 async function recomputeLabel(ctx: MutationCtx, patrolId: Id<"patrols">) {
@@ -280,8 +283,8 @@ async function recomputeLabel(ctx: MutationCtx, patrolId: Id<"patrols">) {
     indicator = indicatorForCount(count);
   }
   await ctx.db.patch(patrolId, { indicator, label: `13${indicator}${p.vehicleNumber}` });
-  // L'indicatif et l'effectif viennent de changer : rafraîchir le texte de recherche.
-  await updatePatrolSearch(ctx, patrolId);
+  // L'indicatif vient de changer : replier le nouveau libellé dans la recherche.
+  await addPatrolSearchTokens(ctx, patrolId, []);
 }
 
 async function detachAgent(ctx: MutationCtx, agentId: Id<"agents">) {
@@ -390,7 +393,7 @@ export const create = mutation({
       await detachAgent(ctx, members[i]);
       await ctx.db.insert("patrolMembers", { patrolId, agentId: members[i], at: now });
     }
-    await updatePatrolSearch(ctx, patrolId);
+    await addPatrolSearchTokens(ctx, patrolId, members);
     // Une patrouille prenant un véhicule LSPD ouvre une sortie.
     if (fleetVehicleId) await openTrip(ctx, patrolId, fleetVehicleId, agent._id, members);
     await logPatrol(ctx, patrolId, agent._id, "created", `Patrouille créée (${members.length} agent${members.length > 1 ? "s" : ""})`);
@@ -438,7 +441,7 @@ export const createForAgent = mutation({
       statusId, fields: pickFields(status, fields), statusSince: now, startedAt: now, createdBy: agent._id,
     });
     await ctx.db.insert("patrolMembers", { patrolId, agentId, at: now });
-    await updatePatrolSearch(ctx, patrolId);
+    await addPatrolSearchTokens(ctx, patrolId, [agentId]);
     await logPatrol(ctx, patrolId, agent._id, "created", `Patrouille créée avec ${await agentName(ctx, agentId)}`);
     await notify(ctx, "patrol.create", {
       title: `Patrouille créée · 13${indicator}${vehicleNumber}`,
@@ -578,6 +581,8 @@ export const join = mutation({
     await tripAddMember(ctx, patrolId, agent._id);
     await logPatrol(ctx, patrolId, agent._id, "member_add", `${await agentName(ctx, agent._id)} a rejoint`);
     await recomputeLabel(ctx, patrolId);
+    // Garder le nouvel arrivant recherchable même s'il quitte avant la dissolution.
+    await addPatrolSearchTokens(ctx, patrolId, [agent._id]);
   },
 });
 
@@ -812,20 +817,29 @@ export const history = query({
   },
 });
 
-// Backfill idempotent : renseigne searchText des patrouilles existantes depuis leur
-// indicatif + les membres restants. À lancer une fois après le déploiement.
+// Backfill idempotent : reconstruit searchText des patrouilles existantes depuis
+// leur indicatif, leurs membres restants ET le journal (byAgentId des actions
+// member_add / created), ce qui récupère les agents des patrouilles terminées
+// dont les membres ont été supprimés à la dissolution. À lancer après déploiement.
 export const backfillPatrolSearch = internalMutation({
   args: {},
   handler: async (ctx) => {
     let updated = 0;
     for (const p of await ctx.db.query("patrols").collect()) {
-      const links = await ctx.db.query("patrolMembers").withIndex("by_patrol", (x) => x.eq("patrolId", p._id)).collect();
-      const parts = [p.label];
-      for (const m of links) {
-        const a = await ctx.db.get(m.agentId);
-        if (a) parts.push(`${a.prenomRP} ${a.nomRP}`, a.matricule != null ? String(a.matricule) : "");
+      const agentIds = new Set<string>();
+      for (const m of await ctx.db.query("patrolMembers").withIndex("by_patrol", (x) => x.eq("patrolId", p._id)).collect()) agentIds.add(m.agentId as string);
+      for (const ev of await ctx.db.query("patrolEvents").withIndex("by_patrol", (x) => x.eq("patrolId", p._id)).collect()) {
+        if (ev.byAgentId && (ev.kind === "member_add" || ev.kind === "created")) agentIds.add(ev.byAgentId as string);
       }
-      const next = norm(parts.filter(Boolean).join(" "));
+      const words = new Set<string>();
+      for (const w of norm(p.label).split(/\s+/)) if (w) words.add(w);
+      for (const id of agentIds) {
+        const a = await ctx.db.get(id as Id<"agents">);
+        if (!a) continue;
+        for (const w of norm(`${a.prenomRP} ${a.nomRP}`).split(/\s+/)) if (w) words.add(w);
+        if (a.matricule != null) words.add(String(a.matricule));
+      }
+      const next = [...words].join(" ");
       if (p.searchText !== next) { await ctx.db.patch(p._id, { searchText: next }); updated++; }
     }
     return { updated };

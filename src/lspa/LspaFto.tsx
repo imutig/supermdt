@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { useNavigate, Navigate } from "react-router-dom";
 import { usePortals } from "@/hooks/usePortals";
-import { ShieldCheck, ChevronRight, Settings, Plus, Trash2, ChevronUp, ChevronDown, ArrowLeft, Star, ListChecks, SplitSquareHorizontal, Lock, History } from "lucide-react";
+import { ShieldCheck, ChevronRight, Settings, Plus, Trash2, ChevronUp, ChevronDown, ArrowLeft, Star, ListChecks, SplitSquareHorizontal, Lock, History, Search } from "lucide-react";
 import { api } from "@/lib/api";
 import type { Id } from "convex/_generated/dataModel";
 import { useCan } from "@/hooks/useCan";
@@ -16,6 +16,8 @@ import { fmtMatricule } from "@/components/common/AgentTag";
 
 type Row = { _id: string; name: string; matricule: number | null; avatarUrl: string | null; tutorName: string | null; canOpen: boolean; progress: number; gradeName?: string | null };
 
+const norm = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+
 // Formation terrain : liste des officiers en formation, accès à leur fiche FTO.
 // Jamais accessible aux cadets (la formation terrain concerne les assermentés).
 export function LspaFto() {
@@ -28,6 +30,7 @@ export function LspaFto() {
   const [tab, setTab] = useState<"active" | "history">("active");
   const graduated = useQuery(api.fto.listGraduated, tab === "history" ? {} : "skip");
   const [configuring, setConfiguring] = useState(false);
+  const [q, setQ] = useState("");
 
   // Réservé à la Formation Terrain : Officier confirmé+, académie, owner.
   if (me === undefined) return null;
@@ -36,7 +39,11 @@ export function LspaFto() {
   const traineeLabel = ctx?.traineeGradeName ?? "Officier 1 Probatoire";
   const formedLabel = ctx?.formedGradeName ?? "Officier 1 Confirmé";
 
-  const list = tab === "active" ? active : graduated;
+  const rawList = tab === "active" ? active : graduated;
+  const needle = norm(q.trim());
+  const list = rawList === undefined ? undefined : needle
+    ? (rawList as Row[]).filter((o) => norm(o.name).includes(needle) || String(o.matricule ?? "").includes(needle))
+    : rawList;
 
   return (
     <div className="p-[22px_26px]" style={{ animation: "mdtFade .2s ease" }}>
@@ -49,9 +56,13 @@ export function LspaFto() {
       </div>
 
       {/* Onglets : en formation / historique (fiches des agents formés) */}
-      <div className="mb-[14px] flex gap-[6px]">
+      <div className="mb-[14px] flex flex-wrap items-center gap-[8px]">
         <TabBtn on={tab === "active"} onClick={() => setTab("active")} icon={ShieldCheck}>En formation</TabBtn>
         <TabBtn on={tab === "history"} onClick={() => setTab("history")} icon={History}>Historique</TabBtn>
+        <div className="relative ml-auto min-w-[200px] flex-1 sm:max-w-[280px]">
+          <Search className="pointer-events-none absolute left-[10px] top-1/2 h-[14px] w-[14px] -translate-y-1/2 text-faint" />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Rechercher un agent…" className="h-9 w-full rounded-[8px] border border-border bg-surface-2 pl-[32px] pr-3 text-[12.5px] outline-none focus:border-accent" />
+        </div>
       </div>
 
       {configuring && <FtoConfigModal ctx={ctx} onClose={() => setConfiguring(false)} />}
@@ -60,7 +71,9 @@ export function LspaFto() {
         <div className="rounded-card border border-border bg-surface p-4"><SkeletonRows rows={4} /></div>
       ) : list.length === 0 ? (
         <div className="rounded-card border border-border bg-surface">
-          {tab === "active"
+          {needle
+            ? <EmptyState title="Aucun résultat" message="Aucun agent ne correspond à cette recherche." />
+            : tab === "active"
             ? <EmptyState title={`Aucun ${traineeLabel}`} message={`Les agents au grade ${traineeLabel} apparaîtront ici.`} />
             : <EmptyState title="Historique vide" message="Les fiches des agents formés (promus au grade supérieur) apparaîtront ici." />}
         </div>

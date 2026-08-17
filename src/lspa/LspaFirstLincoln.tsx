@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { useNavigate, Navigate } from "react-router-dom";
-import { Car, ChevronRight, Settings, Plus, Trash2, ChevronUp, ChevronDown, ArrowLeft, Star, ListChecks, History, Users } from "lucide-react";
+import { Car, ChevronRight, Settings, Plus, Trash2, ChevronUp, ChevronDown, ArrowLeft, Star, ListChecks, History, Users, Search } from "lucide-react";
 import { api } from "@/lib/api";
 import type { Id } from "convex/_generated/dataModel";
 import { useToast } from "@/providers/toast";
@@ -22,15 +22,23 @@ export function verdictMeta(v: string) {
   return VERDICTS.find((x) => x.v === v) ?? VERDICTS[0];
 }
 
+const norm = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+
 export function LspaFirstLincoln() {
   const access = useQuery(api.firstLincoln.access);
   const navigate = useNavigate();
   const [tab, setTab] = useState<"active" | "history">("active");
-  const list = useQuery(api.firstLincoln.listRookies, { history: tab === "history" });
+  const rawList = useQuery(api.firstLincoln.listRookies, { history: tab === "history" });
   const [configuring, setConfiguring] = useState(false);
+  const [q, setQ] = useState("");
 
   if (access === undefined) return null;
   if (!access.view) return <Navigate to="/lspa" replace />;
+
+  const needle = norm(q.trim());
+  const list = rawList === undefined ? undefined : needle
+    ? rawList.filter((o) => norm(o.name).includes(needle) || String(o.matricule ?? "").includes(needle))
+    : rawList;
 
   return (
     <div className="p-[22px_26px]" style={{ animation: "mdtFade .2s ease" }}>
@@ -42,9 +50,13 @@ export function LspaFirstLincoln() {
         {access.manage && <Button onClick={() => setConfiguring(true)}><Settings className="h-[15px] w-[15px]" /> Configurer</Button>}
       </div>
 
-      <div className="mb-[14px] flex gap-[6px]">
+      <div className="mb-[14px] flex flex-wrap items-center gap-[8px]">
         <TabBtn on={tab === "active"} onClick={() => setTab("active")} icon={Users}>Rookies</TabBtn>
         <TabBtn on={tab === "history"} onClick={() => setTab("history")} icon={History}>Historique</TabBtn>
+        <div className="relative ml-auto min-w-[200px] flex-1 sm:max-w-[280px]">
+          <Search className="pointer-events-none absolute left-[10px] top-1/2 h-[14px] w-[14px] -translate-y-1/2 text-faint" />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Rechercher un agent…" className="h-9 w-full rounded-[8px] border border-border bg-surface-2 pl-[32px] pr-3 text-[12.5px] outline-none focus:border-accent" />
+        </div>
       </div>
 
       {configuring && <FlConfigModal onClose={() => setConfiguring(false)} />}
@@ -53,7 +65,9 @@ export function LspaFirstLincoln() {
         <div className="rounded-card border border-border bg-surface p-4"><SkeletonRows rows={4} /></div>
       ) : list.length === 0 ? (
         <div className="rounded-card border border-border bg-surface">
-          {tab === "active"
+          {needle
+            ? <EmptyState title="Aucun résultat" message="Aucun agent ne correspond à cette recherche." />
+            : tab === "active"
             ? <EmptyState title="Aucun rookie" message="Les agents en formation terrain apparaîtront ici pour leur First Lincoln." />
             : <EmptyState title="Historique vide" message="Les rookies évalués puis promus apparaîtront ici." />}
         </div>
