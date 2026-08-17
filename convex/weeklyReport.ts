@@ -79,12 +79,19 @@ async function aggregate(ctx: QueryCtx, from: number, to: number) {
     if (a) topAgents.push({ name: `${a.prenomRP} ${a.nomRP}`, matricule: a.matricule != null ? `#${String(a.matricule).padStart(5, "0")}` : "", arrestations: n });
   }
 
-  // Contraventions, amendes émises.
+  // Contraventions.
   const citations = (await ctx.db.query("citations").collect())
     .filter((c) => inRange(c.at) && c.status !== "ANNULEE" && !c.deletedAt);
   const contraventions = citations.length;
-  const amendes = (await ctx.db.query("amendes").collect()).filter((a) => inRange(a._creationTime) && !a.deletedAt);
-  const amendesMontant = amendes.reduce((s, a) => s + (a.montant ?? 0), 0);
+  // Amendes émises = montant de CHAQUE acte verbalisateur de la période (rapport /
+  // dossier d'arrestation + contravention). On agrège depuis la source (le montant
+  // porté par l'acte) et non depuis la table `amendes` : celle-ci n'est peuplée
+  // automatiquement que depuis peu, alors que chaque arrestation/contravention
+  // porte son montant, avec ou sans entité amende associée.
+  const casiersFine = casiers.reduce((s, e) => s + (e.totalFine ?? 0), 0);
+  const citationsFine = citations.reduce((s, c) => s + (c.totalFine ?? 0), 0);
+  const amendesMontant = casiersFine + citationsFine;
+  const amendesCount = casiers.filter((e) => (e.totalFine ?? 0) > 0).length + citations.filter((c) => (c.totalFine ?? 0) > 0).length;
 
   // Heures de service IN-GAME (chevauchement avec la période, réparti aux bornes
   // de semaine). Source = salon « VIZU | Service Log » synchronisé par le bot.
@@ -105,7 +112,7 @@ async function aggregate(ctx: QueryCtx, from: number, to: number) {
   const gradeCount = new Map<string, number>();
   for (const a of activeAgents) if (a.gradeId) gradeCount.set(a.gradeId as string, (gradeCount.get(a.gradeId as string) ?? 0) + 1);
   const parGrade = [...gradeCount.entries()]
-    .map(([gid, count]) => ({ grade: grades.get(gid)?.name ?? "—", position: grades.get(gid)?.position ?? -1, count }))
+    .map(([gid, count]) => ({ grade: grades.get(gid)?.name ?? "Sans grade", position: grades.get(gid)?.position ?? -1, count }))
     .sort((a, b) => b.position - a.position)
     .map(({ grade, count }) => ({ grade, count }));
 
@@ -141,7 +148,7 @@ async function aggregate(ctx: QueryCtx, from: number, to: number) {
       sanctions,
     },
     chart: dayBuckets.map(({ label, arrestations, contraventions }) => ({ label, arrestations, contraventions })),
-    crime: { dossiers, rapports, bolos, amendesCount: amendes.length, topInfractions },
+    crime: { dossiers, rapports, bolos, amendesCount, topInfractions },
     ops: {
       patrouilles,
       appels911,

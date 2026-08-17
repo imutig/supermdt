@@ -56,6 +56,9 @@ export type ReportPayload = {
 export function tex(s: string | number | null | undefined): string {
   if (s === null || s === undefined) return "";
   return String(s)
+    // Pas de tirets cadratins/demi-cadratins dans le rapport : on les remplace par
+    // un trait d'union simple (demandé par l'état-major).
+    .replace(/[—–―]/g, "-")
     .replace(/\\/g, "\\textbackslash{}")
     .replace(/([&%$#_{}])/g, "\\$1")
     .replace(/~/g, "\\textasciitilde{}")
@@ -74,13 +77,16 @@ export function richToLatex(input: string): string {
   const inline = (t: string) => tex(t).replace(/\*\*([^*]+)\*\*/g, (_m, g) => `\\textbf{${tex(g)}}`);
   const out: string[] = [];
   for (const block of src.split(/\n{2,}/)) {
-    const lines = block.split("\n");
+    const lines = block.split("\n").filter((l) => l.trim().length);
+    if (!lines.length) continue;
     if (lines.every((l) => /^\s*[-*]\s+/.test(l))) {
       out.push("\\begin{itemize}");
       for (const l of lines) out.push("  \\item " + inline(l.replace(/^\s*[-*]\s+/, "")));
       out.push("\\end{itemize}");
     } else {
-      out.push("\\justifying " + inline(block.replace(/\n/g, " ")) + "\\par");
+      // Chaque retour à la ligne simple à l'intérieur d'un paragraphe est un saut
+      // de ligne forcé (\\), les lignes vides séparent les paragraphes.
+      out.push("\\justifying " + lines.map(inline).join("\\\\\n") + "\\par");
     }
   }
   return out.join("\n\n");
@@ -121,7 +127,7 @@ function opsList(rows: { name: string; date: string }[]): string {
   if (!rows.length) return "\\rlead{Aucune opération enregistrée sur la période.}";
   return (
     "\\begin{itemize}\n" +
-    rows.map((r) => `  \\item \\stress{${tex(r.name)}}${r.date ? ` \\textemdash{} ${tex(r.date)}` : ""}`).join("\n") +
+    rows.map((r) => `  \\item \\stress{${tex(r.name)}}${r.date ? ` \\textperiodcentered{} ${tex(r.date)}` : ""}`).join("\n") +
     "\n\\end{itemize}"
   );
 }
@@ -135,7 +141,7 @@ function honneurList(rows: ReportPayload["honneur"]): string {
         (r) =>
           `  \\item \\stress{${tex(r.name)}}` +
           (r.matricule ? ` {\\lspdsans\\color{lspdgrey}(${tex(r.matricule)})}` : "") +
-          (r.reason ? ` \\textemdash{} ${tex(r.reason)}` : ""),
+          (r.reason ? ` \\textperiodcentered{} ${tex(r.reason)}` : ""),
       )
       .join("\n") +
     "\n\\end{itemize}"
@@ -167,16 +173,22 @@ function hbarChart(title: string, data: { name: string; count: number }[], max =
   const rows = [...(data ?? [])].filter((r) => r && typeof r.count === "number").slice(0, max).reverse();
   if (rows.length < 2) return "";
   const N = rows.length;
+  // Nom tronqué : au-delà de ~40 caractères l'étiquette déborderait la zone.
+  const clip = (s: string) => (s.length > 40 ? s.slice(0, 39).trimEnd() + "…" : s);
+  const maxCount = Math.max(1, ...rows.map((r) => Math.round(r.count)));
   const yticks = rows.map((_r, i) => i + 1).join(",");
-  const ylabels = rows.map((r) => `{${tex(r.name)}}`).join(",");
+  const ylabels = rows.map((r) => `{${tex(clip(r.name))}}`).join(",");
   const coords = rows.map((r, i) => `(${Math.max(0, Math.round(r.count))},${i + 1})`).join(" ");
   const height = 16 + N * 8; // mm, s'adapte au nombre de lignes
   return [
     `\\sstitre{${tex(title)}}`,
-    "\\begin{center}\\begin{tikzpicture}",
-    `\\begin{axis}[lspdhbar, height=${height}mm, ytick={${yticks}}, yticklabels={${ylabels}}, ymin=0.4, ymax=${N + 0.6}]`,
+    // resizebox : garantit que le graphique ne dépasse jamais la largeur du texte
+    // (les étiquettes à gauche + les valeurs à droite étaient rognées hors page).
+    "\\begin{center}\\resizebox{\\linewidth}{!}{%",
+    "\\begin{tikzpicture}",
+    `\\begin{axis}[lspdhbar, height=${height}mm, xmax=${Math.ceil(maxCount * 1.18)}, ytick={${yticks}}, yticklabels={${ylabels}}, ymin=0.4, ymax=${N + 0.6}]`,
     `\\addplot coordinates {${coords}};`,
-    "\\end{axis}\\end{tikzpicture}\\end{center}",
+    "\\end{axis}\\end{tikzpicture}}\\end{center}",
   ].join("\n");
 }
 
