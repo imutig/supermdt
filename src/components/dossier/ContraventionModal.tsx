@@ -8,6 +8,7 @@ import { useToast } from "@/providers/toast";
 import { useCan } from "@/hooks/useCan";
 import { EditChargesModal } from "@/components/calc/EditChargesModal";
 import { ContraventionDoc } from "@/components/docs/ContraventionDoc";
+import { AmendeStatusSelect } from "@/components/dossier/AmendeStatusSelect";
 
 // Détail complet d'une contravention (§6). Miroir du modal casier, sans prison ni arrestation.
 export function ContraventionModal({
@@ -103,6 +104,12 @@ export function ContraventionModal({
                   <div className="mb-[3px] text-[10px] font-bold uppercase tracking-[0.08em] text-faint">Statut</div>
                   <div className="text-[13px]">{entry.status === "ANNULEE" ? "Annulée" : "Émise"}</div>
                 </div>
+                {entry.amende && (
+                  <div className="col-span-2 bg-surface-2 px-3 py-[10px]">
+                    <div className="mb-[5px] text-[10px] font-bold uppercase tracking-[0.08em] text-faint">Amende</div>
+                    <AmendeStatusSelect amende={entry.amende} compact />
+                  </div>
+                )}
                 {entry.montantMajore != null && entry.montantMajore > 0 && (
                   <div className="bg-surface-2 px-3 py-[10px]">
                     <div className="mb-[3px] text-[10px] font-bold uppercase tracking-[0.08em] text-faint">Montant majoré</div>

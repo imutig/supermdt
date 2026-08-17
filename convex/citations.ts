@@ -102,6 +102,17 @@ async function citationOfficer(
   return { ...l, linked: true };
 }
 
+// Amende (entité financière) liée à une contravention : id + statut courant, pour
+// piloter le statut directement depuis la contravention (comme sur le casier).
+async function linkedCitationAmende(
+  ctx: QueryCtx,
+  citationId: import("./_generated/dataModel").Id<"citations">,
+): Promise<{ _id: import("./_generated/dataModel").Id<"amendes">; statut: string } | null> {
+  const a = (await ctx.db.query("amendes").withIndex("by_citation", (q) => q.eq("citationId", citationId)).collect())
+    .find((x) => !x.deletedAt);
+  return a ? { _id: a._id, statut: a.statut } : null;
+}
+
 export const byCitizen = query({
   args: { citizenId: v.id("citizens") },
   handler: async (ctx, { citizenId }) => {
@@ -126,6 +137,7 @@ export const byCitizen = query({
         totalFine: c.totalFine,
         officer: await citationOfficer(ctx, c),
         motif: charges.map((x) => chargeDisplayName(x.snapshot.name, x.attemptType)).join(", ") || "-",
+        amende: await linkedCitationAmende(ctx, c._id),
       });
     }
     return out;
@@ -153,6 +165,7 @@ export const getEntry = query({
       citizenId: c.citizenId,
       citizenName: citizen ? `${citizen.prenom} ${citizen.nom}` : "-",
       mine: c.createdBy === agent._id,
+      amende: await linkedCitationAmende(ctx, c._id),
       officer: await citationOfficer(ctx, c),
       defcon: c.defconSnapshot,
       totalFine: c.totalFine,

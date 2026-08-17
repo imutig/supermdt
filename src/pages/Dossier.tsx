@@ -677,17 +677,18 @@ export function Dossier() {
                   </div>
                 ) : (
                   <>
-                    <div className="grid grid-cols-[1fr_.7fr_.9fr_.6fr] gap-3 border-b border-border px-4 py-[11px] text-[10px] font-bold uppercase tracking-[0.08em] text-faint">
+                    <div className="grid grid-cols-[1fr_.6fr_.8fr_.5fr_.8fr] gap-3 border-b border-border px-4 py-[11px] text-[10px] font-bold uppercase tracking-[0.08em] text-faint">
                       <span>Motif</span>
                       <span>Montant</span>
                       <span>Agent</span>
                       <span>Statut</span>
+                      <span>Amende</span>
                     </div>
                     {(contraventions ?? []).map((c) => (
                       <div
                         key={c._id}
                         onClick={() => setContravModalId(c._id)}
-                        className="grid cursor-pointer grid-cols-[1fr_.7fr_.9fr_.6fr] items-center gap-3 border-b border-border px-4 py-3 hover:bg-surface-2"
+                        className="grid cursor-pointer grid-cols-[1fr_.6fr_.8fr_.5fr_.8fr] items-center gap-3 border-b border-border px-4 py-3 hover:bg-surface-2"
                       >
                         <div>
                           <div className="text-[13px] font-medium">{c.motif}</div>
@@ -707,6 +708,11 @@ export function Dossier() {
                         >
                           {c.status === "ANNULEE" ? "Annulée" : "Émise"}
                         </span>
+                        {c.amende ? (
+                          <AmendeStatusSelect amende={c.amende} compact />
+                        ) : (
+                          <span className="text-[12px] text-faint">—</span>
+                        )}
                       </div>
                     ))}
                   </>
