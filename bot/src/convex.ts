@@ -117,7 +117,7 @@ export type TickResult = {
   nexusAlertQueue: { id: string; message: string; discordId: string }[];
   roleJobsPending: { _id: string; discordId: string; addRoleId: string | null; removeRoleIds: string[]; reason: string | null }[];
   ceremonyPosts: { channel: string | null; posts: { id: string; content: string }[] };
-  ftoAnnouncements: { id: string; channelId: string; content: string }[];
+  ftoAnnouncements: { id: string; channelId: string; pingContent: string | null; description: string | null; tutorCount: number; traineeCount: number; content: string | null }[];
   absencesToAnnounce: { id: string; name: string; matricule: number | null; discordId: string | null; from: number; to: number; reason: string }[];
   sanctionsToAnnounce: SanctionAnnounce[];
   convocationsToAnnounce: ConvocationAnnounce[];

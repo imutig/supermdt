@@ -348,18 +348,21 @@ export const announceTutors = mutation({
       byTutor.set(tutorId as string, entry);
     }
 
-    const name = (a: Doc<"agents">) => `${a.matricule != null ? `#${a.matricule} ` : ""}${a.prenomRP} ${a.nomRP}`;
-    const lines: string[] = [];
-    if (cfg?.announcePingId?.trim()) lines.push(`<@&${cfg.announcePingId.trim()}>`);
-    lines.push(`📋 **Attribution des tuteurs — Formation Terrain**`, "");
+    // Chaque personne est mentionnée si son compte Discord est lié, sinon en gras.
+    const tok = (a: Doc<"agents">) => a.discordId ? `<@${a.discordId}>` : `**${a.prenomRP} ${a.nomRP}**`;
     const groups = [...byTutor.values()].sort((a, b) => (a.tutor.matricule ?? 0) - (b.tutor.matricule ?? 0));
     if (groups.length === 0 && orphans.length === 0) throw new ConvexError("Aucune attribution à annoncer.");
-    for (const g of groups) lines.push(`**${name(g.tutor)}** → ${g.list.map(name).join(", ")}`);
-    if (orphans.length) lines.push("", `⚠️ *Sans tuteur* : ${orphans.map(name).join(", ")}`);
+
+    const blocks = groups.map((g) => `${tok(g.tutor)}\n╰ ${g.list.map(tok).join(" · ")}`);
+    let description = blocks.join("\n\n");
+    if (orphans.length) description += `\n\n⚠️ **Sans tuteur** : ${orphans.map(tok).join(" · ")}`;
 
     await ctx.db.insert("ftoAnnouncements", {
       channelId,
-      content: lines.join("\n").slice(0, 1900),
+      pingContent: cfg?.announcePingId?.trim() ? `<@&${cfg.announcePingId.trim()}>` : undefined,
+      description: description.slice(0, 4000),
+      tutorCount: groups.length,
+      traineeCount: trainees.length,
       createdBy: viewer._id,
       createdAt: Date.now(),
       sent: false,

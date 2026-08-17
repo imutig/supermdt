@@ -1629,7 +1629,15 @@ async function readCeremonyPosts(ctx: QueryCtx) {
 // le contenu). Le bot poste puis marque `sent`.
 async function readFtoAnnouncements(ctx: QueryCtx) {
   const rows = (await ctx.db.query("ftoAnnouncements").withIndex("by_sent", (q) => q.eq("sent", false)).collect()).slice(0, 10);
-  return rows.map((p) => ({ id: p._id, channelId: p.channelId, content: p.content }));
+  return rows.map((p) => ({
+    id: p._id,
+    channelId: p.channelId,
+    pingContent: p.pingContent ?? null,
+    description: p.description ?? null,
+    tutorCount: p.tutorCount ?? 0,
+    traineeCount: p.traineeCount ?? 0,
+    content: p.content ?? null, // legacy
+  }));
 }
 
 async function readConvocationsToAnnounce(ctx: QueryCtx) {

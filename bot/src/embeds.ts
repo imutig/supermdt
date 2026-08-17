@@ -3,6 +3,15 @@ import { baseEmbed, BRAND, ago, fmtDuration, badge } from "./theme.js";
 import { dailyPresenceChart, weeklyHoursChart } from "./charts.js";
 import type { OnDutyAgent, DayStats, Overview, WeeklyHours, VehicleInfo, CasierInfo, CitizenInfo } from "./convex.js";
 
+// Embed d'attribution des tuteurs FTO : liste Tuteur -> Tutorés (mentions).
+export function ftoAnnounceEmbed(a: { description: string | null; tutorCount: number; traineeCount: number }): EmbedBuilder {
+  return baseEmbed(BRAND.info)
+    .setAuthor({ name: "Formation Terrain" })
+    .setTitle("📋 Attribution des tuteurs")
+    .setDescription(a.description || "*Aucune attribution.*")
+    .addFields({ name: "​", value: `**${a.tutorCount}** tuteur${a.tutorCount > 1 ? "s" : ""} · **${a.traineeCount}** en formation` });
+}
+
 // Embed de présence : agents actuellement en service, groupés et signés.
 export function presenceEmbed(agents: OnDutyAgent[]): EmbedBuilder {
   const e = baseEmbed(agents.length > 0 ? BRAND.green : BRAND.muted)

@@ -1,6 +1,6 @@
 import { type Client, type TextChannel } from "discord.js";
 import { mdt } from "./convex.js";
-import { presenceEmbed, dailyEmbed, absencePublishEmbed, sanctionEmbed, convocationEmbed, trackingEmbed } from "./embeds.js";
+import { presenceEmbed, dailyEmbed, absencePublishEmbed, sanctionEmbed, convocationEmbed, trackingEmbed, ftoAnnounceEmbed } from "./embeds.js";
 import { openRollcall, closeRollcall, remindNonVoters, LSPD_ROLE } from "./rollcall.js";
 import { reconcilePromoCategories, reconcilePromoDeletions, deprogramInterview, parisWallToEpoch, finalizeAutoClose } from "./tickets.js";
 import { baseEmbed, BRAND } from "./theme.js";
@@ -407,12 +407,20 @@ export function startTasks(client: Client) {
       }
     } catch (err) { console.error("[ceremonie] publication :", err); }
 
-    // --- Publication des annonces FTO « Tuteur -> Tutorés » ---
+    // --- Publication des annonces FTO « Tuteur -> Tutorés » (embed + ping rôle) ---
     try {
       for (const p of t.ftoAnnouncements ?? []) {
         const chan = await channel(client, p.channelId);
         let ok = false;
-        if (chan) { try { await chan.send({ content: p.content, allowedMentions: { parse: ["users", "roles"] } }); ok = true; } catch (e) { console.error("[fto] annonce échouée :", e); } }
+        if (chan) {
+          try {
+            const payload = p.description
+              ? { content: p.pingContent ?? undefined, embeds: [ftoAnnounceEmbed(p)], allowedMentions: { parse: ["roles"] as const } }
+              : { content: p.content ?? "", allowedMentions: { parse: ["users", "roles"] as const } }; // legacy
+            await chan.send(payload);
+            ok = true;
+          } catch (e) { console.error("[fto] annonce échouée :", e); }
+        }
         if (ok) await mdt.markFtoAnnouncement(p.id);
       }
     } catch (err) { console.error("[fto] publication :", err); }

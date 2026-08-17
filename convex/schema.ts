@@ -754,10 +754,16 @@ export default defineSchema({
   }),
 
   // File d'annonces Discord « Tuteur -> Tutorés » (drainée par le bot, comme les
-  // publications de cérémonie). Le contenu et le salon sont figés à l'émission.
+  // publications de cérémonie). Publiée en embed : la description (avec mentions)
+  // et le salon sont figés à l'émission. `pingContent` = ping du rôle (contenu du
+  // message, hors embed, pour notifier).
   ftoAnnouncements: defineTable({
     channelId: v.string(),
-    content: v.string(),
+    pingContent: v.optional(v.string()),
+    description: v.optional(v.string()),
+    tutorCount: v.optional(v.number()),
+    traineeCount: v.optional(v.number()),
+    content: v.optional(v.string()), // legacy (anciennes lignes texte)
     createdBy: v.optional(v.id("agents")),
     createdAt: v.number(),
     sent: v.boolean(),
