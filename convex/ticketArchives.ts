@@ -1,23 +1,28 @@
 import { v } from "convex/values";
-import { query } from "./_generated/server";
+import { paginationOptsValidator } from "convex/server";
+import { query, internalMutation } from "./_generated/server";
 import { requireAgent, requirePermission } from "./rbac";
 
 // Archives des tickets de candidature (Police Academy), consultables sur le
 // portail LSPA. Alimentées par le bot à la fermeture définitive d'un ticket
 // (voir bot.ticketArchiveSave). Lecture réservée à l'encadrement académie.
 
-// Liste (résumé) avec recherche par pseudo, prénom/nom RP ou id Discord.
+const norm = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+
+// Liste paginée avec recherche (pseudo, prénom/nom RP ou id Discord) via l'index
+// de recherche, plutôt qu'un chargement intégral filtré côté client.
 export const list = query({
-  args: { search: v.optional(v.string()) },
-  handler: async (ctx, { search }) => {
+  args: { paginationOpts: paginationOptsValidator, search: v.optional(v.string()) },
+  handler: async (ctx, { paginationOpts, search }) => {
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "lspa.effectif.view");
-    const rows = await ctx.db.query("ticketArchives").withIndex("by_archivedAt").order("desc").take(400);
-    const q = (search ?? "").trim().toLowerCase();
-    return rows
-      .filter((r) => !q || `${r.ownerName} ${r.prenom} ${r.nom} ${r.ownerId}`.toLowerCase().includes(q))
-      .slice(0, 200)
-      .map((r) => ({
+    const needle = norm((search ?? "").trim());
+    const res = needle
+      ? await ctx.db.query("ticketArchives").withSearchIndex("search", (s) => s.search("searchText", needle)).paginate(paginationOpts)
+      : await ctx.db.query("ticketArchives").withIndex("by_archivedAt").order("desc").paginate(paginationOpts);
+    return {
+      ...res,
+      page: res.page.map((r) => ({
         _id: r._id,
         ownerName: r.ownerName,
         ownerId: r.ownerId,
@@ -28,7 +33,21 @@ export const list = query({
         messageCount: r.messages.length,
         createdAt: r.createdAt,
         archivedAt: r.archivedAt,
-      }));
+      })),
+    };
+  },
+});
+
+// Backfill idempotent du texte de recherche des archives existantes.
+export const backfillSearch = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    let updated = 0;
+    for (const r of await ctx.db.query("ticketArchives").collect()) {
+      const next = norm(`${r.ownerName} ${r.prenom} ${r.nom} ${r.ownerId}`);
+      if (r.searchText !== next) { await ctx.db.patch(r._id, { searchText: next }); updated++; }
+    }
+    return { updated };
   },
 });
 

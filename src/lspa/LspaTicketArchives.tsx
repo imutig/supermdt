@@ -1,11 +1,12 @@
 import { useState } from "react";
-import { useQuery } from "convex/react";
+import { useQuery, usePaginatedQuery } from "convex/react";
 import { Archive, Search, MessageSquare, Clock, User, GraduationCap, X } from "lucide-react";
 import { api } from "@/lib/api";
 import type { Id } from "convex/_generated/dataModel";
 import { EmptyState } from "@/components/common/EmptyState";
 import { SkeletonRows } from "@/components/common/Skeleton";
 import { Modal } from "@/components/common/Modal";
+import { LoadMore } from "@/components/common/Pagination";
 
 // Archives des tickets de candidature (Police Academy). Chaque ticket fermé
 // définitivement sur Discord est conservé ici avec son journal complet et
@@ -26,7 +27,11 @@ const dt = (ts: number) => new Date(ts).toLocaleString("fr-FR", { day: "2-digit"
 
 export function LspaTicketArchives() {
   const [search, setSearch] = useState("");
-  const archives = useQuery(api.ticketArchives.list, { search: search.trim() || undefined });
+  const { results: archives, status, loadMore } = usePaginatedQuery(
+    api.ticketArchives.list,
+    { search: search.trim() || undefined },
+    { initialNumItems: 30 },
+  );
   const [selected, setSelected] = useState<Id<"ticketArchives"> | null>(null);
 
   return (
@@ -49,7 +54,7 @@ export function LspaTicketArchives() {
         {search && <button onClick={() => setSearch("")} className="text-faint hover:text-text"><X className="h-[14px] w-[14px]" /></button>}
       </div>
 
-      {archives === undefined ? (
+      {status === "LoadingFirstPage" ? (
         <div className="rounded-card border border-border bg-surface p-4"><SkeletonRows rows={5} /></div>
       ) : archives.length === 0 ? (
         <div className="rounded-card border border-border bg-surface"><EmptyState title="Aucune archive" message={search ? "Aucun ticket ne correspond à cette recherche." : "Les tickets fermés définitivement sur Discord apparaîtront ici."} /></div>
@@ -72,6 +77,7 @@ export function LspaTicketArchives() {
               </button>
             );
           })}
+          <LoadMore status={status} onLoadMore={() => loadMore(30)} count={archives.length} label="candidatures" />
         </div>
       )}
 

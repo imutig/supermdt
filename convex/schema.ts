@@ -2425,9 +2425,11 @@ export default defineSchema({
     })),
     createdAt: v.number(),
     archivedAt: v.number(),
+    searchText: v.optional(v.string()), // pseudo + prénom/nom RP + id Discord (normalisé)
   })
     .index("by_owner", ["ownerId"])
-    .index("by_archivedAt", ["archivedAt"]),
+    .index("by_archivedAt", ["archivedAt"])
+    .searchIndex("search", { searchField: "searchText" }),
 
   // Armes de service LSPD : chaque agent enregistre sa/ses arme(s) (photo avec
   // n° de série visible, n° de série, modèle). Distinct du registre citoyen

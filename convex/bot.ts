@@ -1110,6 +1110,7 @@ export const ticketArchiveSave = mutation({
       finalStatus: t.status, closeReason: t.closeReason,
       events: t.events ?? [], messages,
       createdAt: t.createdAt, archivedAt: Date.now(),
+      searchText: `${t.ownerName} ${t.prenom} ${t.nom} ${t.ownerId}`.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase(),
     });
     await ctx.db.delete(t._id);
   },
