@@ -136,7 +136,7 @@ export function PatrolCreateModal({ onClose }: { onClose: () => void }) {
             </div>
 
             {unregistered ? (
-              <input value={num} onChange={(e) => setNum(e.target.value.replace(/[^0-9]/g, "").slice(0, 2))} placeholder="Fin d'indicatif, ex. 09" className={`${F} font-data`} />
+              <input value={num} onChange={(e) => setNum(e.target.value.replace(/[^0-9]/g, "").slice(0, 3))} placeholder="Fin d'indicatif, ex. 09 ou 120" className={`${F} font-data`} />
             ) : fleet ? (
               <div className="flex items-center gap-2 rounded-sm border border-accent bg-surface-2 px-3 py-[8px]">
                 <Car className="h-[15px] w-[15px] text-accent" />

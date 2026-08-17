@@ -102,7 +102,7 @@ export function StatusFieldsModal({ statusName, requires, sectors, initial, onCa
           )}
           {requires.includes("occupants") && (
             <div><span className={L}>{FIELD_LABELS.occupants}</span>
-              <input value={f.occupants ?? ""} onChange={(e) => set("occupants", e.target.value.replace(/[^0-9]/g, "").slice(0, 2))} placeholder="2" className={`${F} font-data`} />
+              <input value={f.occupants ?? ""} onChange={(e) => { const raw = e.target.value.toUpperCase(); set("occupants", raw.includes("X") ? "X" : raw.replace(/[^0-9]/g, "").slice(0, 3)); }} placeholder="2 ou X (inconnu)" className={`${F} font-data`} />
             </div>
           )}
           {requires.includes("raison") && (

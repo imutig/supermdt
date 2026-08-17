@@ -334,7 +334,7 @@ export const create = mutation({
       if (!veh) throw new ConvexError("Véhicule LSPD introuvable.");
       numPadded = roofToNumber(veh.roofNumber);
     } else {
-      const num = vehicleNumber.replace(/[^0-9]/g, "").slice(0, 2);
+      const num = vehicleNumber.replace(/[^0-9]/g, "").slice(0, 3);
       if (!num) throw new ConvexError("Numéro de véhicule requis.");
       numPadded = num.padStart(2, "0");
     }
@@ -379,11 +379,11 @@ export const create = mutation({
   },
 });
 
-// Plus petit numéro de véhicule libre (01..99) parmi les patrouilles ouvertes.
+// Plus petit numéro de véhicule libre (01..999) parmi les patrouilles ouvertes.
 async function nextFreeVehicleNumber(ctx: MutationCtx): Promise<string> {
   const open = await ctx.db.query("patrols").withIndex("by_open", (q) => q.eq("endedAt", undefined)).collect();
   const used = new Set(open.map((p) => p.vehicleNumber));
-  for (let i = 1; i <= 99; i++) {
+  for (let i = 1; i <= 999; i++) {
     const n = String(i).padStart(2, "0");
     if (!used.has(n)) return n;
   }
@@ -493,7 +493,7 @@ export const update = mutation({
     }
 
     if (vehicleNumber !== undefined && patch.vehicleNumber === undefined) {
-      const num = vehicleNumber.replace(/[^0-9]/g, "").slice(0, 2);
+      const num = vehicleNumber.replace(/[^0-9]/g, "").slice(0, 3);
       if (!num) throw new ConvexError("Numéro de véhicule requis.");
       patch.vehicleNumber = num.padStart(2, "0");
     }

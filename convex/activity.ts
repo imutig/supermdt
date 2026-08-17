@@ -91,7 +91,10 @@ export const casierAndCitations = query({
     // puis on ne coupe qu'à `cap` : on n'enrichit ainsi (citoyen + charges + label
     // officier) QUE les `cap` lignes réellement renvoyées, au lieu d'enrichir 2×cap
     // lignes puis d'en jeter la moitié (≈2× moins de sous-requêtes N+1).
-    const casierCands = await ctx.db.query("casierEntries").withIndex("by_live_at", (q) => q.eq("deletedAt", undefined)).order("desc").take(cap);
+    // Ignore les rapports d'arrestation DATÉS DANS LE FUTUR (saisie erronée / à venir)
+    // dans l'activité récente.
+    const nowTs = Date.now();
+    const casierCands = (await ctx.db.query("casierEntries").withIndex("by_live_at", (q) => q.eq("deletedAt", undefined)).order("desc").take(cap)).filter((e) => e.at <= nowTs);
     const citationCands = await ctx.db.query("citations").withIndex("by_live_at", (q) => q.eq("deletedAt", undefined)).order("desc").take(cap);
     const cands = [
       ...casierCands.map((e) => ({ kind: "casier" as const, at: e.at, row: e as Doc })),
@@ -192,10 +195,12 @@ export const home = query({
     // fusionne/trie puis on ne garde que les 12 finaux — et on n'enrichit (citoyen
     // + charges + type de rapport) QUE ces 12-là. L'ancienne version enrichissait
     // jusqu'à 36 lignes (3×12) pour n'en afficher que 12 : ≈3× moins de sous-requêtes.
+    const nowTs = Date.now();
     const cands: { kind: "casier" | "citation" | "report"; at: number; row: Doc }[] = [];
     if (canCasier) {
       // Tri par date d'arrestation (voir casierAndCitations) via l'index vivant.
-      const entries = await ctx.db.query("casierEntries").withIndex("by_live_at", (q) => q.eq("deletedAt", undefined)).order("desc").take(12);
+      // On ignore les rapports d'arrestation datés dans le futur (saisie erronée).
+      const entries = (await ctx.db.query("casierEntries").withIndex("by_live_at", (q) => q.eq("deletedAt", undefined)).order("desc").take(12)).filter((e) => e.at <= nowTs);
       for (const e of entries) cands.push({ kind: "casier", at: e.at, row: e });
     }
     if (canContraventions) {
