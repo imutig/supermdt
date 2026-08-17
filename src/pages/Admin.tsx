@@ -395,6 +395,8 @@ function DiscordCommandsTab() {
       <div className="mb-[4px] text-[14px] font-bold">Accès aux commandes Discord</div>
       <div className="mb-[16px] text-[12.5px] text-muted">
         Pour chaque commande : un <b>grade minimum</b> (compte lié) et/ou une liste d'<b>IDs de rôle Discord</b> autorisés (séparés par des virgules). Les deux se combinent (l'un OU l'autre suffit). Laissé vide = <b>ouvert à tous</b>.
+        <br />
+        Exception : les commandes exposant des données personnelles (<code>/plaque</code>, <code>/casier</code>, <code>/citoyen</code>, <code>/absence</code>) restent, si laissées vides, réservées aux membres du <b>rôle LSPD</b> ou aux agents ayant lié leur compte. Ajoutez un rôle/grade pour les restreindre davantage.
       </div>
       <div className="flex flex-col gap-[8px]">
         {data.commands.map((c) => (

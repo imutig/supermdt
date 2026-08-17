@@ -174,7 +174,7 @@ export const mdt = {
   requestAbsence: (discordId: string, query: string | undefined, from: number, to: number, reason: string, discordName: string) =>
     client.mutation(anyApi.bot.requestAbsence, { secret: env.botSecret, discordId, query, from, to, reason, discordName }) as Promise<{ ok: boolean; reason?: string; name?: string }>,
   absentDiscordIds: () => client.query(anyApi.bot.absentDiscordIds, { secret: env.botSecret }) as Promise<string[]>,
-  commandAllowed: (command: string, discordId: string, roleIds: string[]) => client.query(anyApi.bot.commandAllowed, { secret: env.botSecret, command, discordId, roleIds }) as Promise<boolean>,
+  commandAllowed: (command: string, discordId: string, roleIds: string[], isLspd: boolean) => client.query(anyApi.bot.commandAllowed, { secret: env.botSecret, command, discordId, roleIds, isLspd }) as Promise<boolean>,
   absencesCurrent: () => client.query(anyApi.bot.absencesCurrent, { secret: env.botSecret }) as Promise<{ name: string; matricule: number | null; until: number; reason: string }[]>,
   absencesToAnnounce: () => client.query(anyApi.bot.absencesToAnnounce, { secret: env.botSecret }) as Promise<{ id: string; name: string; matricule: number | null; discordId: string | null; from: number; to: number; reason: string }[]>,
   markAbsenceAnnounced: (id: string) => client.mutation(anyApi.bot.markAbsenceAnnounced, { secret: env.botSecret, id }) as Promise<void>,

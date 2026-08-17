@@ -8,6 +8,7 @@ import {
   vehicleEmbed, vehicleNotFoundEmbed, casierEmbed, citizenEmbed, citizenNotFoundEmbed, absenceEmbed, absentsListEmbed, errorEmbed,
 } from "./embeds.js";
 import { openHub, sendTemplate, renderTemplatesCmd, startTemplateBuilder, integrer, validation, parisWallToEpoch } from "./tickets.js";
+import { LSPD_ROLE } from "./rollcall.js";
 
 // Définition des commandes slash. Chaque réponse est un embed élaboré.
 export const commands = [
@@ -87,8 +88,10 @@ export async function handleCommand(interaction: ChatInputCommandInteraction) {
     // commandes anodines mais FERMÉ pour les commandes sensibles (PII / création).
     const SENSITIVE = new Set(["plaque", "casier", "citoyen", "absence"]);
     const roleIds = interaction.inCachedGuild() ? [...interaction.member.roles.cache.keys()] : [];
-    const allowed = await mdt.commandAllowed(interaction.commandName, interaction.user.id, roleIds)
-      .catch(() => !SENSITIVE.has(interaction.commandName));
+    const isLspd = roleIds.includes(LSPD_ROLE);
+    const allowed = await mdt.commandAllowed(interaction.commandName, interaction.user.id, roleIds, isLspd)
+      // MDT injoignable : on retombe sur le rôle LSPD pour les commandes sensibles.
+      .catch(() => !SENSITIVE.has(interaction.commandName) || isLspd);
     if (!allowed) {
       await interaction.reply({ content: "⛔ Tu n'as pas la permission d'utiliser cette commande.", flags: 64 });
       return;

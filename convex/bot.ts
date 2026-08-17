@@ -537,18 +537,20 @@ const SENSITIVE_COMMANDS = new Set(["plaque", "casier", "citoyen", "absence"]);
 // Sinon autorisé si : owner ; OU un des rôles du membre est listé ; OU l'agent
 // lié a un grade >= au grade minimum configuré.
 export const commandAllowed = query({
-  args: { secret: v.string(), command: v.string(), discordId: v.string(), roleIds: v.array(v.string()) },
-  handler: async (ctx, { secret, command, discordId, roleIds }) => {
+  args: { secret: v.string(), command: v.string(), discordId: v.string(), roleIds: v.array(v.string()), isLspd: v.optional(v.boolean()) },
+  handler: async (ctx, { secret, command, discordId, roleIds, isLspd }) => {
     assertBot(secret);
     const cfg = await ctx.db.query("discordCommandAccess").withIndex("by_command", (q) => q.eq("command", command)).first();
     const hasRoleRule = !!cfg && cfg.roleIds.length > 0;
     const hasGradeRule = !!cfg && !!cfg.minGradeId;
     if (!hasRoleRule && !hasGradeRule) {
-      // Non configurée : ouverte pour les commandes anodines. Mais les commandes
-      // SENSIBLES (PII citoyen/véhicule, ou création d'absence) ne sont, par
-      // défaut, accessibles qu'à un agent LIÉ et ACTIF - jamais à un membre
-      // Discord quelconque. Pour restreindre davantage, configurer rôle/grade.
+      // Non configurée : ouverte pour les commandes anodines. Les commandes
+      // SENSIBLES (PII citoyen/véhicule, ou création d'absence) restent réservées,
+      // par défaut, aux membres du rôle LSPD OU à un agent lié et actif - jamais à
+      // un membre Discord quelconque. Pour restreindre davantage, configurer
+      // rôle/grade.
       if (!SENSITIVE_COMMANDS.has(command)) return true;
+      if (isLspd) return true;
       const a = await ctx.db.query("agents").withIndex("by_discord", (q) => q.eq("discordId", discordId)).first();
       return !!a && a.status === "ACTIVE";
     }
