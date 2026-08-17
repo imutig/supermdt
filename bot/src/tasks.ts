@@ -2,7 +2,7 @@ import { type Client, type TextChannel } from "discord.js";
 import { mdt } from "./convex.js";
 import { presenceEmbed, dailyEmbed, absencePublishEmbed, sanctionEmbed, convocationEmbed, trackingEmbed, ftoAnnounceEmbed } from "./embeds.js";
 import { openRollcall, closeRollcall, remindNonVoters, LSPD_ROLE } from "./rollcall.js";
-import { reconcilePromoCategories, reconcilePromoDeletions, deprogramInterview, parisWallToEpoch, finalizeAutoClose } from "./tickets.js";
+import { reconcilePromoCategories, reconcilePromoDeletions, deprogramInterview, parisWallToEpoch, archiveAndDeleteChannel } from "./tickets.js";
 import { baseEmbed, BRAND } from "./theme.js";
 
 // Les salons et l'heure du récap sont lus depuis le MDT (page Configuration),
@@ -165,8 +165,8 @@ export function startTasks(client: Client) {
           await cand.send({ embeds: [baseEmbed(BRAND.muted).setTitle("Candidature fermée")
             .setDescription("Faute de réponse dans le délai imparti, ta candidature a été **fermée**. Tu peux repartir de zéro à tout moment en m'envoyant le mot **Candidature**.")] }).catch(() => {});
         }
-        // Ferme réellement le ticket (retire l'accès candidat + panneau encadrement).
-        await finalizeAutoClose(client, tk.channelId, tk.ownerId, `${tk.prenom} ${tk.nom}`);
+        // Fermeture réelle : archive l'historique puis supprime le salon.
+        await archiveAndDeleteChannel(client, tk.channelId);
       }
     } catch (err) { console.error("[ticket] fermetures auto :", err); }
 

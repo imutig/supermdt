@@ -531,7 +531,7 @@ async function createCandidatureTicket(client: Client, user: User, state: CandSt
       { name: "Candidat", value: `${state.prenom} ${state.nom}`, inline: true },
       { name: "Naissance", value: state.naissance || "-", inline: true },
       { name: "Discord", value: `<@${user.id}> · \`${user.username}\`` },
-      { name: "Commandes recruteur", value: "`!r <msg>` répondre · `!a <msg>` répondre anonymement · `!ping` être ping à la prochaine réponse · `!alwaysping` à chaque réponse · `!unping` stop · `!close 24h` fermeture auto sans réponse" },
+      { name: "Commandes recruteur", value: "`!r <msg>` répondre · `!a <msg>` répondre anonymement · `!ping` être ping à la prochaine réponse · `!alwaysping` à chaque réponse · `!unping` stop · `!close` fermer dans 10 s · `!close 24h` fermeture auto sans réponse" },
     )
     .setFooter({ text: "Dossier en cours de complétion..." }).setTimestamp(new Date());
   const controls = new ActionRowBuilder<ButtonBuilder>().addComponents(
@@ -721,6 +721,33 @@ function delayLabel(s: string): string {
   return m[2].toLowerCase() === "h" ? `${n} heure${n > 1 ? "s" : ""}` : `${n} jour${n > 1 ? "s" : ""}`;
 }
 
+// !close (sans argument) : ferme le ticket dans 10 s, avec un bouton « Annuler »
+// pendant le décompte. Fermeture RÉELLE (archive + suppression du salon).
+const pendingImmediateCloses = new Map<string, ReturnType<typeof setTimeout>>();
+
+async function handleImmediateClose(msg: Message) {
+  const chan = msg.channel as TextChannel;
+  const channelId = chan.id;
+  if (pendingImmediateCloses.has(channelId)) { await msg.delete().catch(() => {}); return; }
+  const closeAtSec = Math.floor((Date.now() + 10_000) / 1000);
+  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId("tk|cancelclose").setLabel("Annuler").setEmoji("✖️").setStyle(ButtonStyle.Secondary),
+  );
+  const sent = await chan.send({
+    embeds: [baseEmbed(BRAND.warning).setTitle("🔒 Fermeture du ticket")
+      .setDescription(`Ce ticket sera **fermé et archivé** <t:${closeAtSec}:R>.\nClique sur **Annuler** pour l'interrompre.`)],
+    components: [row],
+  }).catch(() => null);
+  await msg.delete().catch(() => {});
+  if (!sent) return;
+  const timeout = setTimeout(() => {
+    pendingImmediateCloses.delete(channelId);
+    void sent.edit({ components: [] }).catch(() => {});
+    void archiveAndDeleteChannel(msg.client, channelId);
+  }, 10_000);
+  pendingImmediateCloses.set(channelId, timeout);
+}
+
 // !close <délai> : programme la fermeture auto de la candidature sans réponse.
 async function handleScheduledClose(msg: Message, ticket: { ownerId: string }, arg: string) {
   const ms = parseDelay(arg);
@@ -765,7 +792,12 @@ export async function handleTicketChannelMessage(msg: Message) {
   const cfg = await mdt.ticketConfigGet();
   const member = msg.member ?? (msg.guild ? await msg.guild.members.fetch(msg.author.id).catch(() => null) : null);
   if (!isRecruiter(member, cfg)) { await msg.react("⛔").catch(() => {}); return; }
-  if (closeM) { await handleScheduledClose(msg, ticket, closeM[1]); return; }
+  if (closeM) {
+    const arg = closeM[1].trim();
+    if (arg) await handleScheduledClose(msg, ticket, arg);
+    else await handleImmediateClose(msg);
+    return;
+  }
   if (pingM) { await handlePingSubscribe(msg, pingM[1].toLowerCase()); return; }
   const body = relayM![2].trim();
   if (!body && msg.attachments.size === 0) { await msg.react("❓").catch(() => {}); return; }
@@ -824,24 +856,20 @@ async function softCloseTicket(interaction: ModalSubmitInteraction) {
   await interaction.reply({ embeds: [embed], components: [controls] });
 }
 
-// Fermeture AUTOMATIQUE (échéance !close atteinte) : on ferme RÉELLEMENT le
-// ticket comme une fermeture douce (le candidat perd l'accès + panneau
-// encadrement pour rouvrir/archiver), au lieu de seulement poster un message.
-export async function finalizeAutoClose(client: Client, channelId: string, ownerId: string, label: string) {
+// Archive l'historique du salon sur le portail LSPA puis supprime le salon.
+// Fermeture DÉFINITIVE réelle, partagée par le bouton « Fermer définitivement »,
+// la fermeture immédiate (!close) et la fermeture programmée échue (!close 24h).
+export async function archiveAndDeleteChannel(client: Client, channelId: string) {
   const chan = await client.channels.fetch(channelId).catch(() => null);
   if (!chan || chan.type !== ChannelType.GuildText) return;
-  const tc = chan as TextChannel;
-  await tc.permissionOverwrites.edit(ownerId, { ViewChannel: false, SendMessages: false }).catch(() => {});
-  // Fermeture auto : on retire le rôle Cadet.
-  try { const cfg = await mdt.ticketConfigGet(); await syncCadetRole(tc.guild, ownerId, null, cfg); } catch { /* best-effort */ }
-  const embed = baseEmbed(BRAND.muted).setTitle("🔒 Ticket fermé automatiquement")
-    .setDescription(`Faute de réponse dans le délai imparti, le ticket de **${label}** a été **fermé**.`)
-    .setFooter({ text: "Réservé à l'encadrement : rouvrir ou archiver définitivement." });
-  const controls = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId("tk|reopen").setLabel("Rouvrir le ticket").setEmoji("🔓").setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId("tk|delete").setLabel("Fermer définitivement").setEmoji("🗄️").setStyle(ButtonStyle.Danger),
-  );
-  await tc.send({ embeds: [embed], components: [controls] }).catch(() => {});
+  const ch = chan as TextChannel;
+  try {
+    const messages = await fetchAllMessages(ch);
+    await mdt.ticketArchiveSave(ch.id, ch.name, messages);
+    await ch.delete("Ticket de candidature fermé (archivé sur le portail LSPA).");
+  } catch (err) {
+    console.error("[ticket] archivage/suppression :", err);
+  }
 }
 
 async function reopenTicket(interaction: ButtonInteraction) {
@@ -907,16 +935,8 @@ async function deleteTicket(interaction: ButtonInteraction) {
   if (!isStaff(interaction)) { await interaction.reply({ content: "Réservé à l'encadrement.", flags: EPH }); return; }
   const channel = interaction.channel;
   if (!channel || channel.type !== ChannelType.GuildText) return;
-  const ch = channel as TextChannel;
   await interaction.reply({ content: "🗄️ Archivage de l'historique puis suppression du salon…", flags: EPH });
-  try {
-    const messages = await fetchAllMessages(ch);
-    await mdt.ticketArchiveSave(ch.id, ch.name, messages);
-    await ch.delete("Ticket de candidature fermé définitivement (archivé sur le portail LSPA).");
-  } catch (err) {
-    console.error("[ticket] archivage/suppression :", err);
-    await interaction.editReply({ content: "Échec de l'archivage ou de la suppression du salon." }).catch(() => {});
-  }
+  await archiveAndDeleteChannel(interaction.client, channel.id);
 }
 
 // ---------- Envoi d'un template ----------
@@ -1540,6 +1560,12 @@ export async function handleTicketInteraction(interaction: Interaction) {
       // (Re)ouvre la modale du dossier : récupérable si la fenêtre a été fermée.
       if (id === "tk|cand|dossier") { await interaction.showModal(dossierModal()); return; }
       if (id === "tk|close") { await interaction.showModal(closeModal()); return; }
+      if (id === "tk|cancelclose") {
+        const to = pendingImmediateCloses.get(interaction.channelId);
+        if (to) { clearTimeout(to); pendingImmediateCloses.delete(interaction.channelId); }
+        await interaction.update({ embeds: [baseEmbed(BRAND.green).setTitle("✅ Fermeture annulée").setDescription(`Annulée par <@${interaction.user.id}>.`)], components: [] }).catch(() => {});
+        return;
+      }
       if (id === "tk|reopen") { await reopenTicket(interaction); return; }
       if (id === "tk|delete") { await deleteTicket(interaction); return; }
       if (id === "tk|hub|back") { await renderHub(interaction, true); return; }
