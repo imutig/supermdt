@@ -79,8 +79,9 @@ async function aggregate(ctx: QueryCtx, from: number, to: number) {
   }
 
   // Contraventions, amendes émises.
-  const contraventions = (await ctx.db.query("citations").collect())
-    .filter((c) => inRange(c.at) && c.status !== "ANNULEE" && !c.deletedAt).length;
+  const citations = (await ctx.db.query("citations").collect())
+    .filter((c) => inRange(c.at) && c.status !== "ANNULEE" && !c.deletedAt);
+  const contraventions = citations.length;
   const amendes = (await ctx.db.query("amendes").collect()).filter((a) => inRange(a._creationTime) && !a.deletedAt);
   const amendesMontant = amendes.reduce((s, a) => s + (a.montant ?? 0), 0);
 
@@ -111,20 +112,24 @@ async function aggregate(ctx: QueryCtx, from: number, to: number) {
     .sort((a, b) => b.position - a.position)
     .map(({ grade, count }) => ({ grade, count }));
 
-  // Graphique « activité par jour » : arrestations par jour calendaire.
-  const dayBuckets: { key: string; label: string; value: number }[] = [];
+  // Graphique « activité par jour » : arrestations + contraventions par jour.
+  const dayBuckets: { key: string; label: string; arrestations: number; contraventions: number }[] = [];
   const seen = new Set<string>();
   for (let cursor = from; cursor <= to && dayBuckets.length < 9; cursor += 86_400_000) {
     const key = dayKey(cursor);
     if (seen.has(key)) continue;
     seen.add(key);
     const p = parisParts(cursor);
-    dayBuckets.push({ key, label: `${p.d}/${String(p.mo).padStart(2, "0")}`, value: 0 });
+    dayBuckets.push({ key, label: `${p.d}/${String(p.mo).padStart(2, "0")}`, arrestations: 0, contraventions: 0 });
   }
   const dayIdx = new Map(dayBuckets.map((d, i) => [d.key, i]));
   for (const e of casiers) {
     const i = dayIdx.get(dayKey(e.at));
-    if (i != null) dayBuckets[i].value++;
+    if (i != null) dayBuckets[i].arrestations++;
+  }
+  for (const c of citations) {
+    const i = dayIdx.get(dayKey(c.at));
+    if (i != null) dayBuckets[i].contraventions++;
   }
 
   return {
@@ -138,7 +143,7 @@ async function aggregate(ctx: QueryCtx, from: number, to: number) {
       appels911,
       sanctions,
     },
-    chart: dayBuckets.map(({ label, value }) => ({ label, value })),
+    chart: dayBuckets.map(({ label, arrestations, contraventions }) => ({ label, arrestations, contraventions })),
     crime: { dossiers, rapports, bolos, amendesCount: amendes.length, topInfractions },
     ops: {
       patrouilles,

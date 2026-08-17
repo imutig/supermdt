@@ -110,7 +110,7 @@ export function RapportGouv() {
               </div>
             </section>
 
-            <Field label="Note de périmètre des données (optionnel)" value={form.dataNote} onChange={(v) => setForm({ ...form, dataNote: v })} rows={2} placeholder="Ex. Statistiques depuis la mise en service du MDT le 16 août 2026 à 20h00." />
+            <Field label="Note complémentaire (optionnel)" value={form.dataNote} onChange={(v) => setForm({ ...form, dataNote: v })} rows={2} placeholder="Note libre affichée en synthèse. Inutile de préciser le périmètre MDT / Nexus : c'est déjà indiqué automatiquement (marqueur † + légende)." />
 
             <div className="flex flex-wrap gap-[8px]">
               <button onClick={doSave} className="flex items-center gap-[7px] rounded-sm border border-border bg-surface-2 px-[14px] py-[9px] text-[13px] font-semibold hover:border-accent"><Save className="h-[15px] w-[15px]" /> Enregistrer</button>

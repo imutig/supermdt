@@ -29,7 +29,49 @@
     every node near coord/.append style={
       font=\lspdsansbk\fontsize{6.8}{8}\selectfont, text=lspdnavy, anchor=south,
       /pgf/number format/precision=0, /pgf/number format/fixed},
+  },
+  % Barres groupées (2 séries) avec légende, pour comparer deux mesures par jour.
+  lspdgroup/.style={
+    ybar, bar width=6pt,
+    width=\linewidth, height=48mm,
+    ymin=0, enlarge x limits=0.10,
+    axis x line=bottom, axis y line=left,
+    axis line style={lspdrule, line width=.4pt},
+    ymajorgrids, major grid style={lspdrule!55, line width=.3pt},
+    tick align=outside, tick style={lspdrule},
+    x tick label style={font=\lspdsans\fontsize{7}{9}\selectfont, text=lspdgrey},
+    y tick label style={font=\lspdsans\fontsize{7}{9}\selectfont, text=lspdgrey},
+    legend style={font=\lspdsans\fontsize{7.6}{9}\selectfont, draw=lspdrule, fill=white,
+      at={(0.5,1.04)}, anchor=south, legend columns=-1,
+      /tikz/every even column/.append style={column sep=9pt}},
+  },
+  % Barres horizontales (répartitions : infractions, effectif…).
+  lspdhbar/.style={
+    xbar, bar width=8pt,
+    width=\linewidth,
+    xmin=0, enlarge y limits=0.16,
+    axis x line=bottom, axis y line=left,
+    axis line style={lspdrule, line width=.4pt},
+    xmajorgrids, major grid style={lspdrule!55, line width=.3pt},
+    tick style={lspdrule},
+    y tick label style={font=\lspdsans\fontsize{7.6}{9.5}\selectfont, text=lspdink},
+    x tick label style={font=\lspdsans\fontsize{7}{9}\selectfont, text=lspdgrey},
+    every axis plot/.style={fill=lspdblue, draw=lspdnavy, line width=.3pt},
+    nodes near coords, nodes near coords align={horizontal},
+    every node near coord/.append style={
+      font=\lspdsansbk\fontsize{6.8}{8}\selectfont, text=lspdnavy, anchor=west,
+      /pgf/number format/precision=0, /pgf/number format/fixed},
   }}
+
+% Marqueur des indicateurs propres au MDT + légende de bas de section.
+\newcommand{\mdtmark}{{\lspdsansbk\fontsize{7.5}{8}\selectfont\color{lspdgold}\,†}}
+\newcommand{\mdtlegend}{%
+  \par\vspace{6pt}\noindent
+  {\lspdsans\fontsize{7.6}{10}\selectfont\color{lspdgrey}\itshape
+   † Indicateurs propres au MDT (Dispatch, service, appels 911, discipline, avis
+   de recherche) : comptabilisés depuis la mise en service du MDT (16 août 2026,
+   20h00). Les données judiciaires et citoyens (arrestations, contraventions,
+   amendes…) proviennent de l'historique complet synchronisé depuis NexusMDT.}\par}
 
 % ---------------------------------------------------------------
 %  En-tête / pied : sous-titre « Rapport hebdomadaire »

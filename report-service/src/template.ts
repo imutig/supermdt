@@ -29,8 +29,8 @@ export type ReportPayload = {
     appels911: number;
     sanctions: number;
   };
-  // Graphique « activité par jour » (optionnel).
-  chart?: { label: string; value: number }[];
+  // Graphique « activité par jour » : arrestations + contraventions par jour.
+  chart?: { label: string; arrestations: number; contraventions: number }[];
   crime: {
     dossiers: number;
     rapports: number;
@@ -142,22 +142,41 @@ function honneurList(rows: ReportPayload["honneur"]): string {
   );
 }
 
-function barChart(data: { label: string; value: number }[]): string {
-  const pts = (data ?? []).filter((d) => d && typeof d.value === "number");
+// Barres groupées : arrestations + contraventions par jour.
+function dayChart(data: ReportPayload["chart"]): string {
+  const pts = (data ?? []).filter((d) => d && typeof d.arrestations === "number");
   if (pts.length < 2) return "";
   const N = pts.length;
   const xticks = pts.map((_d, i) => i + 1).join(",");
   const xlabels = pts.map((d) => `{${tex(d.label)}}`).join(",");
-  const coords = pts.map((d, i) => `(${i + 1},${Math.max(0, Math.round(d.value))})`).join(" ");
+  const arr = pts.map((d, i) => `(${i + 1},${Math.max(0, Math.round(d.arrestations))})`).join(" ");
+  const con = pts.map((d, i) => `(${i + 1},${Math.max(0, Math.round(d.contraventions))})`).join(" ");
   return [
-    "\\sstitre{Activité par jour}",
-    "\\begin{center}",
-    "\\begin{tikzpicture}",
-    `\\begin{axis}[lspdbar, xtick={${xticks}}, xticklabels={${xlabels}}, xmin=0.4, xmax=${N + 0.6}]`,
+    "\\sstitre{Activité judiciaire par jour}",
+    "\\begin{center}\\begin{tikzpicture}",
+    `\\begin{axis}[lspdgroup, xtick={${xticks}}, xticklabels={${xlabels}}, xmin=0.4, xmax=${N + 0.6}]`,
+    `\\addplot[fill=lspdblue, draw=lspdnavy, line width=.3pt] coordinates {${arr}};`,
+    `\\addplot[fill=lspdgold, draw=lspdgold!60!black, line width=.3pt] coordinates {${con}};`,
+    "\\legend{Arrestations, Contraventions}",
+    "\\end{axis}\\end{tikzpicture}\\end{center}",
+  ].join("\n");
+}
+
+// Barres horizontales : répartition (biggest en haut).
+function hbarChart(title: string, data: { name: string; count: number }[], max = 8): string {
+  const rows = [...(data ?? [])].filter((r) => r && typeof r.count === "number").slice(0, max).reverse();
+  if (rows.length < 2) return "";
+  const N = rows.length;
+  const yticks = rows.map((_r, i) => i + 1).join(",");
+  const ylabels = rows.map((r) => `{${tex(r.name)}}`).join(",");
+  const coords = rows.map((r, i) => `(${Math.max(0, Math.round(r.count))},${i + 1})`).join(" ");
+  const height = 16 + N * 8; // mm, s'adapte au nombre de lignes
+  return [
+    `\\sstitre{${tex(title)}}`,
+    "\\begin{center}\\begin{tikzpicture}",
+    `\\begin{axis}[lspdhbar, height=${height}mm, ytick={${yticks}}, yticklabels={${ylabels}}, ymin=0.4, ymax=${N + 0.6}]`,
     `\\addplot coordinates {${coords}};`,
-    "\\end{axis}",
-    "\\end{tikzpicture}",
-    "\\end{center}",
+    "\\end{axis}\\end{tikzpicture}\\end{center}",
   ].join("\n");
 }
 
@@ -195,13 +214,14 @@ export function buildTex(p: ReportPayload): string {
     `\\kpi{${k.arrestations}}{Arrestations}`,
     `\\kpi{${k.contraventions}}{Contraventions}`,
     `\\kpi{${money(k.amendesMontant)}}{Amendes émises}`,
-    `\\kpi{${tex(k.heuresService)}}{Heures de service}`,
-    `\\kpi{${k.patrouilles}}{Patrouilles}`,
-    `\\kpi{${k.operations}}{Opérations}`,
-    `\\kpi{${k.appels911}}{Appels 911}`,
-    `\\kpi{${k.sanctions}}{Sanctions}`,
+    `\\kpi{${tex(k.heuresService)}}{Heures de service\\mdtmark}`,
+    `\\kpi{${k.patrouilles}}{Patrouilles\\mdtmark}`,
+    `\\kpi{${k.operations}}{Opérations\\mdtmark}`,
+    `\\kpi{${k.appels911}}{Appels 911\\mdtmark}`,
+    `\\kpi{${k.sanctions}}{Sanctions\\mdtmark}`,
     "\\end{kpigrid}",
-    barChart(p.chart ?? []),
+    dayChart(p.chart ?? []),
+    "\\mdtlegend",
     "",
   );
 
@@ -210,10 +230,10 @@ export function buildTex(p: ReportPayload): string {
     "\\rsection{Criminalité \\& activité judiciaire}",
     `\\statline{Dossiers d'arrestation}{${p.crime.dossiers}}`,
     `\\statline{Rapports d'arrestation}{${p.crime.rapports}}`,
-    `\\statline{Avis de recherche émis}{${p.crime.bolos}}`,
+    `\\statline{Avis de recherche émis\\mdtmark}{${p.crime.bolos}}`,
     `\\statline{Amendes émises}{${p.crime.amendesCount}}`,
-    "\\sstitre{Infractions les plus relevées}",
-    crimeTable(p.crime.topInfractions),
+    hbarChart("Infractions les plus relevées", p.crime.topInfractions) ||
+      ["\\sstitre{Infractions les plus relevées}", crimeTable(p.crime.topInfractions)].join("\n"),
     manual("Analyse de l'état-major", p.sections.analyseCrime),
     "",
   );
@@ -221,8 +241,8 @@ export function buildTex(p: ReportPayload): string {
   // 4. Activité opérationnelle
   parts.push(
     "\\rsection{Activité opérationnelle}",
-    `\\statline{Patrouilles engagées}{${p.ops.patrouilles}}`,
-    `\\statline{Appels 911 traités}{${p.ops.appels911}}`,
+    `\\statline{Patrouilles engagées\\mdtmark}{${p.ops.patrouilles}}`,
+    `\\statline{Appels 911 traités\\mdtmark}{${p.ops.appels911}}`,
     `\\statline{Saisies enregistrées}{${p.ops.saisies}}`,
     "\\sstitre{Opérations de la semaine}",
     opsList(p.ops.operations),
@@ -233,7 +253,8 @@ export function buildTex(p: ReportPayload): string {
   // 5. Ressources humaines (effectif par grade uniquement)
   parts.push(
     "\\rsection{Ressources humaines}",
-    "\\sstitre{Effectif par grade}",
+    hbarChart("Effectif par grade", p.rh.parGrade.map((g) => ({ name: g.grade, count: g.count })), 12),
+    "\\sstitre{Détail de l'effectif}",
     gradeTable(p.rh.parGrade, p.rh.effectifTotal),
     manual("Point ressources humaines", p.sections.pointRH),
     "",
