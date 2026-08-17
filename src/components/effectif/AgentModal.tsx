@@ -30,6 +30,7 @@ export function AgentModal({ agentId, onClose }: { agentId: Id<"agents">; onClos
   const updateGrade = useMutation(api.agents.updateGrade);
   const setMatricule = useMutation(api.agents.setMatricule);
   const setName = useMutation(api.agents.setName);
+  const setLogin = useMutation(api.agents.setLogin);
   const setDivisions = useMutation(api.agents.setDivisions);
   const setQualifications = useMutation(api.agents.setQualifications);
   const setStatus = useMutation(api.agents.setStatus);
@@ -43,6 +44,7 @@ export function AgentModal({ agentId, onClose }: { agentId: Id<"agents">; onClos
 
   const [matInput, setMatInput] = useState("");
   const [nameEdit, setNameEdit] = useState<{ prenom: string; nom: string } | null>(null);
+  const [loginEdit, setLoginEdit] = useState("");
   const [sanctionModal, setSanctionModal] = useState(false);
   const [convocationModal, setConvocationModal] = useState(false);
   const [absOpen, setAbsOpen] = useState(false);
@@ -144,7 +146,7 @@ export function AgentModal({ agentId, onClose }: { agentId: Id<"agents">; onClos
             </span>
           )}
           {a && !a.isOwner && canEditAgent && (
-            <button onClick={() => setNameEdit({ prenom: a.prenomRP, nom: a.nomRP })} className="mdt-press flex h-[30px] w-[30px] items-center justify-center rounded-sm border border-border bg-surface-2 text-muted hover:border-border-strong hover:text-text" title="Renommer (prénom / nom)">
+            <button onClick={() => { setNameEdit({ prenom: a.prenomRP, nom: a.nomRP }); setLoginEdit(a.login); }} className="mdt-press flex h-[30px] w-[30px] items-center justify-center rounded-sm border border-border bg-surface-2 text-muted hover:border-border-strong hover:text-text" title="Renommer / identifiant">
               <Pencil className="h-[14px] w-[14px]" />
             </button>
           )}
@@ -183,9 +185,31 @@ export function AgentModal({ agentId, onClose }: { agentId: Id<"agents">; onClos
                       <input value={nameEdit.nom} onChange={(e) => setNameEdit({ ...nameEdit, nom: e.target.value })} className="h-9 w-full rounded-sm border border-border bg-surface px-2 text-[13px] outline-none focus:border-accent" />
                     </div>
                   </div>
-                  <div className="mt-[6px] text-[11px] text-faint">L'identifiant de connexion (@{a.login}) ne change pas.</div>
-                  <div className="mt-[10px] flex gap-2">
-                    <button onClick={() => setNameEdit(null)} className="flex-1 rounded-sm border border-border bg-surface py-[8px] text-[12.5px] font-semibold hover:border-border-strong">Annuler</button>
+                  {/* Identifiant de connexion (compte Convex Auth). Mot de passe inchangé. */}
+                  <div className="mt-[12px]">
+                    <div className="mb-[5px] text-[10px] font-semibold uppercase tracking-[0.06em] text-faint">Identifiant de connexion</div>
+                    <div className="flex gap-2">
+                      <div className="flex flex-1 items-center rounded-sm border border-border bg-surface px-2">
+                        <span className="text-[13px] text-faint">@</span>
+                        <input value={loginEdit} onChange={(e) => setLoginEdit(e.target.value)} className="h-9 w-full bg-transparent px-1 font-data text-[13px] outline-none" placeholder="prenom.nom" />
+                      </div>
+                      <button
+                        onClick={async () => {
+                          const next = loginEdit.trim().toLowerCase();
+                          if (next === a.login) { toast.error("Identifiant inchangé."); return; }
+                          const r = await toast.guard(setLogin({ agentId, login: next }), "Changement impossible");
+                          if (r !== undefined) toast.success("Identifiant de connexion modifié.");
+                        }}
+                        disabled={!loginEdit.trim() || loginEdit.trim().toLowerCase() === a.login}
+                        className="rounded-sm border border-border bg-surface px-[14px] text-[12.5px] font-semibold hover:border-border-strong disabled:opacity-50"
+                      >
+                        Changer
+                      </button>
+                    </div>
+                    <div className="mt-[5px] text-[11px] text-faint">Ce que l'agent saisit pour se connecter. Le mot de passe reste inchangé.</div>
+                  </div>
+                  <div className="mt-[12px] flex gap-2">
+                    <button onClick={() => setNameEdit(null)} className="flex-1 rounded-sm border border-border bg-surface py-[8px] text-[12.5px] font-semibold hover:border-border-strong">Fermer</button>
                     <button
                       onClick={async () => {
                         const prenom = nameEdit.prenom.trim(), nom = nameEdit.nom.trim();

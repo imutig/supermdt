@@ -758,6 +758,53 @@ export const setName = mutation({
   },
 });
 
+// Change l'identifiant de connexion (« prenom.nom ») d'un agent. C'est le champ
+// `providerAccountId` du compte Convex Auth : on le patche pour que la prochaine
+// connexion se fasse avec le nouvel identifiant, sans toucher au mot de passe
+// (le secret reste attaché au même compte). `agents.login` et `users.email`
+// suivent pour rester cohérents.
+export const setLogin = mutation({
+  args: { agentId: v.id("agents"), login: v.string() },
+  handler: async (ctx, { agentId, login }) => {
+    const actor = await requireAgent(ctx);
+    await requirePermission(ctx, actor, "effectif.edit");
+    const target = await ctx.db.get(agentId);
+    if (!target) throw new ConvexError("Agent introuvable.");
+    if (target.isOwner) throw new ConvexError("L'identifiant du compte owner est intouchable.");
+    await assertOutranks(ctx, actor, target);
+
+    const next = login.trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+    if (!/^[a-z0-9._-]{3,}$/.test(next)) throw new ConvexError("Identifiant invalide : lettres, chiffres, point, tiret ou underscore (3 caractères min., sans accent ni espace).");
+    if (next === target.login) return;
+
+    // Unicité côté effectif.
+    const dupAgent = (await ctx.db.query("agents").withIndex("by_login", (q) => q.eq("login", next)).collect()).find((a) => a._id !== agentId);
+    if (dupAgent) throw new ConvexError("Cet identifiant est déjà utilisé par un autre agent.");
+
+    // Compte d'authentification (l'identifiant réellement saisi à la connexion).
+    // authAccounts est petit (un par agent) : un scan complet suffit pour un acte
+    // d'administration ponctuel, et évite de dépendre du nom d'index de la lib.
+    const accounts = await ctx.db.query("authAccounts").collect();
+    const account = accounts.find((a) => a.userId === target.userId && a.provider === "password");
+    const takenAuth = accounts.find((a) => a.provider === "password" && a.providerAccountId === next && a._id !== account?._id);
+    if (takenAuth) throw new ConvexError("Cet identifiant de connexion est déjà pris.");
+    if (account) await ctx.db.patch(account._id, { providerAccountId: next });
+
+    const user = await ctx.db.get(target.userId);
+    if (user) await ctx.db.patch(target.userId, { email: next });
+    await ctx.db.patch(agentId, { login: next });
+
+    await writeAudit(ctx, actor, {
+      action: "agent.login_change",
+      resourceType: "agent",
+      resourceId: agentId,
+      resourceLabel: `${target.prenomRP} ${target.nomRP}`,
+      before: { login: target.login },
+      after: { login: next },
+    });
+  },
+});
+
 // Formations / spécialités d'un agent (HNT, Police Academy, MRD, Dispatcher...).
 export const setQualifications = mutation({
   args: { agentId: v.id("agents"), qualificationIds: v.array(v.id("qualifications")) },
