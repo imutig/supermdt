@@ -243,28 +243,33 @@ export const setConfig = mutation({
 // Tuteurs FTO éligibles : membres de l'académie (quel que soit leur grade) OU
 // agents dont le grade figure dans tutorGradeIds. Actifs, hors owner, hors
 // agents au grade en formation. `priority` = grade prioritaire OU académie.
-async function eligibleTutors(ctx: MutationCtx): Promise<{ agent: Doc<"agents">; priority: boolean }[]> {
+async function eligibleTutors(ctx: MutationCtx): Promise<{ agent: Doc<"agents">; academy: boolean; priorityGrade: boolean; gradePosition: number }[]> {
   const cfg = await ctx.db.query("ftoConfig").first();
   const tutorGrades = new Set((cfg?.tutorGradeIds ?? []).map((g) => g as string));
   const prioGrades = new Set((cfg?.priorityGradeIds ?? []).map((g) => g as string));
   const trainee = await traineeGrade(ctx);
-  const out: { agent: Doc<"agents">; priority: boolean }[] = [];
+  const gradePos = new Map<string, number>();
+  for (const g of await ctx.db.query("grades").collect()) gradePos.set(g._id as string, g.position);
+  const out = [];
   for (const a of await ctx.db.query("agents").withIndex("by_status", (q) => q.eq("status", "ACTIVE")).collect()) {
     if (a.isOwner) continue;
     if (trainee && a.gradeId === trainee._id) continue; // un tutoré ne tutore pas
     const academy = !!a.academyRankId;
     const eligible = academy || (a.gradeId != null && tutorGrades.has(a.gradeId as string));
     if (!eligible) continue;
-    const priority = academy || (a.gradeId != null && prioGrades.has(a.gradeId as string));
-    out.push({ agent: a, priority });
+    const priorityGrade = a.gradeId != null && prioGrades.has(a.gradeId as string);
+    const gradePosition = a.gradeId != null ? gradePos.get(a.gradeId as string) ?? -1 : -1;
+    out.push({ agent: a, academy, priorityGrade, gradePosition });
   }
   return out;
 }
 
 // Attribution automatique équilibrée des tuteurs aux officiers en formation.
-// Chaque tutoré va au tuteur le moins chargé ; à égalité, les tuteurs
-// prioritaires (académie + grades prioritaires) sont servis d'abord — ils
-// atteignent donc 2 tutorés avant les autres quand les tuteurs manquent.
+// 1) Tous les tuteurs reçoivent d'abord 1 tutoré (personne n'a 2 avant que tous
+//    aient 1). 2) Puis l'escalade vers 2 suit une hiérarchie stricte, palier par
+//    palier — chaque palier atteint 2 avant le suivant : membres de l'académie,
+//    puis grades prioritaires du plus haut au plus bas, puis les autres grades
+//    éligibles du plus haut au plus bas.
 export const autoAssignTutors = mutation({
   args: {},
   handler: async (ctx) => {
@@ -280,9 +285,11 @@ export const autoAssignTutors = mutation({
     const tutors = await eligibleTutors(ctx);
     if (tutors.length === 0) throw new ConvexError("Aucun tuteur éligible. Sélectionnez des grades de tuteurs.");
 
-    // Ordre : prioritaires d'abord, puis par matricule (départage stable).
+    // Ordre de priorité (palier) : académie (0), grade prioritaire (1), autre grade
+    // éligible (2) ; à palier égal, le grade le plus haut d'abord, puis matricule.
+    const tier = (t: (typeof tutors)[number]) => (t.academy ? 0 : t.priorityGrade ? 1 : 2);
     const ordered = [...tutors].sort((x, y) =>
-      (x.priority === y.priority ? 0 : x.priority ? -1 : 1) || (x.agent.matricule ?? 0) - (y.agent.matricule ?? 0));
+      tier(x) - tier(y) || y.gradePosition - x.gradePosition || (x.agent.matricule ?? 0) - (y.agent.matricule ?? 0));
     const counts = new Map(ordered.map((t) => [t.agent._id as string, 0]));
     const assignment = new Map<string, Id<"agents">>(); // traineeId -> tutorId
 
