@@ -1,0 +1,54 @@
+% !TEX program = xelatex
+% =====================================================================
+%  RÈGLEMENT INTÉRIEUR / LOS SANTOS POLICE DEPARTMENT
+%  ---------------------------------------------------------------
+%  Compilation : xelatex reglement.tex   (deux fois)
+%                ou  ./build.sh
+%
+%  POUR MODIFIER LE CONTENU : ouvrez les fichiers du dossier contenu/
+%  Ce fichier-ci ne sert qu'à assembler les parties dans l'ordre.
+% =====================================================================
+\documentclass[11pt,a4paper]{article}
+\usepackage{style/lspd}
+
+% ---- Métadonnées du document ---------------------------------------
+\newcommand{\VERSION}{Version 1.0}
+\newcommand{\DATEVIGUEUR}{15 août 2026}
+\newcommand{\DATEAPPROBATION}{12 août 2026}
+
+\hypersetup{
+  pdftitle  = {Règlement intérieur du Los Santos Police Department},
+  pdfauthor = {État-Major du Los Santos Police Department},
+  pdfsubject= {Règlement intérieur},
+  pdfkeywords = {LSPD, règlement, police, Los Santos, San Andreas}}
+
+\begin{document}
+
+% ---- Couverture ----------------------------------------------------
+\lspdcouverture
+  {Recueil des règles d'organisation, de déontologie et de procédure\\
+   applicables à l'ensemble des personnels du département}
+  {\VERSION}{\DATEVIGUEUR}
+
+\lspdactivaterules
+\pagestyle{lspdmain}
+\pagenumbering{arabic}
+
+% ---- Pages liminaires ----------------------------------------------
+\input{contenu/00-liminaires}
+\input{contenu/01-serment}
+\lspdtoc
+
+% ---- Corps du règlement --------------------------------------------
+\input{contenu/10-titre-preliminaire}
+\input{contenu/20-titre-1-organisation}
+\input{contenu/30-titre-2-personnels}
+\input{contenu/40-titre-3-operations}
+\input{contenu/50-titre-4-vehicules}
+\input{contenu/60-titre-5-discipline}
+
+% ---- Annexes -------------------------------------------------------
+\input{contenu/90-annexes}
+
+
+\end{document}

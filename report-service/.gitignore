@@ -1,0 +1,8 @@
+node_modules
+dist
+*.aux
+*.log
+*.out
+*.toc
+*.synctex.gz
+tex/rapport_*.*

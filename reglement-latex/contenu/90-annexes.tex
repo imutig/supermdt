@@ -1,0 +1,278 @@
+% =====================================================================
+%  ANNEXES
+% =====================================================================
+\titrepartie{Annexes}{Documents de référence}
+
+% Les annexes ne sont pas des articles : on les compose « à la main ».
+\newcommand{\annexe}[2]{%
+  \par\needspace{4.5\baselineskip}\vspace{13pt}
+  \phantomsection
+  \addcontentsline{toc}{section}{\protect\numberline{Ann.~#1}#2}%
+  \begingroup
+  \noindent\begin{tikzpicture}\fill[lspdnavy] (0,0) rectangle (\linewidth,1.1pt);\end{tikzpicture}\\[3.2pt]
+  \noindent{\lspdsansbk\fontsize{8.2}{10}\selectfont\color{lspdgold}%
+    \addfontfeature{LetterSpace=22}\MakeUppercase{Annexe #1}}\\[2.5pt]
+  \noindent{\lspddisp\fontsize{15.5}{18}\selectfont\color{lspdnavy}#2}\\[3pt]
+  \noindent\begin{tikzpicture}\fill[lspdgold] (0,0) rectangle (2.2cm,.9pt);\end{tikzpicture}
+  \endgroup\par\vspace{9pt}}
+
+% ---------------------------------------------------------------------
+\annexe{A}{Grades, prérogatives et habilitations}
+
+\noindent
+\begin{tabular}{P{40mm} P{24mm} P{80mm}}
+\headrow
+\thead{Grade} & \thead{Corps} & \thead{Prérogatives propres} \\
+\tkey{Chief} & \tcell{État-Major} & \tcell{Autorité supérieure. Validation du règlement. Nomination et révocation. Représentation officielle. Autorité de tutelle des Affaires Internes.} \\
+\altrow
+\tkey{Commander} & \tcell{État-Major} & \tcell{Coordination stratégique de secteur. Promotions et rétrogradations. Validation des notes de service.} \\
+\tkey{Captain} & \tcell{Command Staff} & \tcell{Responsabilité d'un poste et de son effectif. Sanctions jusqu'à la révocation. Dérogations d'uniforme et d'accompagnement.} \\
+\altrow
+\tkey{Lieutenant} & \tcell{Command Staff} & \tcell{Assistance du Captain. Validation des demandes de mandat. Revue des procédures. Sanction du subordonné direct.} \\
+\tkey{Sergeant II} & \tcell{Supervision} & \tcell{Direction de la supervision. Fonction de Watch Commander. Autorisation des techniques de terminaison. Habilitation fusil d'assaut. Conduite des First Lincoln.} \\
+\altrow
+\tkey{Sergeant I} & \tcell{Supervision} & \tcell{Supervision des unités de patrouille. Sanctions jusqu'à la mise à pied. Conduite des First Lincoln.} \\
+\tkey{Senior Lead Officer} & \tcell{Officiers} & \tcell{Conduite des First Lincoln. Avertissement et blâme sous accord. Habilitation fusil à pompe et pistolet-mitrailleur.} \\
+\altrow
+\tkey{Police Officer III} & \tcell{Officiers} & \tcell{Formation des agents probatoires. Port de l'arme hors service. Habilitation lanceur à balles de défense.} \\
+\tkey{Police Officer II} & \tcell{Officiers} & \tcell{Accès aux divisions majeures. Accompagnement des agents du grade inférieur.} \\
+\altrow
+\tkey{Police Officer I\newline confirmé} & \tcell{Officiers} & \tcell{Patrouille autonome. Accès aux divisions mineures. Encadrement ponctuel d'un agent probatoire.} \\
+\tkey{Police Officer I\newline probatoire} & \tcell{Officiers} & \tcell{Aucune. Période d'essai, patrouille encadrée exclusivement, radiation possible à tout moment.} \\
+\altrow
+\tkey{Secrétaire} & \tcell{Administratif} & \tcell{Traitement des plaintes, recensement, gestion documentaire et logistique. Aucune prérogative de terrain.} \\
+\bottomrule
+\end{tabular}
+
+\clearpage
+% ---------------------------------------------------------------------
+\annexe{B}{Alphabet phonétique}
+
+Le département emploie deux alphabets, chacun dans un domaine distinct. Les confondre est une source d'erreur fréquente.
+
+\begin{itemize}
+  \item \stress{Alphabet de service}, employé exclusivement pour les \emph{indicatifs d'unité} : Adam, Lincoln, Mary, Queen, Richard, David, William.
+  \item \stress{Alphabet international}, employé pour toute \emph{épellation} : immatriculations, patronymes, adresses, références de dossier.
+\end{itemize}
+
+\vspace{6pt}
+\noindent
+\begin{tabular}{C{11mm} P{24mm} P{26mm} @{\hspace{5mm}} C{11mm} P{24mm} P{26mm}}
+\headrow
+\thead{Lettre} & \thead{Service} & \thead{International} & \thead{Lettre} & \thead{Service} & \thead{International} \\
+\tkey{A} & \tcell{Adam}    & \tcell{Alpha}   & \tkey{N} & \tcell{Nora}    & \tcell{November} \\
+\altrow
+\tkey{B} & \tcell{Boy}     & \tcell{Bravo}   & \tkey{O} & \tcell{Ocean}   & \tcell{Oscar} \\
+\tkey{C} & \tcell{Charles} & \tcell{Charlie} & \tkey{P} & \tcell{Paul}    & \tcell{Papa} \\
+\altrow
+\tkey{D} & \tcell{David}   & \tcell{Delta}   & \tkey{Q} & \tcell{Queen}   & \tcell{Quebec} \\
+\tkey{E} & \tcell{Edward}  & \tcell{Echo}    & \tkey{R} & \tcell{Robert}  & \tcell{Romeo} \\
+\altrow
+\tkey{F} & \tcell{Frank}   & \tcell{Foxtrot} & \tkey{S} & \tcell{Sam}     & \tcell{Sierra} \\
+\tkey{G} & \tcell{George}  & \tcell{Golf}    & \tkey{T} & \tcell{Tom}     & \tcell{Tango} \\
+\altrow
+\tkey{H} & \tcell{Henry}   & \tcell{Hotel}   & \tkey{U} & \tcell{Union}   & \tcell{Uniform} \\
+\tkey{I} & \tcell{Ida}     & \tcell{India}   & \tkey{V} & \tcell{Victor}  & \tcell{Victor} \\
+\altrow
+\tkey{J} & \tcell{John}    & \tcell{Juliett} & \tkey{W} & \tcell{William} & \tcell{Whiskey} \\
+\tkey{K} & \tcell{King}    & \tcell{Kilo}    & \tkey{X} & \tcell{X-ray}   & \tcell{X-ray} \\
+\altrow
+\tkey{L} & \tcell{Lincoln} & \tcell{Lima}    & \tkey{Y} & \tcell{Young}   & \tcell{Yankee} \\
+\tkey{M} & \tcell{Mary}    & \tcell{Mike}    & \tkey{Z} & \tcell{Zebra}   & \tcell{Zulu} \\
+\bottomrule
+\end{tabular}
+
+\vspace{9pt}
+\begin{note}[Chiffres]
+Les chiffres s'énoncent un à un, jamais par groupes : une immatriculation « 24 » se transmet « deux, quatre ». En cas d'ambiguïté phonétique, l'agent répète en épelant.
+\end{note}
+
+\clearpage
+% ---------------------------------------------------------------------
+\annexe{C}{Aide-mémoire opérationnel}
+
+Le présent aide-mémoire n'ajoute aucune règle : il résume les procédures fixées au Titre III. En cas de divergence, le texte des articles prévaut.
+
+\sstitre{Contrôle de routine}
+
+\begin{enumerate}[leftmargin=13mm]
+  \item Guidage vers un emplacement sûr, hors chaussée. Positionnement en angle.
+  \item Annonce radio avant tout contact : position, véhicule, immatriculation, occupants, motif.
+  \item Depuis le véhicule de patrouille : faire descendre \textbf{conducteur et passagers}, les placer sur le trottoir, mains visibles.
+  \item Sortir seulement une fois tous les occupants en place. Ne jamais approcher un véhicule occupé.
+  \item Présentation, service, \textbf{motif du contrôle}, puis documents.
+  \item Occupants toujours dans le champ de vision. Retour de profil au véhicule.
+  \item Suite donnée, restitution des documents, annonce de fin.
+\end{enumerate}
+
+\sstitre{Contrôle à haut risque}
+
+\begin{enumerate}[leftmargin=13mm]
+  \item Attendre le renfort. Aucun engagement solitaire.
+  \item Choisir le lieu ; différer l'arrêt si nécessaire.
+  \item Aucune approche. Une seule voix, au haut-parleur.
+  \item Conducteur : moteur coupé, clés sur le toit, sortie mains sur la tête, dos aux agents, recul lent, à genoux.
+  \item Passagers immobiles, puis extraction un par un.
+  \item Deux agents menottent et palpent ; les autres couvrent.
+  \item Véhicule contrôlé visuellement une fois vidé.
+\end{enumerate}
+
+\sstitre{Interpellation}
+
+\begin{enumerate}[leftmargin=13mm]
+  \item Cause probable ou mandat. Motif énoncé à voix haute.
+  \item Trois sommations avant tir ou taser, sauf impératif contraire.
+  \item Menottage, vérification du serrage, annonce de l'arrestation.
+  \item Palpation avant mise en véhicule.
+  \item Date, heure et motif, puis notification des droits sous quinze minutes.
+  \item Transport en Code 1, annoncé au départ et à l'arrivée.
+  \item Inventaire contradictoire, reçu, scellés.
+  \item Rapport avant la fin de service.
+\end{enumerate}
+
+\sstitre{Poursuite}
+
+\begin{enumerate}[leftmargin=13mm]
+  \item Ne jamais s'engager de sa propre initiative.
+  \item Deux unités pour un délit majeur, une seule pour un délit mineur.
+  \item Primaire conduit, secondaire parle, appui aérien relaie.
+  \item Tirs depuis le fuyard : décrocher immédiatement.
+  \item Mode suivi dès que le risque dépasse le bénéfice.
+  \item Terminaison : demande du primaire, accord du superviseur.
+  \item Rapport sous vingt-quatre heures.
+\end{enumerate}
+
+\begin{rappel}[Les trois questions à se poser avant d'agir]
+\textbf{1.} Quel est mon fondement : suspicion raisonnable ou cause probable ?\quad
+\textbf{2.} Le risque que je crée est-il proportionné au fait que je poursuis ?\quad
+\textbf{3.} Suis-je capable d'écrire ce que je m'apprête à faire ?
+\end{rappel}
+
+\clearpage
+% ---------------------------------------------------------------------
+\annexe{D}{Formule de notification des droits}
+
+\vspace{4mm}
+\begin{center}
+{\lspdsans\fontsize{8.4}{11}\selectfont\color{lspdgrey}%
+  \addfontfeature{LetterSpace=16}\MakeUppercase{Carte de service, à détacher et à conserver}}
+\end{center}
+\vspace{5mm}
+
+\begin{tcolorbox}[enhanced, sharp corners, colback=white, colframe=lspdnavy,
+  boxrule=1pt, left=8mm, right=8mm, top=7mm, bottom=7mm]
+\centering
+\includegraphics[width=16mm]{images/sceau-lspd.png}\\[4mm]
+{\lspdsansbk\fontsize{8}{10}\selectfont\color{lspdnavy}%
+  \addfontfeature{LetterSpace=18}\MakeUppercase{Los Santos Police Department}}\\[1mm]
+{\lspdsans\fontsize{7.4}{9}\selectfont\color{lspdgrey}%
+  \addfontfeature{LetterSpace=12}\MakeUppercase{Notification des droits}}\\[5mm]
+\begin{tikzpicture}\fill[lspdgold] (0,0) rectangle (2.4cm,.8pt);\end{tikzpicture}\\[5mm]
+
+\begin{minipage}{0.92\linewidth}
+\justifying\fontsize{9.8}{15}\selectfont
+« Il est [heure], le [date]. Vous êtes en état d'arrestation pour [motif].
+
+\vspace{3pt}
+Vous avez le droit de garder le silence.
+
+Tout ce que vous direz pourra et sera retenu contre vous devant un tribunal.
+
+Vous avez le droit à l'assistance d'un avocat.
+
+Si vous n'avez pas les moyens d'en engager un, un avocat vous sera commis d'office.
+
+Vous avez droit à de l'eau, à de la nourriture et à des soins médicaux.
+
+\vspace{3pt}
+Comprenez-vous ces droits tels que je viens de vous les énoncer ?
+
+Compte tenu de ces droits, acceptez-vous de vous entretenir avec moi ou avec un autre agent des forces de l'ordre ? »
+\end{minipage}
+
+\vspace{6mm}
+\begin{tikzpicture}\fill[lspdrule] (0,0) rectangle (9cm,.4pt);\end{tikzpicture}\\[4mm]
+{\lspdsans\fontsize{8}{11.5}\selectfont\color{lspdgrey}
+\begin{minipage}{0.9\linewidth}\justifying
+Notification obligatoire avant tout interrogatoire, et au plus tard dans les quinze minutes suivant l'interpellation. En l'absence de réponse ou en cas de refus de comprendre, la formule est lue trois fois au total, après quoi les droits sont réputés acquis. L'absence de notification entraîne la nullité de la procédure.
+\end{minipage}}
+\end{tcolorbox}
+
+\vspace{7mm}
+
+\begin{note}[Version de référence en langue anglaise]
+\emph{« It is [time], on [date]. You are under arrest for [offence]. You have the right to remain silent. Anything you say can and will be used against you in a court of law. You have the right to an attorney. If you cannot afford one, one will be provided to you. You have the right to water, food and medical care. Do you understand these rights as I have read them to you? With these rights in mind, do you wish to speak to me or to any other law enforcement officer? »}
+\end{note}
+
+\clearpage
+% ---------------------------------------------------------------------
+\annexe{E}{Index des dispositions les plus citées}
+
+\vspace{2pt}
+\begingroup\renewcommand{\arraystretch}{1.12}
+\noindent
+\begin{tabular}{P{22mm} P{126mm}}
+\headrow
+\thead{Alinéa} & \thead{Objet} \\
+\tcell{\refcl{respect}} & \tcell{Obligation de respect envers les collègues, les services et le public} \\
+\altrow
+\tcell{\refcl{camaraderie}} & \tcell{Assistance mutuelle entre agents} \\
+\tcell{\refcl{insubordination}} & \tcell{Insubordination et refus d'un ordre manifestement illégal} \\
+\altrow
+\tcell{\refcl{confidentialite}} & \tcell{Secret professionnel} \\
+\tcell{\refcl{quota}} & \tcell{Quota hebdomadaire de service} \\
+\altrow
+\tcell{\refcl{loa-frequence}} & \tcell{Absences incompatibles avec la fonction} \\
+\altrow
+\tcell{\refcl{lincoln}} & \tcell{Interdiction de la patrouille solitaire} \\
+\tcell{\refcl{equipement}} & \tcell{Équipement fourni par le département} \\
+\altrow
+\tcell{\refcl{arme-hors-service}} & \tcell{Port de l'arme hors service} \\
+\tcell{\refcl{fichiers}} & \tcell{Accès aux fichiers du département} \\
+\altrow
+\tcell{\refcl{code99}} & \tcell{Emploi du Code 99} \\
+\tcell{\refcl{suspicion}} & \tcell{Suspicion raisonnable} \\
+\altrow
+\tcell{\refcl{cause-probable}} & \tcell{Cause probable} \\
+\tcell{\refcl{proportionnalite}} & \tcell{Proportionnalité de l'usage de la force} \\
+\altrow
+\tcell{\refcl{letale}} & \tcell{Conditions d'emploi de la force létale} \\
+\tcell{\refcl{sommations}} & \tcell{Trois sommations avant tir ou taser} \\
+\altrow
+\tcell{\refcl{taser-interdit}} & \tcell{Interdictions d'emploi du taser} \\
+\tcell{\refcl{mise-en-securite}} & \tcell{Mise en sécurité des occupants au contrôle routier} \\
+\altrow
+\tcell{\refcl{miranda}} & \tcell{Notification des droits} \\
+\altrow
+\tcell{\refcl{miranda-repetition}} & \tcell{Triple lecture des droits} \\
+\tcell{\refcl{transport}} & \tcell{Transport de détenu en Code 1} \\
+\altrow
+\tcell{\refcl{gav-duree}} & \tcell{Durée de la garde à vue} \\
+\tcell{\refcl{avocat}} & \tcell{Confidentialité de l'entretien avec l'avocat} \\
+\altrow
+\tcell{\refcl{bodycam}} & \tcell{Activation de la caméra-piéton} \\
+\tcell{\refcl{rapports}} & \tcell{Obligation de rapport} \\
+\altrow
+\tcell{\refcl{auto-engagement}} & \tcell{Interdiction de l'auto-engagement en poursuite} \\
+\tcell{\refcl{tracking}} & \tcell{Passage en mode suivi} \\
+\altrow
+\tcell{\refcl{terminaison}} & \tcell{Autorisation des techniques de terminaison} \\
+\tcell{\refcl{cumul-sanctions}} & \tcell{Cumul des sanctions} \\
+\altrow
+\tcell{\refcl{prescription}} & \tcell{Effacement du casier disciplinaire} \\
+\tcell{\refcl{saisine}} & \tcell{Saisine automatique des Affaires Internes} \\
+\altrow
+\tcell{\refcl{droits-agent}} & \tcell{Droits de l'agent mis en cause} \\
+\bottomrule
+\end{tabular}
+\endgroup
+
+\vspace{8pt}
+\lspdornament
+\begin{center}
+{\lspdsans\fontsize{7.6}{10}\selectfont\color{lspdgrey}%
+  \addfontfeature{LetterSpace=20}\MakeUppercase{Fin du règlement intérieur}}\\[3mm]
+{\lspdsans\fontsize{7.4}{10}\selectfont\color{lspdgold}%
+  \addfontfeature{LetterSpace=20}\MakeUppercase{To Protect and to Serve}}
+\end{center}
+\vspace{6mm}

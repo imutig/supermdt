@@ -1,0 +1,148 @@
+% =====================================================================
+%  rapport.sty : mise en forme du RAPPORT HEBDOMADAIRE D'ACTIVITÉ LSPD
+%  Réutilise toute la charte du règlement (style/lspd) et ajoute la
+%  couverture, les en-têtes, les titres de section et les composants de
+%  statistiques propres au rapport.
+% =====================================================================
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{rapport}[2026/08/17 Charte graphique - Rapport hebdomadaire LSPD]
+
+\RequirePackage{style/lspd}
+
+% ---------------------------------------------------------------
+%  En-tête / pied : sous-titre « Rapport hebdomadaire »
+% ---------------------------------------------------------------
+\fancypagestyle{lspdmain}{%
+  \fancyhf{}
+  \fancyhead[L]{%
+    \raisebox{-2mm}{\includegraphics[height=8.5mm]{images/sceau-lspd.png}}%
+    \hspace{2.4mm}%
+    \raisebox{0.4mm}{\begin{minipage}[b]{0.6\linewidth}
+      {\lspdsansbk\fontsize{7.4}{8.6}\selectfont\color{lspdnavy}%
+       \addfontfeature{LetterSpace=16}\MakeUppercase{Los Santos Police Department}}\\[1.4pt]
+      {\lspdsans\fontsize{7}{8}\selectfont\color{lspdgrey}%
+       \addfontfeature{LetterSpace=8}\MakeUppercase{Rapport hebdomadaire d'activité}}
+    \end{minipage}}}
+  \fancyhead[R]{%
+    \raisebox{1.2mm}{{\lspdsans\fontsize{7}{8.4}\selectfont\color{lspdgrey}%
+      \addfontfeature{LetterSpace=8}\MakeUppercase{\lspdcourant}}}}
+  \fancyfoot[L]{{\lspdsans\fontsize{6.8}{8}\selectfont\color{lspdgrey}%
+      \addfontfeature{LetterSpace=10}\MakeUppercase{Document officiel \textperiodcentered\ à l'attention du Gouvernement}}}
+  \fancyfoot[R]{{\lspdsansbk\fontsize{8}{9}\selectfont\color{lspdnavy}\thepage}%
+      {\lspdsans\fontsize{7}{9}\selectfont\color{lspdgrey}\,/\,\pageref{LastPage}}}
+}
+
+% ---------------------------------------------------------------
+%  Couverture du rapport : {période}{semaine}
+% ---------------------------------------------------------------
+\newcommand{\rapportcouverture}[2]{% {période}{mention semaine}
+  \begingroup
+  \thispagestyle{empty}
+  \AddToShipoutPictureBG*{%
+    \AtPageLowerLeft{%
+      \begin{tikzpicture}[remember picture,overlay]
+        \fill[lspddeep] (0,0) rectangle (\paperwidth,\paperheight);
+        \shade[inner color=lspdnavy,outer color=lspddeep]
+          (\paperwidth/2,\paperheight*.62) circle (13cm);
+        \draw[lspdgold,line width=.9pt]
+          (13mm,13mm) rectangle (\dimexpr\paperwidth-13mm\relax,\dimexpr\paperheight-13mm\relax);
+        \draw[lspdgold!50,line width=.35pt]
+          (16mm,16mm) rectangle (\dimexpr\paperwidth-16mm\relax,\dimexpr\paperheight-16mm\relax);
+      \end{tikzpicture}}}%
+  \centering
+  \vspace*{1mm}
+  {\lspdsans\fontsize{8.4}{10}\selectfont\color{lspdgoldlt}%
+    \addfontfeature{LetterSpace=32}\MakeUppercase{État de San Andreas}}\\[3mm]
+  {\lspdsans\fontsize{7.6}{9}\selectfont\color{white!62}%
+    \addfontfeature{LetterSpace=22}\MakeUppercase{Comté de Los Santos}}\\[11mm]
+
+  \includegraphics[width=52mm]{images/sceau-lspd.png}\\[11mm]
+
+  {\lspddisp\fontsize{20}{24}\selectfont\color{white}%
+    \addfontfeature{LetterSpace=20}\MakeUppercase{Los Santos}}\\[2.5mm]
+  {\lspddisp\fontsize{20}{24}\selectfont\color{white}%
+    \addfontfeature{LetterSpace=20}\MakeUppercase{Police Department}}\\[8mm]
+
+  \begin{tikzpicture}
+    \fill[lspdgold] (0,0) rectangle (3.2cm,.9pt);
+    \fill[lspdgold] (3.55cm,-2.4pt) -- (3.79cm,0) -- (3.55cm,2.4pt) -- (3.31cm,0) -- cycle;
+    \fill[lspdgold] (4.15cm,0) rectangle (7.35cm,.9pt);
+  \end{tikzpicture}\\[9mm]
+
+  {\lspddisp\fontsize{30}{35}\selectfont\color{lspdgoldlt}%
+    \addfontfeature{LetterSpace=4}Rapport}\\[1mm]
+  {\lspddisp\fontsize{30}{35}\selectfont\color{lspdgoldlt}%
+    \addfontfeature{LetterSpace=4}hebdomadaire}\\[9mm]
+
+  {\lspdsans\fontsize{10.5}{15}\selectfont\color{white}%
+   \begin{minipage}{120mm}\centering #1\end{minipage}}\\[6mm]
+
+  \begin{tikzpicture}
+    \fill[lspdgold!55] (0,0) rectangle (7.35cm,.4pt);
+  \end{tikzpicture}\\[6mm]
+
+  {\lspdsansbk\fontsize{8.6}{12}\selectfont\color{white}%
+    \addfontfeature{LetterSpace=18}\MakeUppercase{#2}}
+
+  \vspace{\fill}
+
+  {\lspdsans\fontsize{7.6}{10}\selectfont\color{lspdgoldlt}%
+    \addfontfeature{LetterSpace=24}\MakeUppercase{To Protect and to Serve}}\\[4mm]
+  {\lspdsans\fontsize{6.8}{9}\selectfont\color{white!42}%
+    \addfontfeature{LetterSpace=14}\MakeUppercase{Document officiel \textperiodcentered\ à l'attention du Gouvernement}}
+  \vspace*{2mm}
+  \par\endgroup\clearpage}
+
+% ---------------------------------------------------------------
+%  Titre de section : {numéro}{Titre}
+% ---------------------------------------------------------------
+\newcounter{rsection}
+\newcommand{\rsection}[1]{%
+  \needspace{9\baselineskip}\par\addvspace{16pt}
+  \refstepcounter{rsection}%
+  \phantomsection\addcontentsline{toc}{section}{\protect\numberline{\arabic{rsection}}#1}%
+  \noindent\begin{tikzpicture}\fill[lspdnavy] (0,0) rectangle (\linewidth,1.1pt);\end{tikzpicture}\\[3.2pt]
+  \noindent{\lspdsansbk\fontsize{8.2}{10}\selectfont\color{lspdgold}%
+    \addfontfeature{LetterSpace=22}\MakeUppercase{Section \arabic{rsection}}}\\[2.5pt]
+  \noindent{\lspddisp\fontsize{15.5}{18}\selectfont\color{lspdnavy}#1}\\[3pt]
+  \noindent\begin{tikzpicture}\fill[lspdgold] (0,0) rectangle (2.2cm,.9pt);\end{tikzpicture}%
+  \par\vspace{9pt}}
+
+% Sous-titre à l'intérieur d'une section (réutilise \sstitre de lspd).
+
+% ---------------------------------------------------------------
+%  Composants de statistiques
+% ---------------------------------------------------------------
+% Grille d'indicateurs clés : chaque \kpi{valeur}{libellé} occupe une cellule.
+% À placer dans un environnement kpigrid (multicols de 4).
+\newtcolorbox{kpibox}{%
+  enhanced, sharp corners, colback=lspdbluebg, colframe=lspdrule,
+  boxrule=.4pt, leftrule=2.6pt, left=4mm, right=3mm, top=3mm, bottom=3mm,
+  before skip=0pt, after skip=8pt, height=20mm, valign=center,
+  frame style={lspdnavy}}
+
+\newcommand{\kpi}[2]{%
+  \begin{kpibox}%
+    {\lspddisp\fontsize{21}{22}\selectfont\color{lspdnavy}#1}\\[1.5pt]
+    {\lspdsansbk\fontsize{7}{8.5}\selectfont\color{lspdgrey}%
+      \addfontfeature{LetterSpace=10}\MakeUppercase{#2}}%
+  \end{kpibox}}
+
+% Grille : 4 colonnes serrées.
+\newenvironment{kpigrid}
+  {\par\setlength{\multicolsep}{0pt}\begin{multicols}{4}\raggedcolumns}
+  {\end{multicols}\vspace{2pt}}
+
+% Ligne de statistique simple : libellé à gauche, valeur en gras à droite.
+\newcommand{\statline}[2]{%
+  \par\needspace{1.6\baselineskip}\vspace{2.6pt}
+  \noindent{\lspdsansmed\fontsize{9.6}{12}\selectfont\color{lspdink}#1}%
+  \nobreak\hfill\nobreak{\lspdsansbk\fontsize{9.6}{12}\selectfont\color{lspdnavy}#2}%
+  \par\vspace{1.4pt}\noindent\begin{tikzpicture}\fill[lspdrule] (0,0) rectangle (\linewidth,.3pt);\end{tikzpicture}}
+
+% Bloc « texte rédigé à la main » : titre optionnel + paragraphe justifié.
+\newcommand{\rlead}[1]{\par{\itshape\color{lspdgrey}#1}\par\vspace{6pt}}
+
+% Signature du Chef (réutilise \blocSignature / \signatureChief de lspd).
+
+\endinput

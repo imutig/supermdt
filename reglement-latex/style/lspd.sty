@@ -1,0 +1,587 @@
+% =====================================================================
+%  lspd.sty : identité visuelle du Règlement intérieur du
+%             Los Santos Police Department
+%  ---------------------------------------------------------------
+%  Ce fichier contient TOUTE la mise en forme.
+%  Pour modifier le contenu du règlement, n'ouvrez PAS ce fichier :
+%  allez dans le dossier  contenu/.
+% =====================================================================
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{lspd}[2026/08/15 Charte graphique LSPD]
+
+% ---------------------------------------------------------------
+%  Paquets
+% ---------------------------------------------------------------
+\RequirePackage[T1]{fontenc}
+\RequirePackage{fontspec}
+\RequirePackage{xcolor}
+\RequirePackage[a4paper,top=27mm,bottom=24mm,left=24mm,right=24mm,
+                headheight=15mm,headsep=8mm,footskip=13mm]{geometry}
+\RequirePackage{fancyhdr}
+\RequirePackage{titlesec}
+\RequirePackage{titletoc}
+\RequirePackage{tcolorbox}
+\RequirePackage{enumitem}
+\RequirePackage{booktabs}
+\RequirePackage{array}
+\RequirePackage{longtable}
+\RequirePackage{colortbl}
+\RequirePackage{graphicx}
+\RequirePackage{eso-pic}
+\RequirePackage{tikz}
+\RequirePackage{needspace}
+\RequirePackage{ragged2e}
+\RequirePackage{microtype}
+\RequirePackage{multicol}
+\RequirePackage{calc}
+\RequirePackage[french]{babel}
+\RequirePackage{csquotes}
+\RequirePackage[hidelinks,bookmarksnumbered,bookmarksopen,
+                pdfusetitle]{hyperref}
+\tcbuselibrary{skins,breakable}
+\usetikzlibrary{calc}
+
+% ---------------------------------------------------------------
+%  Palette
+% ---------------------------------------------------------------
+\definecolor{lspdnavy}   {HTML}{102C54} % bleu du sceau
+\definecolor{lspddeep}   {HTML}{0A1B34} % bleu nuit (couverture)
+\definecolor{lspdblue}   {HTML}{1D4E96} % bleu vif (accents)
+\definecolor{lspdgold}   {HTML}{C29B3C} % or du sceau
+\definecolor{lspdgoldlt} {HTML}{E4C87A}
+\definecolor{lspdink}    {HTML}{16181D} % texte
+\definecolor{lspdgrey}   {HTML}{6A7079}
+\definecolor{lspdrule}   {HTML}{C7CCD4}
+\definecolor{lspdpaper}  {HTML}{F5F6F8}
+\definecolor{lspdred}    {HTML}{8E1D1D} % interdictions
+\definecolor{lspdredlt}  {HTML}{FBF0EF}
+\definecolor{lspdgreen}  {HTML}{1F5C46}
+\definecolor{lspdgreenlt}{HTML}{EFF5F2}
+\definecolor{lspdgoldbg} {HTML}{FBF5E7}
+\definecolor{lspdbluebg} {HTML}{EEF2F8}
+
+% ---------------------------------------------------------------
+%  Typographie
+% ---------------------------------------------------------------
+% Les fontes Inter sont embarquées dans le dossier fonts/ : le document
+% compile ainsi à l'identique partout (Overleaf, TeX Live local, etc.).
+\setmainfont{TeX Gyre Pagella}[
+  Numbers   = OldStyle ,
+  Ligatures = TeX ]
+\newfontfamily\lspdsans{Inter}[
+  Path = fonts/ , Extension = .otf ,
+  UprightFont = *-Regular , BoldFont = *-Bold , ItalicFont = *-Italic ,
+  Ligatures = TeX ]
+\newfontfamily\lspdsansmed{Inter}[
+  Path = fonts/ , Extension = .otf ,
+  UprightFont = *-Medium , BoldFont = *-Bold , ItalicFont = *-Italic ,
+  Ligatures = TeX ]
+\newfontfamily\lspdsansbk{Inter}[
+  Path = fonts/ , Extension = .otf ,
+  UprightFont = *-SemiBold , BoldFont = *-Black ,
+  Ligatures = TeX ]
+\newfontfamily\lspddisp{InterDisplay}[
+  Path = fonts/ , Extension = .otf ,
+  UprightFont = *-SemiBold , BoldFont = *-Black ,
+  AutoFakeSlant = 0.15 ,
+  Ligatures = TeX ]
+
+\linespread{1.06}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0pt}
+\color{lspdink}
+
+% Lettrage espacé pour les titres
+\newcommand{\lsp}[2][.14em]{%
+  \begingroup\addfontfeature{LetterSpace=8}\textls*{#2}\endgroup}
+\newcommand{\capsline}[1]{{\lspdsansbk\fontsize{9}{11}\selectfont
+  \addfontfeature{LetterSpace=18}\MakeUppercase{#1}}}
+
+% ---------------------------------------------------------------
+%  Compteurs : articles, alinéas
+% ---------------------------------------------------------------
+\newcounter{lspdart}
+\newcounter{lspdclause}[lspdart]
+\newcommand{\artnum}{\arabic{lspdart}}
+\newcommand{\artroman}{\MakeUppercase{\romannumeral\value{lspdart}}}
+\newcommand{\clausenum}{\artnum.\ifnum\value{lspdclause}<10 0\fi\arabic{lspdclause}}
+% Les renvois (\refcl) doivent restituer le numéro complet « 12.04 »
+\renewcommand{\thelspdclause}{\clausenum}
+\renewcommand{\thelspdart}{\artroman}
+
+% ---------------------------------------------------------------
+%  Filets et ornements
+% ---------------------------------------------------------------
+\newcommand{\lspdrulewide}[1][\linewidth]{%
+  \par\nointerlineskip
+  \begin{tikzpicture}
+    \fill[lspdnavy] (0,0) rectangle (#1,1.1pt);
+  \end{tikzpicture}\par\nointerlineskip}
+
+\newcommand{\lspdrulethin}[1][\linewidth]{%
+  \par\nointerlineskip
+  \begin{tikzpicture}
+    \fill[lspdrule] (0,0) rectangle (#1,.5pt);
+  \end{tikzpicture}\par\nointerlineskip}
+
+% Séparateur décoratif : filet, losange or, filet
+\newcommand{\lspdornament}{%
+  \par\vspace{10pt}
+  \centerline{%
+    \begin{tikzpicture}
+      \fill[lspdrule] (0,0) rectangle (4.6cm,.4pt);
+      \fill[lspdgold] (5.0cm,-2.1pt) -- (5.21cm,0) -- (5.0cm,2.1pt) -- (4.79cm,0) -- cycle;
+      \fill[lspdnavy] (5.45cm,-1.6pt) -- (5.61cm,0) -- (5.45cm,1.6pt) -- (5.29cm,0) -- cycle;
+      \fill[lspdgold] (5.85cm,-2.1pt) -- (6.06cm,0) -- (5.85cm,2.1pt) -- (5.64cm,0) -- cycle;
+      \fill[lspdrule] (6.45cm,0) rectangle (11.05cm,.4pt);
+    \end{tikzpicture}}
+  \par\vspace{10pt}}
+
+% ---------------------------------------------------------------
+%  En-têtes et pieds de page
+% ---------------------------------------------------------------
+\newcommand{\lspdcourant}{}   % titre courant (partie)
+\renewcommand{\headrulewidth}{0pt}
+\renewcommand{\footrulewidth}{0pt}
+
+\fancypagestyle{lspdmain}{%
+  \fancyhf{}
+  \fancyhead[L]{%
+    \raisebox{-2mm}{\includegraphics[height=8.5mm]{images/sceau-lspd.png}}%
+    \hspace{2.4mm}%
+    \raisebox{0.4mm}{\begin{minipage}[b]{0.6\linewidth}
+      {\lspdsansbk\fontsize{7.4}{8.6}\selectfont\color{lspdnavy}%
+       \addfontfeature{LetterSpace=16}\MakeUppercase{Los Santos Police Department}}\\[1.4pt]
+      {\lspdsans\fontsize{7}{8}\selectfont\color{lspdgrey}%
+       \addfontfeature{LetterSpace=8}\MakeUppercase{Règlement intérieur}}
+    \end{minipage}}}
+  \fancyhead[R]{%
+    \raisebox{1.2mm}{{\lspdsans\fontsize{7}{8.4}\selectfont\color{lspdgrey}%
+      \addfontfeature{LetterSpace=8}\MakeUppercase{\lspdcourant}}}}
+  \fancyfoot[L]{{\lspdsans\fontsize{6.8}{8}\selectfont\color{lspdgrey}%
+      \addfontfeature{LetterSpace=10}\MakeUppercase{Document interne \textperiodcentered\ diffusion restreinte}}}
+  \fancyfoot[R]{{\lspdsansbk\fontsize{8}{9}\selectfont\color{lspdnavy}\thepage}%
+      {\lspdsans\fontsize{7}{9}\selectfont\color{lspdgrey}\,/\,\pageref{LastPage}}}
+  \fancyfoot[C]{}
+  % filet sous l'en-tête
+  \fancyheadoffset{0pt}
+}
+\AtBeginDocument{\RequirePackage{lastpage}}
+
+% filet décoratif sous l'en-tête, via eso-pic
+\newcommand{\lspdheadrule}{%
+  \AddToShipoutPictureBG*{%
+    \AtPageUpperLeft{\raisebox{-25mm}{\hspace{24mm}%
+      \begin{tikzpicture}
+        \fill[lspdnavy] (0,0) rectangle (\dimexpr\paperwidth-48mm\relax,.9pt);
+        \fill[lspdgold] (0,-1.6mm) rectangle (2.2cm,.6pt);
+      \end{tikzpicture}}}%
+    \AtPageLowerLeft{\raisebox{18.5mm}{\hspace{24mm}%
+      \begin{tikzpicture}
+        \fill[lspdrule] (0,0) rectangle (\dimexpr\paperwidth-48mm\relax,.4pt);
+      \end{tikzpicture}}}}}
+
+\pagestyle{lspdmain}
+\AddToHook{shipout/background}{}
+
+% applique le filet sur toutes les pages du corps
+\newcommand{\lspdactivaterules}{%
+  \AddToShipoutPictureBG{%
+    \ifnum\value{page}>0
+      \AtPageUpperLeft{\raisebox{-25mm}{\hspace{24mm}%
+        \begin{tikzpicture}
+          \fill[lspdnavy] (0,0) rectangle (\dimexpr\paperwidth-48mm\relax,.9pt);
+          \fill[lspdgold] (0,-1.7mm) rectangle (2.4cm,.7pt);
+        \end{tikzpicture}}}%
+      \AtPageLowerLeft{\raisebox{18.5mm}{\hspace{24mm}%
+        \begin{tikzpicture}
+          \fill[lspdrule] (0,0) rectangle (\dimexpr\paperwidth-48mm\relax,.4pt);
+        \end{tikzpicture}}}%
+    \fi}}
+
+% ---------------------------------------------------------------
+%  Page de titre de partie (TITRE I, TITRE II…)
+% ---------------------------------------------------------------
+\newcommand{\titrepartie}[2]{%
+  \clearpage
+  \renewcommand{\lspdcourant}{#1}
+  \thispagestyle{empty}
+  \phantomsection
+  \addcontentsline{toc}{part}{#1 : #2}
+  \begingroup
+  \AddToShipoutPictureBG*{%
+    \AtPageLowerLeft{%
+      \begin{tikzpicture}[remember picture,overlay]
+        \fill[lspddeep] (0,0) rectangle (\paperwidth,\paperheight);
+        % cadre or
+        \draw[lspdgold,line width=.6pt]
+          (12mm,12mm) rectangle (\dimexpr\paperwidth-12mm\relax,\dimexpr\paperheight-12mm\relax);
+        \draw[lspdgold!55,line width=.3pt]
+          (14.5mm,14.5mm) rectangle (\dimexpr\paperwidth-14.5mm\relax,\dimexpr\paperheight-14.5mm\relax);
+        % sceau en filigrane
+        \node[opacity=.055] at (\paperwidth/2,\paperheight/2)
+          {\includegraphics[width=13cm]{images/sceau-lspd.png}};
+      \end{tikzpicture}}}%
+  \null\vfill
+  \begin{center}
+    \includegraphics[width=26mm]{images/sceau-lspd.png}\\[13mm]
+    {\lspdsans\fontsize{9}{11}\selectfont\color{lspdgoldlt}%
+      \addfontfeature{LetterSpace=26}\MakeUppercase{Los Santos Police Department}}\\[7mm]
+    \begin{tikzpicture}\fill[lspdgold] (0,0) rectangle (2.6cm,.8pt);\end{tikzpicture}\\[7mm]
+    {\lspddisp\fontsize{15}{18}\selectfont\color{lspdgoldlt}%
+      \addfontfeature{LetterSpace=34}\MakeUppercase{#1}}\\[8mm]
+    {\lspddisp\fontsize{25}{31}\selectfont\color{white}%
+      \addfontfeature{LetterSpace=6}\MakeUppercase{#2}}\\[10mm]
+    \begin{tikzpicture}\fill[lspdgold] (0,0) rectangle (1.4cm,.8pt);\end{tikzpicture}
+  \end{center}
+  \vfill\null
+  \endgroup
+  \clearpage}
+
+% ---------------------------------------------------------------
+%  Articles
+% ---------------------------------------------------------------
+% \article{Intitulé}   -> ARTICLE VII / Intitulé
+\newcommand{\articlelabel}{}
+% Chaque article démarre en haut d'une page : plus aucun titre d'article
+% ne peut se retrouver isolé en bas de page.
+\newcommand{\article}[1]{%
+  \clearpage
+  \refstepcounter{lspdart}%
+  \phantomsection
+  \addcontentsline{toc}{section}{\protect\numberline{Art.~\artroman}#1}%
+  \begingroup
+  \noindent
+  \begin{tikzpicture}
+    \fill[lspdnavy] (0,0) rectangle (\linewidth,1.1pt);
+  \end{tikzpicture}\\[3.2pt]
+  \noindent
+  {\lspdsansbk\fontsize{8.2}{10}\selectfont\color{lspdgold}%
+    \addfontfeature{LetterSpace=22}\MakeUppercase{Article \artroman}}\\[2.5pt]
+  \noindent
+  {\lspddisp\fontsize{15.5}{18}\selectfont\color{lspdnavy}#1}\\[3pt]
+  \noindent
+  \begin{tikzpicture}
+    \fill[lspdgold] (0,0) rectangle (2.2cm,.9pt);
+  \end{tikzpicture}
+  \endgroup
+  \par\vspace{9pt}}
+
+% Chapeau introductif d'article (italique gris)
+\newcommand{\chapeau}[1]{%
+  \par{\itshape\color{lspdgrey}\small #1}\par\vspace{7pt}}
+
+% ---- Alinéas numérotés -------------------------------------------------
+% \cl{Texte}                 -> [7.01] Texte
+% \cl[cle]{Texte}            -> idem + étiquette référençable par \refcl{cle}
+\newcommand{\cl}[2][]{%
+  \par\needspace{2.2\baselineskip}\vspace{5.2pt}
+  \refstepcounter{lspdclause}%
+  \if\relax\detokenize{#1}\relax\else\label{cl:#1}\fi
+  \noindent
+  \hangindent=13mm \hangafter=1
+  \makebox[13mm][l]{{\lspdsansbk\fontsize{8.4}{10}\selectfont\color{lspdblue}%
+     [\clausenum]}}%
+  \justifying #2\par}
+
+% Alinéa avec intitulé en tête
+\newcommand{\cln}[3][]{%
+  \par\needspace{2.2\baselineskip}\vspace{5.2pt}
+  \refstepcounter{lspdclause}%
+  \if\relax\detokenize{#1}\relax\else\label{cl:#1}\fi
+  \noindent
+  \hangindent=13mm \hangafter=1
+  \makebox[13mm][l]{{\lspdsansbk\fontsize{8.4}{10}\selectfont\color{lspdblue}%
+     [\clausenum]}}%
+  \justifying{\lspdsansbk\fontsize{10}{12}\selectfont\color{lspdnavy}#2.}\ #3\par}
+
+% Texte courant rattaché à l'alinéa précédent (indenté)
+\newcommand{\clsuite}[1]{%
+  \par\vspace{3.6pt}\noindent\hspace*{13mm}%
+  \begin{minipage}{\dimexpr\linewidth-13mm\relax}\justifying #1\end{minipage}\par}
+
+% Référence croisée : \refcl{cle} -> [7.03]
+\newcommand{\refcl}[1]{{\lspdsansmed\fontsize{9.4}{11}\selectfont
+   \color{lspdblue}[\ref{cl:#1}]}}
+
+% Intertitre à l'intérieur d'un article
+\newcommand{\sstitre}[1]{%
+  \par\needspace{6\baselineskip}\vspace{11pt}
+  \noindent{\lspdsansbk\fontsize{9.4}{11}\selectfont\color{lspdnavy}%
+    \addfontfeature{LetterSpace=10}\MakeUppercase{#1}}\\[2.5pt]
+  \noindent\begin{tikzpicture}\fill[lspdrule] (0,0) rectangle (\linewidth,.5pt);\end{tikzpicture}
+  \par\vspace{1pt}\nopagebreak[4]}
+
+% ---------------------------------------------------------------
+%  Listes
+% ---------------------------------------------------------------
+% Puce dessinée en TikZ : la couleur est encapsulée dans l'image, ce qui évite
+% les fuites de pile de couleurs aux changements de page ou de colonne.
+\newcommand{\lspdbullet}{%
+  \tikz[baseline]{\fill[lspdgold]
+    (0,.26em) -- (1.9pt,.44em) -- (3.8pt,.26em) -- (1.9pt,.08em) -- cycle;}}
+\newcommand{\lspdsubbullet}{%
+  \tikz[baseline]{\draw[lspdgrey,line width=.5pt] (1.3pt,.26em) circle (1.3pt);}}
+\setlist[itemize,1]{leftmargin=18mm,labelsep=3mm,itemsep=2.4pt,topsep=4pt,
+  label=\protect\lspdbullet}
+\setlist[itemize,2]{leftmargin=6mm,labelsep=2.5mm,itemsep=1.6pt,topsep=2.5pt,
+  label=\protect\lspdsubbullet}
+\setlist[enumerate,1]{leftmargin=18mm,labelsep=3mm,itemsep=2.8pt,topsep=4pt,
+  label=\protect\lspdnum{\arabic*}}
+\setlist[enumerate,2]{leftmargin=7mm,labelsep=2.5mm,itemsep=1.8pt,topsep=2.5pt,
+  label=\protect\lspdalph{\alph*}}
+\newcommand{\lspdalph}[1]{%
+  \tikz[baseline=(n.base)]{\node[inner sep=0pt,text=lspdblue,
+    font=\lspdsansbk\fontsize{8.4}{9}\selectfont] (n) {#1.};}}
+\newcommand{\lspdnum}[1]{%
+  \tikz[baseline=(n.base)]{
+    \node[fill=lspdnavy,text=white,inner sep=0pt,minimum width=4.6mm,
+          minimum height=4.6mm,rounded corners=.6pt,
+          font=\lspdsansbk\fontsize{7.6}{8}\selectfont] (n) {#1};}}
+
+% Liste de définitions (glossaire)
+\newenvironment{definitions}
+  {\begin{list}{}{\setlength{\leftmargin}{18mm}\setlength{\labelsep}{3mm}
+    \setlength{\itemsep}{4pt}\setlength{\topsep}{5pt}
+    \renewcommand{\makelabel}[1]{\hss\llap{##1}}}}
+  {\end{list}}
+\newcommand{\dterme}[1]{\item[{\lspdsansbk\fontsize{9.6}{11}\selectfont
+   \color{lspdnavy}#1}]}
+
+% ---------------------------------------------------------------
+%  Encadrés
+% ---------------------------------------------------------------
+\newtcolorbox{lspdbox}[2][]{%
+  enhanced, breakable, sharp corners,
+  colback=#2!8, colframe=#2, boxrule=0pt,
+  leftrule=2.6pt, toprule=0pt, bottomrule=0pt, rightrule=0pt,
+  left=6mm, right=5mm, top=4mm, bottom=4mm,
+  before skip=10pt, after skip=10pt, #1}
+
+\newcommand{\boxtitle}[2]{%
+  {\lspdsansbk\fontsize{8.2}{10}\selectfont\color{#1}%
+   \addfontfeature{LetterSpace=18}\MakeUppercase{#2}}\par\vspace{3.5pt}}
+
+% Note / précision
+\newenvironment{note}[1][Note]
+  {\needspace{8\baselineskip}\begin{lspdbox}{lspdblue}\boxtitle{lspdblue}{#1}\justifying\small}
+  {\end{lspdbox}}
+% Interdiction / sanction
+\newenvironment{interdit}[1][Interdiction]
+  {\needspace{8\baselineskip}\begin{lspdbox}{lspdred}\boxtitle{lspdred}{#1}\justifying\small}
+  {\end{lspdbox}}
+% Bonne pratique / rappel positif
+\newenvironment{rappel}[1][Rappel]
+  {\needspace{8\baselineskip}\begin{lspdbox}{lspdgreen}\boxtitle{lspdgreen}{#1}\justifying\small}
+  {\end{lspdbox}}
+% Encadré solennel (or)
+\newenvironment{solennel}[1][]
+  {\needspace{8\baselineskip}\begin{lspdbox}{lspdgold}\if\relax\detokenize{#1}\relax\else
+     \boxtitle{lspdgold!70!black}{#1}\fi\justifying\small}
+  {\end{lspdbox}}
+
+% Citation encadrée pleine largeur (serment, Miranda…)
+\newtcolorbox{formule}[1][]{%
+  enhanced, breakable=false, sharp corners,
+  colback=lspddeep, colframe=lspdgold, boxrule=.7pt,
+  left=9mm, right=9mm, top=7mm, bottom=7mm,
+  before skip=13pt, after skip=13pt,
+  fontupper=\color{white}\itshape, #1}
+
+% ---------------------------------------------------------------
+%  Tableaux
+% ---------------------------------------------------------------
+\renewcommand{\arraystretch}{1.34}
+\setlength{\arrayrulewidth}{.4pt}
+\arrayrulecolor{lspdrule}
+
+% Police commune à toutes les cellules : appliquée par la colonne, jamais par
+% la cellule, afin que toutes les lignes partagent la même ligne de base.
+\newcommand{\lspdtabfont}{\lspdsansmed\fontsize{9.2}{12.4}\selectfont}
+\newcommand{\thead}[1]{{\leavevmode\lspdsansbk\color{white}%
+  \addfontfeature{LetterSpace=12}\MakeUppercase{\fontsize{8.2}{12.4}\selectfont #1}}}
+\newcommand{\headrow}{\rowcolor{lspdnavy}}
+\newcommand{\altrow}{\rowcolor{lspdpaper}}
+\newcommand{\tcell}[1]{\leavevmode #1}
+\newcommand{\tkey}[1]{{\leavevmode\lspdsansbk\color{lspdnavy}#1}}
+
+% colonnes à largeur fixe, alignées en haut
+\newcolumntype{P}[1]{>{\RaggedRight\arraybackslash\lspdtabfont}p{#1}}
+\newcolumntype{C}[1]{>{\Centering\arraybackslash\lspdtabfont}p{#1}}
+
+% ---------------------------------------------------------------
+%  Sommaire
+% ---------------------------------------------------------------
+\newcommand{\lspdtoc}{%
+  \clearpage
+  \renewcommand{\lspdcourant}{Sommaire}
+  \begingroup
+  {\lspddisp\fontsize{22}{26}\selectfont\color{lspdnavy}Sommaire}\\[4pt]
+  \lspdrulewide\vspace{3pt}
+  \noindent\begin{tikzpicture}\fill[lspdgold] (0,0) rectangle (2.6cm,.9pt);\end{tikzpicture}
+  \vspace{12pt}
+  \setlength{\columnsep}{9mm}
+  \@starttoc{toc}
+  \endgroup
+  \clearpage}
+
+\titlecontents{part}[0pt]
+  {\addvspace{13pt}\lspdsansbk\fontsize{9.4}{11}\selectfont\color{lspdnavy}
+   \addfontfeature{LetterSpace=14}}
+  {}{}
+  {\hfill\normalfont\lspdsansmed\fontsize{8.4}{10}\selectfont\color{lspdgrey}\thecontentspage}
+  [\vspace{1.5pt}{\color{lspdgold}\hrule height .9pt}\vspace{4.5pt}]
+
+\titlecontents{section}[19mm]
+  {\addvspace{1.6pt}\small}
+  {\hspace*{-19mm}\makebox[19mm][l]{\lspdsansbk\fontsize{8}{10}\selectfont
+     \color{lspdgold}\thecontentslabel}}
+  {\hspace*{-19mm}\makebox[19mm][l]{}}
+  {\hspace{2mm}\titlerule*[.7em]{\color{lspdrule}.}\hspace{1.5mm}%
+   \normalfont\lspdsansmed\fontsize{8.6}{10}\selectfont\color{lspdnavy}\thecontentspage}
+
+\makeatletter
+\renewcommand{\@pnumwidth}{0pt}
+\renewcommand{\@tocrmarg}{0pt}
+\makeatother
+
+% ---------------------------------------------------------------
+%  Couverture
+% ---------------------------------------------------------------
+\newcommand{\lspdcouverture}[3]{% {sous-titre}{version}{date}
+  \begingroup
+  \thispagestyle{empty}
+  \AddToShipoutPictureBG*{%
+    \AtPageLowerLeft{%
+      \begin{tikzpicture}[remember picture,overlay]
+        \fill[lspddeep] (0,0) rectangle (\paperwidth,\paperheight);
+        % dégradé subtil
+        \shade[inner color=lspdnavy,outer color=lspddeep]
+          (\paperwidth/2,\paperheight*.62) circle (13cm);
+        % double cadre or
+        \draw[lspdgold,line width=.9pt]
+          (13mm,13mm) rectangle (\dimexpr\paperwidth-13mm\relax,\dimexpr\paperheight-13mm\relax);
+        \draw[lspdgold!50,line width=.35pt]
+          (16mm,16mm) rectangle (\dimexpr\paperwidth-16mm\relax,\dimexpr\paperheight-16mm\relax);
+        % coins
+        \foreach \x/\y in {13/13, 13/0, 0/13, 0/0} {}
+      \end{tikzpicture}}}%
+  \centering
+  \vspace*{1mm}
+  {\lspdsans\fontsize{8.4}{10}\selectfont\color{lspdgoldlt}%
+    \addfontfeature{LetterSpace=32}\MakeUppercase{État de San Andreas}}\\[3mm]
+  {\lspdsans\fontsize{7.6}{9}\selectfont\color{white!62}%
+    \addfontfeature{LetterSpace=22}\MakeUppercase{Comté de Los Santos}}\\[11mm]
+
+  \includegraphics[width=54mm]{images/sceau-lspd.png}\\[11mm]
+
+  {\lspddisp\fontsize{20}{24}\selectfont\color{white}%
+    \addfontfeature{LetterSpace=20}\MakeUppercase{Los Santos}}\\[2.5mm]
+  {\lspddisp\fontsize{20}{24}\selectfont\color{white}%
+    \addfontfeature{LetterSpace=20}\MakeUppercase{Police Department}}\\[8mm]
+
+  \begin{tikzpicture}
+    \fill[lspdgold] (0,0) rectangle (3.2cm,.9pt);
+    \fill[lspdgold] (3.55cm,-2.4pt) -- (3.79cm,0) -- (3.55cm,2.4pt) -- (3.31cm,0) -- cycle;
+    \fill[lspdgold] (4.15cm,0) rectangle (7.35cm,.9pt);
+  \end{tikzpicture}\\[9mm]
+
+  {\lspddisp\fontsize{33}{38}\selectfont\color{lspdgoldlt}%
+    \addfontfeature{LetterSpace=4}Règlement}\\[1mm]
+  {\lspddisp\fontsize{33}{38}\selectfont\color{lspdgoldlt}%
+    \addfontfeature{LetterSpace=4}intérieur}\\[7mm]
+
+  {\lspdsans\fontsize{9.6}{15}\selectfont\color{white!75}
+   \begin{minipage}{112mm}\centering #1\end{minipage}}\\[11mm]
+
+  \begin{tikzpicture}
+    \fill[lspdgold!55] (0,0) rectangle (7.35cm,.4pt);
+  \end{tikzpicture}\\[6mm]
+
+  {\lspdsansbk\fontsize{8.6}{12}\selectfont\color{white}%
+    \addfontfeature{LetterSpace=18}\MakeUppercase{#2}}\\[3mm]
+  {\lspdsans\fontsize{8.2}{11}\selectfont\color{white!58}%
+    \addfontfeature{LetterSpace=12}\MakeUppercase{En vigueur au #3}}
+
+  \vspace{\fill}
+
+  {\lspdsans\fontsize{7.6}{10}\selectfont\color{lspdgoldlt}%
+    \addfontfeature{LetterSpace=24}\MakeUppercase{To Protect and to Serve}}\\[4mm]
+  {\lspdsans\fontsize{6.8}{9}\selectfont\color{white!42}%
+    \addfontfeature{LetterSpace=14}\MakeUppercase{Document interne \textperiodcentered\ diffusion restreinte}}
+  \vspace*{2mm}
+  \par\endgroup\clearpage}
+
+% ---------------------------------------------------------------
+%  Divers
+% ---------------------------------------------------------------
+\newcommand{\lspd}{\textsc{lspd}}
+\newcommand{\grade}[1]{{\lspdsansmed\fontsize{9.8}{11}\selectfont\color{lspdnavy}#1}}
+\newcommand{\code}[1]{{\lspdsansbk\fontsize{9.2}{11}\selectfont\color{lspdblue}#1}}
+\newcommand{\stress}[1]{{\lspdsansbk\fontsize{9.8}{11}\selectfont\color{lspdnavy}#1}}
+
+% Insigne de grade : contraint en hauteur ET en largeur, centré verticalement
+\newcommand{\insigne}[1]{%
+  \raisebox{-.42\height}{\includegraphics[height=10mm,width=17mm,keepaspectratio]{#1}}}
+
+% ---------------------------------------------------------------
+%  Signatures manuscrites (tracées en TikZ : aucune police externe)
+% ---------------------------------------------------------------
+\definecolor{lspdencre}{HTML}{1B2A5B}
+
+\newcommand{\signatureChief}{%
+\begin{tikzpicture}[scale=.78,line cap=round,line join=round]
+ \draw[lspdencre,line width=.85pt]
+   (0,0) .. controls (.15,.85) and (.35,.95) .. (.5,.15)
+         .. controls (.6,-.3) and (.45,-.45) .. (.35,-.2)
+         .. controls (.25,.05) and (.55,.25) .. (.95,.3)
+         .. controls (1.25,.33) and (1.35,.05) .. (1.2,-.1)
+         .. controls (1.08,-.22) and (1.0,.05) .. (1.25,.2)
+         .. controls (1.6,.4) and (1.85,.15) .. (2.05,-.05);
+ \draw[lspdencre,line width=.85pt]
+   (2.0,-.05) .. controls (2.2,.55) and (2.35,.7) .. (2.5,.05)
+         .. controls (2.6,-.35) and (2.85,-.3) .. (3.0,.1)
+         .. controls (3.15,.5) and (3.4,.45) .. (3.55,.05)
+         .. controls (3.75,-.5) and (4.2,-.35) .. (4.55,.15);
+ \draw[lspdencre,line width=.6pt]
+   (.9,-.5) .. controls (2.0,-.72) and (3.4,-.66) .. (4.35,-.42);
+\end{tikzpicture}}
+
+\newcommand{\signatureEtatMajor}{%
+\begin{tikzpicture}[scale=.78,line cap=round,line join=round]
+ \draw[lspdencre,line width=.85pt]
+   (0,-.15) .. controls (.3,.75) and (.6,.8) .. (.75,.1)
+         .. controls (.85,-.35) and (.55,-.45) .. (.5,-.15)
+         .. controls (.45,.2) and (.9,.35) .. (1.3,.25);
+ \draw[lspdencre,line width=.85pt]
+   (1.15,.25) .. controls (1.45,.15) and (1.5,-.35) .. (1.7,-.1)
+         .. controls (1.85,.1) and (1.95,.45) .. (2.2,.35)
+         .. controls (2.45,.25) and (2.4,-.25) .. (2.65,-.15)
+         .. controls (2.95,-.02) and (3.05,.4) .. (3.35,.25)
+         .. controls (3.7,.08) and (3.6,-.4) .. (3.9,-.2)
+         .. controls (4.15,-.03) and (4.35,.2) .. (4.6,.05);
+ \draw[lspdencre,line width=.6pt]
+   (4.3,.35) .. controls (3.2,.62) and (1.6,.6) .. (.6,.42);
+\end{tikzpicture}}
+
+% Bloc de signature déjà signé : {tracé}{nom}{fonction}{badge}
+\newcommand{\blocSignature}[4]{%
+  \begin{minipage}[t]{0.46\linewidth}\centering
+    \vspace{1mm}
+    \begin{minipage}[b][16mm][c]{\linewidth}\centering #1\end{minipage}\\[1mm]
+    \begin{tikzpicture}\fill[lspdnavy] (0,0) rectangle (\linewidth,.6pt);\end{tikzpicture}\\[3.5pt]
+    {\lspdsansbk\fontsize{9.6}{12}\selectfont\color{lspdnavy}#2}\\[1.5pt]
+    {\lspdsans\fontsize{8.2}{10.5}\selectfont\color{lspdgrey}#3}\\[1pt]
+    {\lspdsans\fontsize{7.6}{10}\selectfont\color{lspdgrey}#4}
+  \end{minipage}}
+
+% Signature
+\newcommand{\ligneSignature}[2]{%
+  \begin{minipage}[t]{0.46\linewidth}\centering
+    \vspace{16mm}
+    \begin{tikzpicture}\fill[lspdnavy] (0,0) rectangle (\linewidth,.6pt);\end{tikzpicture}\\[3pt]
+    {\lspdsansbk\fontsize{9}{11}\selectfont\color{lspdnavy}#1}\\[1.5pt]
+    {\lspdsans\fontsize{8}{10}\selectfont\color{lspdgrey}#2}
+  \end{minipage}}
+
+\endinput

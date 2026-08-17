@@ -1,0 +1,97 @@
+% =====================================================================
+%  SERMENT D'ASSERMENTATION ET CODE DE DÉONTOLOGIE
+% =====================================================================
+\renewcommand{\lspdcourant}{Serment et déontologie}
+\clearpage
+
+\begingroup
+\AddToShipoutPictureBG*{%
+  \AtPageLowerLeft{%
+    \begin{tikzpicture}[remember picture,overlay]
+      \node[opacity=.045] at (\paperwidth/2,\paperheight/2)
+        {\includegraphics[width=14cm]{images/sceau-lspd.png}};
+    \end{tikzpicture}}}
+
+\centering
+\vspace*{4mm}
+{\lspdsans\fontsize{8.4}{10}\selectfont\color{lspdgold}%
+  \addfontfeature{LetterSpace=28}\MakeUppercase{Los Santos Police Department}}\\[7mm]
+{\lspddisp\fontsize{27}{32}\selectfont\color{lspdnavy}Serment d'assermentation}\\[6mm]
+\begin{tikzpicture}
+  \fill[lspdgold] (0,0) rectangle (2.4cm,.9pt);
+  \fill[lspdgold] (2.75cm,-2.4pt) -- (2.99cm,0) -- (2.75cm,2.4pt) -- (2.51cm,0) -- cycle;
+  \fill[lspdgold] (3.35cm,0) rectangle (5.75cm,.9pt);
+\end{tikzpicture}\\[8mm]
+
+{\itshape\color{lspdgrey}\small
+Prêté à voix haute devant un officier de l'État-Major ou du Command Staff,\\
+préalablement à la remise de la plaque et de l'arme de service.}\\[9mm]
+
+\justifying
+\begin{formule}
+\centering\fontsize{11.6}{18.5}\selectfont
+« Je jure de servir la population de Los Santos et de protéger la vie et les biens de chacun.\\[6pt]
+Je jure de faire respecter la loi avec impartialité, sans jamais laisser mes sentiments personnels, mes préjugés, mes inimitiés ni mes intérêts influencer mes décisions.\\[6pt]
+Je jure de ne recourir à la force que dans la mesure nécessaire, de tenir la vie humaine pour supérieure à toute autre considération, et de rendre compte de chacun de mes actes.\\[6pt]
+Je jure de garder secret ce qui m'est confié dans l'exercice de mes fonctions, et de ne jamais faire de ma fonction l'instrument d'un avantage personnel.\\[6pt]
+Je n'oublierai jamais que ma plaque est un dépôt de la confiance publique,\\ et je m'en montrerai digne. »
+\end{formule}
+
+\vspace{6mm}
+\centering
+{\lspdsans\fontsize{8}{11}\selectfont\color{lspdgrey}%
+  \addfontfeature{LetterSpace=12}\MakeUppercase{Ainsi je le jure}}\\[13mm]
+
+\begin{minipage}{0.9\linewidth}\centering
+\ligneSignature{L'agent assermenté}{Nom, prénom et numéro de badge}
+\hfill
+\ligneSignature{L'officier assermentant}{Grade, nom et numéro de badge}
+\end{minipage}
+
+\vfill
+\endgroup
+\clearpage
+
+% ---------------------------------------------------------------------
+\renewcommand{\lspdcourant}{Serment et déontologie}
+
+{\lspddisp\fontsize{22}{26}\selectfont\color{lspdnavy}Code de déontologie}\\[4pt]
+\lspdrulewide\vspace{3pt}
+\noindent\begin{tikzpicture}\fill[lspdgold] (0,0) rectangle (2.6cm,.9pt);\end{tikzpicture}
+\vspace{13pt}
+
+\justifying
+Le code de déontologie énonce les valeurs dont procèdent l'ensemble des règles du présent règlement. Il n'est pas une déclaration d'intention : chacun de ses principes est susceptible d'être invoqué à l'appui d'une procédure disciplinaire.
+
+\sstitre{Les cinq valeurs fondamentales}
+
+\noindent
+\begin{tabular}{P{38mm} P{110mm}}
+\headrow
+\thead{Valeur} & \thead{Traduction concrète dans le service} \\
+\tkey{Respect de la vie} & \tcell{Aucune interpellation, aucune poursuite, aucun bien ne vaut une vie humaine : celle d'un citoyen, celle d'un collègue ou celle du mis en cause.} \\
+\altrow
+\tkey{Respect de la loi} & \tcell{L'agent applique la loi dans son esprit et non seulement dans sa lettre. Il ne se place jamais au-dessus d'elle : l'uniforme n'accorde aucune immunité.} \\
+\tkey{Service à la population} & \tcell{L'agent est au service du public, y compris de celui qu'il interpelle. La qualité du service rendu ne dépend ni de la sympathie qu'inspire l'interlocuteur, ni de son casier.} \\
+\altrow
+\tkey{Intégrité} & \tcell{Ni gratification, ni faveur, ni arrangement. L'agent qui accepte quoi que ce soit en lien avec sa fonction se disqualifie définitivement.} \\
+\tkey{Redevabilité} & \tcell{L'agent rend compte : par la radio, par le rapport, par la caméra-piéton. Ce qui n'est pas rapporté est réputé n'avoir pas eu lieu.} \\
+\bottomrule
+\end{tabular}
+
+\sstitre{Obligations déontologiques permanentes}
+
+\begin{itemize}
+  \item \stress{Obligation de dénonciation.} Tout agent témoin d'un manquement grave commis par un collègue est tenu de le signaler sans délai. Dissimuler une faute, la couvrir ou en retarder le signalement constitue un manquement de même gravité que la faute couverte.
+  \item \stress{Refus des gratifications.} Il est interdit d'accepter d'un particulier, d'un commerce ou d'une organisation quelconque de l'argent, un cadeau, une prestation gratuite, une remise ou une faveur en lien direct ou indirect avec la fonction.
+  \item \stress{Prévention des conflits d'intérêts.} Un agent ne peut ni conduire ni participer à une intervention, une enquête ou une procédure impliquant un proche, un membre de sa famille ou une personne avec laquelle il entretient une relation susceptible d'altérer son impartialité. Il se fait relever par un collègue et en informe son superviseur. La seule exception est le danger de mort immédiat.
+  \item \stress{Confidentialité.} Les informations obtenues dans l'exercice des fonctions (enquêtes en cours, identités de témoins, antécédents, adresses, stratégies opérationnelles) sont couvertes par le secret professionnel et ne peuvent être communiquées qu'aux personnes habilitées, dans un cadre professionnel documenté.
+  \item \stress{Non-discrimination.} Aucune décision d'un agent ne peut être fondée, en tout ou partie, sur l'origine, l'apparence, le sexe, l'orientation, les croyances ou la condition sociale d'une personne.
+  \item \stress{Loyauté envers l'institution.} La critique du département se formule par les voies internes prévues à cet effet. Le dénigrement public du service, de ses membres ou de ses décisions est une faute disciplinaire.
+\end{itemize}
+
+\begin{interdit}[Fautes entraînant la révocation immédiate]
+La corruption, la transmission d'informations de service à un civil non habilité ou à une organisation criminelle, la falsification d'un rapport, l'altération ou la suppression d'un enregistrement de caméra-piéton, ainsi que l'usage de la force létale hors des cas prévus au présent règlement, entraînent la révocation immédiate et la saisine de l'autorité judiciaire.
+\end{interdit}
+
+\clearpage

@@ -1,0 +1,20 @@
+{
+  "name": "report-service",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Compilation LaTeX -> PDF du rapport hebdomadaire d'activité LSPD.",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "dev": "tsc && node dist/server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.0"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.7.4",
+    "typescript": "^5.6.3"
+  }
+}

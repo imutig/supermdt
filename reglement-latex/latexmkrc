@@ -1,0 +1,5 @@
+# Force la compilation en XeLaTeX.
+# Overleaf lit ce fichier automatiquement : le projet compile donc
+# correctement même si le compilateur du compte est resté sur pdfLaTeX.
+$pdf_mode = 5;      # 5 = xelatex
+$xelatex  = 'xelatex -interaction=nonstopmode -synctex=1 %O %S';

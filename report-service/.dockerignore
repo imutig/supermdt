@@ -1,0 +1,9 @@
+node_modules
+dist
+npm-debug.log
+*.aux
+*.log
+*.out
+*.toc
+*.synctex.gz
+tex/*.pdf
