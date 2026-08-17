@@ -937,7 +937,7 @@ export default defineSchema({
   patrols: defineTable({
     callsignTypeId: v.optional(v.id("callsignTypes")), // spécialité optionnelle ; absent = classique (auto)
     indicator: v.string(), // lettre dérivée (snapshot)
-    vehicleNumber: v.string(), // "09" — 2 derniers chiffres du numéro de toit, ou saisie libre
+    vehicleNumber: v.string(), // "09" - 2 derniers chiffres du numéro de toit, ou saisie libre
     fleetVehicleId: v.optional(v.id("fleetVehicles")), // véhicule LSPD pris (absent = non enregistré)
     label: v.string(), // "13T09"
     color: v.optional(v.string()), // couleur de la patrouille (teinte le fond de la carte)

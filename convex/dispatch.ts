@@ -313,7 +313,7 @@ async function ensureCanEdit(ctx: MutationCtx, agentId: Id<"agents">, patrol: im
 
 export const create = mutation({
   args: {
-    vehicleNumber: v.string(), // suffixe (véhicule non enregistré) — ignoré si fleetVehicleId fourni
+    vehicleNumber: v.string(), // suffixe (véhicule non enregistré) - ignoré si fleetVehicleId fourni
     fleetVehicleId: v.optional(v.id("fleetVehicles")),
     memberIds: v.array(v.id("agents")), // agents présents (le créateur n'est PAS ajouté d'office)
     callsignTypeId: v.optional(v.id("callsignTypes")),

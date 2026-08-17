@@ -104,7 +104,7 @@ export const overview = query({
     // (type, id) puis on ne résout le libellé que des 8 gagnantes (borné). ----
     const resTally = new Map<string, { type: string; id: string | null; count: number }>();
     for (const r of access) {
-      const type = r.resourceType ?? "—";
+      const type = r.resourceType ?? "-";
       const id = r.resourceId ?? null;
       const key = `${type}::${id ?? ""}`;
       const cur = resTally.get(key);

@@ -82,7 +82,7 @@ export function CreateCitizenModal({
       {(list ?? []).map((o) => <option key={o._id} value={o.name}>{o.name}</option>)}
     </select>
   );
-  // Champ à saisie libre avec suggestions (datalist) — pour l'appartenance.
+  // Champ à saisie libre avec suggestions (datalist) - pour l'appartenance.
   const combo = (list: { _id: string; name: string }[] | undefined, k: keyof Form, listId: string) => (
     <>
       <input value={String(f[k] ?? "")} onChange={set(k)} className={FIELD} list={listId} placeholder="Texte libre ou choisir…" />

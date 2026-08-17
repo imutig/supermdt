@@ -172,7 +172,7 @@ export const create = mutation({
     const scenarios = active.filter((i) => i.kind === "SCENARIO");
     // Tirage au sort robuste : on mélange Math.random ET Date.now (les deux
     // varient à chaque création) pour éviter tout biais éventuel de l'un ou
-    // l'autre — sinon on retombait toujours sur la même mise en situation.
+    // l'autre - sinon on retombait toujours sur la même mise en situation.
     const rnd = Math.floor(Math.random() * 1_000_000) + Date.now();
     const picked = scenarios.length ? scenarios[rnd % scenarios.length] : null;
     const scenario: ItemSnap | undefined = picked ? { text: picked.text, explanation: picked.explanation } : undefined;

@@ -71,7 +71,23 @@ export function richTextToPlain(html: string) {
   // DOMParser produit un document inerte : ni script exécuté, ni ressource
   // chargée. `innerHTML` sur un élément détaché peut, lui, déclencher le
   // chargement d'images et donc des gestionnaires onerror.
-  return (new DOMParser().parseFromString(html, "text/html").body.textContent ?? "").trim();
+  // On PRÉSERVE les sauts de paragraphe : chaque bloc (p, div, li, titre…) et
+  // chaque <br> insère un retour à la ligne, sinon le texte serait aplati.
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  const BLOCK = new Set(["P", "DIV", "LI", "H1", "H2", "H3", "H4", "H5", "H6", "BLOCKQUOTE", "TR", "UL", "OL", "PRE"]);
+  const parts: string[] = [];
+  const walk = (node: Node) => {
+    node.childNodes.forEach((child) => {
+      if (child.nodeType === 3) { parts.push(child.textContent ?? ""); return; }
+      if (child.nodeType !== 1) return;
+      const el = child as Element;
+      if (el.tagName === "BR") { parts.push("\n"); return; }
+      walk(el);
+      if (BLOCK.has(el.tagName)) parts.push("\n");
+    });
+  };
+  walk(doc.body);
+  return parts.join("").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
 export function RichTextEditor({

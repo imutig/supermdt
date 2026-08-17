@@ -3,7 +3,7 @@ import { internalAction } from "./_generated/server";
 // Prévient le bot qu'il y a du travail (« push »), au lieu qu'il sonde Convex en
 // boucle. Le bot déclenche alors un traitement immédiat (files d'annonce, MP,
 // rôles…). Best-effort : si l'appel échoue ou que BOT_PUSH_URL n'est pas
-// configuré, le poll de sécurité (5 min) rattrapera — rien n'est perdu.
+// configuré, le poll de sécurité (5 min) rattrapera - rien n'est perdu.
 //
 // Configuration :
 //   npx convex env set BOT_PUSH_URL "https://<bot>.up.railway.app" --prod

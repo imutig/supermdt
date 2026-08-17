@@ -85,7 +85,7 @@ function norm(s: string) {
 }
 
 // ============================================================================
-// Write-through Nexus — Phase 1 : coffre d'identifiants par agent.
+// Write-through Nexus - Phase 1 : coffre d'identifiants par agent.
 // Chaque agent qui veut « utiliser SuperMDT comme MDT principal » enregistre ses
 // identifiants Nexus (email + mot de passe DÉDIÉ). On teste le login, on chiffre
 // le mot de passe au repos, et on s'en servira pour poster en son nom.
@@ -118,7 +118,7 @@ export const _log = internalMutation({
     if (now - lastAt < COOLDOWN) return; // cooldown : pas de re-spam
     await ctx.db.insert("nexusAlerts", {
       at: now,
-      message: `⚠️ **Synchro NexusMDT** — ${failures} échecs (${a.direction}) en 30 min.\nDernière erreur : ${a.error ?? a.httpStatus ?? "inconnue"}`,
+      message: `⚠️ **Synchro NexusMDT** - ${failures} échecs (${a.direction}) en 30 min.\nDernière erreur : ${a.error ?? a.httpStatus ?? "inconnue"}`,
       targetDiscordId: process.env.NEXUS_ALERT_DISCORD_ID || "263679048712978432",
       sent: false,
     });
@@ -160,7 +160,7 @@ export const revalidateCredentials = internalAction({
       catch (e) { status = "INVALID"; err = e instanceof Error ? e.message : String(e); }
       if (status !== c.status) {
         await ctx.runMutation(internal.nexusSync._setCredStatus, { agentId: c.agentId, status, error: err });
-        if (status === "INVALID") await ctx.runMutation(internal.nexusSync._alert, { message: `⚠️ **Compte NexusMDT invalide** — ${c.agentName}. Le mot de passe a probablement changé côté Nexus ; la synchro de cet agent est suspendue.` });
+        if (status === "INVALID") await ctx.runMutation(internal.nexusSync._alert, { message: `⚠️ **Compte NexusMDT invalide** - ${c.agentName}. Le mot de passe a probablement changé côté Nexus ; la synchro de cet agent est suspendue.` });
       }
     }
     return { checked: creds.length };
@@ -394,7 +394,7 @@ export const removeCredential = mutation({
 });
 
 // ============================================================================
-// WRITE-THROUGH — création de citoyen (Nexus = source de vérité).
+// WRITE-THROUGH - création de citoyen (Nexus = source de vérité).
 // On POST vers Nexus avec le token de l'agent (createdBy correct), puis on
 // insère localement la fiche renvoyée. Si le POST échoue, RIEN n'est créé.
 // ============================================================================
@@ -656,7 +656,7 @@ export const pushAmende = internalAction({
   },
 });
 
-// PATCH /api/amendes/:id — répercute un changement de statut (best-effort).
+// PATCH /api/amendes/:id - répercute un changement de statut (best-effort).
 export const patchAmendeStatus = internalAction({
   args: { amendeId: v.id("amendes"), agentId: v.id("agents") },
   handler: async (ctx, { amendeId, agentId }): Promise<void> => {
@@ -688,7 +688,7 @@ export const patchAmendeStatus = internalAction({
   },
 });
 
-// PATCH /api/amendes/:id — répercute un changement de montant / objet (édition
+// PATCH /api/amendes/:id - répercute un changement de montant / objet (édition
 // des chefs d'inculpation, item 2). Best-effort, calqué sur patchAmendeStatus.
 // N'ENVOIE JAMAIS la tentative / complicité (label SuperMDT uniquement).
 export const patchAmende = internalAction({
@@ -1028,7 +1028,7 @@ export const updateCitizen = action({
 });
 
 // ============================================================================
-// Plaintes & Dépositions — write-through (POST/PATCH). Comme le reste : si
+// Plaintes & Dépositions - write-through (POST/PATCH). Comme le reste : si
 // l'écriture Nexus échoue, RIEN n'est écrit localement. DELETE via deleteRecord.
 // ============================================================================
 const OFFICER = v.object({ matricule: v.optional(v.string()), nom: v.string() });
@@ -1300,7 +1300,7 @@ export const _depositionCitizen = internalQuery({
 });
 
 // ============================================================================
-// Armes & Véhicules — write-through (POST/PUT). Même invariant : si l'écriture
+// Armes & Véhicules - write-through (POST/PUT). Même invariant : si l'écriture
 // Nexus échoue, RIEN localement. DELETE via deleteRecord (kinds arme/vehicule).
 // ============================================================================
 const WEAPON_STATUS = v.union(v.literal("ACTIVE"), v.literal("ENREGISTREE"), v.literal("SAISIE"), v.literal("DETRUITE"));
@@ -1502,7 +1502,7 @@ export const updateVehicle = action({
 });
 
 // ============================================================================
-// Saisies — write-through (POST/PATCH). Même invariant : si l'écriture Nexus
+// Saisies - write-through (POST/PATCH). Même invariant : si l'écriture Nexus
 // échoue, RIEN localement. DELETE via deleteRecord (kind "saisie").
 // Contrat Nexus : /api/saisies · body { type, objet, quantite, montant, lieu,
 // date, statut, notes, citoyen:{ nom } } (l'entity est inférée du token).

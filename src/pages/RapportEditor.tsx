@@ -599,7 +599,7 @@ function Hostages({
     const id = await toast.guard(
       onCreateDeposition({
         citizenId: h.citizenId as Id<"citizens">,
-        title: `Prise d'otage — ${reportTitle}`,
+        title: `Prise d'otage - ${reportTitle}`,
         body: h.deposition,
         agentIds: leadId ? [leadId as Id<"agents">] : [],
       }),

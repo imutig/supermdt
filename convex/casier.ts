@@ -303,11 +303,14 @@ export const updateArrest = mutation({
     if (e.closed && !(await can(ctx, agent, "casier.editClosed"))) {
       throw new ConvexError("Ce dossier est clôturé. Seul un haut gradé peut le modifier.");
     }
+    // Appel à un avocat = dossier d'arrestation (un rapport avec avocat devient
+    // automatiquement un dossier).
+    const arrestType = f.avocat && f.avocat.trim() ? ("DOSSIER" as const) : f.arrestType;
     // Un rapport (pas dossier) ne porte pas les champs réservés au dossier.
     const patch =
-      f.arrestType === "DOSSIER"
-        ? f
-        : { ...f, linkedReportId: undefined, vehicleIds: undefined, weaponIds: undefined, dossierStatus: undefined };
+      arrestType === "DOSSIER"
+        ? { ...f, arrestType }
+        : { ...f, arrestType, linkedReportId: undefined, vehicleIds: undefined, weaponIds: undefined, dossierStatus: undefined };
     // Suivi Discord : l'embed du salon de suivi doit refléter la modification.
     await ctx.db.patch(entryId, { ...patch, trackingDirty: true });
     const citizen = await ctx.db.get(e.citizenId);
@@ -444,8 +447,9 @@ export const addEntry = mutation({
 
     const { snaps, totalFine, totalJail, sanctions, dojRequired } = await buildCharges(ctx, defcon, args.charges);
 
-    // Dossier d'arrestation pour délit majeur / crime, sinon simple rapport (item 6).
-    const isDossier = snaps.some((s) => s.snapshot.severity === "Crime" || s.snapshot.severity === "Délit majeur");
+    // Dossier d'arrestation pour délit majeur / crime, OU si appel à un avocat
+    // (un rapport avec avocat devient un dossier) ; sinon simple rapport (item 6).
+    const isDossier = !!args.avocat?.trim() || snaps.some((s) => s.snapshot.severity === "Crime" || s.snapshot.severity === "Délit majeur");
 
     const entryId = await ctx.db.insert("casierEntries", {
       citizenId: args.citizenId,

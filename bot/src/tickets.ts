@@ -1156,7 +1156,7 @@ async function applyStatusFromSelect(interaction: AnySelectMenuInteraction) {
   if (status === "PRESENT" && ticket) {
     const owner = await interaction.client.users.fetch(ticket.ownerId).catch(() => null);
     if (owner) await dmSay(owner, BRAND.green, "Votre présence à l'académie est confirmée, vous recevrez bientôt votre compte.", "🏫 Présence confirmée");
-    await (channel as TextChannel).send({ embeds: [baseEmbed(BRAND.green).setTitle("🎫 Compte cadet").setDescription("Présence confirmée. Un instructeur peut désormais fournir le compte SuperMDT du cadet — prénom et nom sont pré-remplis, sans numéro de badge (attribué à la diplomation).")], components: [accountButtonRow()] }).catch(() => {});
+    await (channel as TextChannel).send({ embeds: [baseEmbed(BRAND.green).setTitle("🎫 Compte cadet").setDescription("Présence confirmée. Un instructeur peut désormais fournir le compte SuperMDT du cadet - prénom et nom sont pré-remplis, sans numéro de badge (attribué à la diplomation).")], components: [accountButtonRow()] }).catch(() => {});
   }
 }
 

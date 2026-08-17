@@ -69,8 +69,8 @@ export function Dashboard() {
   const cards: { label: string; value: string; sub: string; danger?: boolean; onClick?: () => void }[] = [
     { label: "Grade", value: gradeName, sub: corpsLabel },
     { label: "Divisions", value: String(me?.divisions.length ?? 0), sub: divLabel },
-    { label: "Citoyens", value: countsQ ? countsQ.citizensCount.toLocaleString("fr-FR") : "—", sub: "fiches synchronisées", onClick: openSearch },
-    { label: "Véhicules", value: countsQ ? countsQ.vehiclesCount.toLocaleString("fr-FR") : "—", sub: "immatriculés", onClick: can("vehicules.view") ? () => navigate("/vehicules") : undefined },
+    { label: "Citoyens", value: countsQ ? countsQ.citizensCount.toLocaleString("fr-FR") : "-", sub: "fiches synchronisées", onClick: openSearch },
+    { label: "Véhicules", value: countsQ ? countsQ.vehiclesCount.toLocaleString("fr-FR") : "-", sub: "immatriculés", onClick: can("vehicules.view") ? () => navigate("/vehicules") : undefined },
   ];
 
   const today = new Date().toLocaleDateString("fr-FR", {

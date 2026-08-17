@@ -46,7 +46,7 @@ export function Reglement() {
   );
 }
 
-// Bouton de téléversement du règlement (PDF) — réutilisé ici et dans Configuration.
+// Bouton de téléversement du règlement (PDF) - réutilisé ici et dans Configuration.
 export function ReglementUpload({ compact }: { compact?: boolean }) {
   const genUrl = useMutation(api.documents.generateReglementUploadUrl);
   const setReglement = useMutation(api.documents.setReglement);

@@ -106,7 +106,7 @@ export function UsageAnalytics() {
             <Stat label="Actions" value={d.totalActions.toLocaleString("fr-FR")} sub={sub} />
             <Stat label="Agents actifs" value={String(d.activeAgents)} sub="ayant agi" />
             <Stat label="Consultations" value={d.totalLookups.toLocaleString("fr-FR")} sub="recherches + accès" />
-            <Stat label="Ressource nº1" value={d.topResource ? d.topResource.label : "—"} sub={d.topResource ? `${d.topResource.count} consultation(s)` : undefined} />
+            <Stat label="Ressource nº1" value={d.topResource ? d.topResource.label : "-"} sub={d.topResource ? `${d.topResource.count} consultation(s)` : undefined} />
           </div>
 
           {/* Série temporelle : actions par bucket */}

@@ -56,7 +56,7 @@ function mapWeaponStatus(s: string): "ACTIVE" | "ENREGISTREE" | "SAISIE" | "DETR
 }
 
 // Gravités (= catégories, l'ancien MDT n'ayant pas de catégories distinctes).
-// Les quatre — et seulement quatre — catégories/gravités canoniques du code
+// Les quatre - et seulement quatre - catégories/gravités canoniques du code
 // pénal. Toute charge importée est rangée dans l'une d'elles (voir canonSeverity).
 const SEVERITIES = [
   { name: "Contravention", color: "#6b7280", sensitive: false },
@@ -277,7 +277,7 @@ export const sync = internalAction({
       // anormalement tronqué). On alerte plutôt que d'archiver des fiches à tort.
       if (cas.reconciliationSkipped || con.reconciliationSkipped) {
         await ctx.runMutation(internal.nexusSync._alert, {
-          message: `⚠️ **Synchro NexusMDT** — réconciliation des suppressions **suspendue** ce cycle : trop de fiches importées disparaîtraient d'un coup (casiers : ${cas.orphelinsDetectes ?? 0}, contraventions : ${con.orphelinsDetectes ?? 0}). Flux Nexus probablement tronqué (pagination). **Aucune suppression effectuée.**`,
+          message: `⚠️ **Synchro NexusMDT** - réconciliation des suppressions **suspendue** ce cycle : trop de fiches importées disparaîtraient d'un coup (casiers : ${cas.orphelinsDetectes ?? 0}, contraventions : ${con.orphelinsDetectes ?? 0}). Flux Nexus probablement tronqué (pagination). **Aucune suppression effectuée.**`,
         });
       }
     }
@@ -592,7 +592,7 @@ export const _upsertVehicles = internalMutation({
 });
 
 // Saisies : dédup + réconciliation par nexusId (id Mongo stable, seule clé fiable
-// — pas de clé naturelle comme le n° de série d'une arme). Calqué sur _upsertWeapons.
+// - pas de clé naturelle comme le n° de série d'une arme). Calqué sur _upsertWeapons.
 export const _upsertSaisies = internalMutation({
   args: { rows: v.array(v.any()), dryRun: v.optional(v.boolean()), reconcile: v.optional(v.boolean()) },
   handler: async (ctx, { rows, dryRun, reconcile }): Promise<SaiRep> => {

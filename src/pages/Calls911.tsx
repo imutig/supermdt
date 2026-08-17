@@ -242,7 +242,7 @@ function FicheModal({ id, canOperate, onClose }: { id?: Id<"calls911">; canOpera
                 <L label="Nature de l'appel"><input value={f.nature} onChange={(e) => up({ nature: e.target.value })} placeholder="Accident, bagarre, cambriolage…" className={F} /></L>
                 <L label="Priorité">
                   <select value={f.priority} onChange={(e) => up({ priority: e.target.value })} className={F}>
-                    {PRIORITIES.map((p) => <option key={p} value={p}>{p || "—"}</option>)}
+                    {PRIORITIES.map((p) => <option key={p} value={p}>{p || "-"}</option>)}
                   </select>
                 </L>
               </div>
@@ -311,11 +311,11 @@ function ReadView({ existing }: { existing: Fiche | null | undefined }) {
     <div className="flex flex-col gap-[11px]">
       {existing.nature && <div className="text-[16px] font-bold">{existing.nature}{existing.priority ? <span className="ml-2 rounded-[4px] border border-border px-[7px] py-px text-[11px] font-bold text-muted">{existing.priority}</span> : null}</div>}
       <div className="grid grid-cols-2 gap-[9px]">
-        <Info icon={User} label="Appelant" value={existing.callerName || "—"} />
-        <Info icon={Phone} label="Numéro" value={existing.callerPhone || "—"} mono />
-        <Info icon={MapPin} label="Lieu" value={existing.location || "—"} />
-        <Info icon={User} label="Personnes" value={existing.peopleInvolved || "—"} />
-        <Info icon={Car} label="Véhicule" value={existing.vehicle || "—"} />
+        <Info icon={User} label="Appelant" value={existing.callerName || "-"} />
+        <Info icon={Phone} label="Numéro" value={existing.callerPhone || "-"} mono />
+        <Info icon={MapPin} label="Lieu" value={existing.location || "-"} />
+        <Info icon={User} label="Personnes" value={existing.peopleInvolved || "-"} />
+        <Info icon={Car} label="Véhicule" value={existing.vehicle || "-"} />
         <Info icon={AlertTriangle} label="Arme(s)" value={existing.weapons ? (existing.weaponType || "Oui") : "Non"} danger={existing.weapons} />
       </div>
       {existing.locX != null && existing.locY != null && (

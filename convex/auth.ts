@@ -54,9 +54,9 @@ export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
           await db.patch(agent._id, { status: "ACTIVE", suspendedUntil: undefined, suspendedReason: undefined, suspendedBy: undefined });
         } else if (typeof until === "number") {
           const d = new Date(until).toLocaleString("fr-FR", { timeZone: "Europe/Paris" });
-          throw new ConvexError(`Vous êtes en mise à pied jusqu'au ${d}${agent.suspendedReason ? ` — ${agent.suspendedReason}` : ""}.`);
+          throw new ConvexError(`Vous êtes en mise à pied jusqu'au ${d}${agent.suspendedReason ? ` - ${agent.suspendedReason}` : ""}.`);
         } else {
-          throw new ConvexError(`Vous êtes en mise à pied jusqu'à nouvel ordre${agent.suspendedReason ? ` — ${agent.suspendedReason}` : ""}. Contactez l'État-Major.`);
+          throw new ConvexError(`Vous êtes en mise à pied jusqu'à nouvel ordre${agent.suspendedReason ? ` - ${agent.suspendedReason}` : ""}. Contactez l'État-Major.`);
         }
       }
       if (typeof agent.lockedUntil === "number" && agent.lockedUntil > Date.now()) {

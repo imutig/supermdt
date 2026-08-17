@@ -136,12 +136,17 @@ export function CasierEntryModal({ entryId, canDelete: canDeleteAny, onClose }: 
               <div>
                 <div className={H}>Type</div>
                 <div className="flex gap-2">
-                  {(["RAPPORT", "DOSSIER"] as const).map((t) => (
-                    <button key={t} disabled={!canEdit} onClick={() => setA({ ...a, arrestType: t })} className="flex-1 rounded-sm border px-3 py-[8px] text-[12.5px] font-semibold disabled:cursor-default" style={a.arrestType === t ? { background: "var(--accent-soft)", borderColor: "var(--accent)", color: "var(--accent)" } : { borderColor: "var(--border)", color: "var(--muted)" }}>
-                      {t === "RAPPORT" ? "Rapport d'arrestation" : "Dossier d'arrestation"}
-                    </button>
-                  ))}
+                  {(["RAPPORT", "DOSSIER"] as const).map((t) => {
+                    const lockedToDossier = !!a.avocat.trim(); // appel avocat = dossier
+                    const disabled = !canEdit || (t === "RAPPORT" && lockedToDossier);
+                    return (
+                      <button key={t} disabled={disabled} onClick={() => !disabled && setA({ ...a, arrestType: t })} className="flex-1 rounded-sm border px-3 py-[8px] text-[12.5px] font-semibold disabled:cursor-default disabled:opacity-50" style={a.arrestType === t ? { background: "var(--accent-soft)", borderColor: "var(--accent)", color: "var(--accent)" } : { borderColor: "var(--border)", color: "var(--muted)" }}>
+                        {t === "RAPPORT" ? "Rapport d'arrestation" : "Dossier d'arrestation"}
+                      </button>
+                    );
+                  })}
                 </div>
+                {a.avocat.trim() && <div className="mt-[5px] text-[11px] text-faint">Appel à un avocat -&gt; dossier d'arrestation (forcé).</div>}
               </div>
 
               {/* Totaux */}
@@ -223,7 +228,7 @@ export function CasierEntryModal({ entryId, canDelete: canDeleteAny, onClose }: 
               </div>
 
               {/* Avocat (les deux) */}
-              <div><div className={H}>Avocat</div>{canEdit ? <input value={a.avocat} onChange={(e) => setA({ ...a, avocat: e.target.value })} placeholder="Nom de l'avocat" className={F} /> : <div className="text-[13px]">{a.avocat || "-"}</div>}</div>
+              <div><div className={H}>Avocat (appel à un avocat)</div>{canEdit ? <input value={a.avocat} onChange={(e) => { const v = e.target.value; setA({ ...a, avocat: v, arrestType: v.trim() ? "DOSSIER" : a.arrestType }); }} placeholder="Nom de l'avocat" className={F} /> : <div className="text-[13px]">{a.avocat || "-"}</div>}</div>
 
               {/* Rapport (les deux) */}
               <div><div className={H}>Rapport d'arrestation</div>{canEdit ? <RichTextEditor value={a.reportBody} onChange={(v) => setA({ ...a, reportBody: v })} /> : a.reportBody ? <RichTextEditor value={a.reportBody} editable={false} /> : <div className="text-[12.5px] text-faint">Aucun rapport.</div>}</div>

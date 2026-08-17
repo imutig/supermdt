@@ -192,7 +192,7 @@ export const home = query({
     }[] = [];
 
     // On collecte d'abord les CANDIDATS (12 par source) SANS enrichissement, on
-    // fusionne/trie puis on ne garde que les 12 finaux — et on n'enrichit (citoyen
+    // fusionne/trie puis on ne garde que les 12 finaux - et on n'enrichit (citoyen
     // + charges + type de rapport) QUE ces 12-là. L'ancienne version enrichissait
     // jusqu'à 36 lignes (3×12) pour n'en afficher que 12 : ≈3× moins de sous-requêtes.
     const nowTs = Date.now();

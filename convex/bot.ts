@@ -11,7 +11,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 // Le bot est un service externe, il n'a pas de session d'agent : ces fonctions
 // sont donc publiques mais protégées par un secret partagé (variable Convex
 // BOT_SECRET, jamais dans le bundle client). Toute fonction exposée ici est en
-// LECTURE SEULE — le bot n'écrit rien dans le MDT.
+// LECTURE SEULE - le bot n'écrit rien dans le MDT.
 function assertBot(secret: string) {
   const expected = process.env.BOT_SECRET;
   if (!expected) throw new ConvexError("BOT_SECRET non configuré côté Convex.");
@@ -31,7 +31,7 @@ async function gradeName(ctx: QueryCtx, a: Doc<"agents">) {
   return g?.name ?? "Sans grade";
 }
 
-// Agents actuellement en service — alimente l'embed de présence.
+// Agents actuellement en service - alimente l'embed de présence.
 export const agentsOnDuty = query({
   args: { secret: v.string() },
   handler: async (ctx, { secret }) => {
@@ -59,7 +59,7 @@ export const agentsOnDuty = query({
   },
 });
 
-// Récapitulatif de la journée — alimente le résumé quotidien.
+// Récapitulatif de la journée - alimente le résumé quotidien.
 export const dayStats = query({
   args: { secret: v.string() },
   handler: async (ctx, { secret }) => {
@@ -128,7 +128,7 @@ export const dayStats = query({
   },
 });
 
-// Effectif présent + effectif total — petit état des lieux rapide.
+// Effectif présent + effectif total - petit état des lieux rapide.
 export const overview = query({
   args: { secret: v.string() },
   handler: async (ctx, { secret }) => {
@@ -324,7 +324,7 @@ export const markRoleJob = mutation({
     if (status === "DONE") { await ctx.db.patch(jobId, { status: "DONE", error: undefined }); return; }
     // Échec : souvent transitoire (membre pas encore en cache, rate-limit, hoquet
     // gateway). On garde le job PENDING (rejoué au prochain tick) jusqu'à un
-    // plafond de tentatives, puis ERROR définitif — au lieu d'abandonner au 1er échec.
+    // plafond de tentatives, puis ERROR définitif - au lieu d'abandonner au 1er échec.
     const job = await ctx.db.get(jobId);
     if (!job) return;
     const attempts = (job.attempts ?? 0) + 1;
@@ -406,7 +406,7 @@ export const markDailyRecapSent = mutation({
 const nrm = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
 
 // Heures de service d'un agent sur la semaine en cours, recherché par son nom
-// RP (« prénom nom »). Sert à la commande /heures — pas de compte Discord lié.
+// RP (« prénom nom »). Sert à la commande /heures - pas de compte Discord lié.
 export const agentWeeklyHours = query({
   args: { secret: v.string(), query: v.string() },
   handler: async (ctx, { secret, query }) => {
@@ -648,7 +648,7 @@ export const commandAllowed = query({
     if (!hasRoleRule && !hasGradeRule) {
       // Non configurée : ouverte pour les commandes anodines. Mais les commandes
       // SENSIBLES (PII citoyen/véhicule, ou création d'absence) ne sont, par
-      // défaut, accessibles qu'à un agent LIÉ et ACTIF — jamais à un membre
+      // défaut, accessibles qu'à un agent LIÉ et ACTIF - jamais à un membre
       // Discord quelconque. Pour restreindre davantage, configurer rôle/grade.
       if (!SENSITIVE_COMMANDS.has(command)) return true;
       const a = await ctx.db.query("agents").withIndex("by_discord", (q) => q.eq("discordId", discordId)).first();
@@ -813,7 +813,7 @@ export const markConvocationAnnounced = mutation({
 // ---- Suivi des dossiers d'arrestation & contraventions (embed édité en place) ----
 // Le bot poste UN embed par dossier / contravention dans le salon de suivi, et le
 // ré-édite (même message) à chaque changement. On ne draine QUE les lignes
-// marquées `trackingDirty` via l'index dédié — jamais un scan de table.
+// marquées `trackingDirty` via l'index dédié - jamais un scan de table.
 
 // Premier officier affichable d'une entrée de casier (nom RP).
 async function firstCasierOfficer(ctx: QueryCtx, e: Doc<"casierEntries">): Promise<string> {

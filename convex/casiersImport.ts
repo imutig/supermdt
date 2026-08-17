@@ -313,7 +313,7 @@ export const runCasiersSync = action({
   },
 });
 
-// Import des contraventions (amendes Nexus) — même modèle que les casiers.
+// Import des contraventions (amendes Nexus) - même modèle que les casiers.
 export const contraventionsSync = internalAction({
   args: { token: v.optional(v.string()), dryRun: v.optional(v.boolean()), limit: v.optional(v.number()), createMissing: v.optional(v.boolean()) },
   handler: async (ctx, { token, dryRun, limit, createMissing }): Promise<unknown> => {
@@ -543,7 +543,7 @@ export const _upsertContraventions = internalMutation({
       if (am.nexusId) byNexus.set(am.nexusId, am);
     }
     // Non-rétroactif : une amende Nexus déjà importée jadis comme CONTRAVENTION
-    // (table citations, importRef nexus-amende:...) reste telle quelle — on la
+    // (table citations, importRef nexus-amende:...) reste telle quelle - on la
     // saute pour ne pas la dupliquer dans la table amendes.
     const oldCitationRefs = new Set<string>();
     for (const c of await ctx.db.query("citations").collect()) if (c.importRef) oldCitationRefs.add(c.importRef);

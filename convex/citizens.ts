@@ -318,7 +318,7 @@ export const setDeceased = mutation({
   },
 });
 
-// Alias / AKA — champ local (non synchronisé Nexus), indexé dans la recherche.
+// Alias / AKA - champ local (non synchronisé Nexus), indexé dans la recherche.
 export const setAliases = mutation({
   args: { id: v.id("citizens"), aliases: v.array(v.string()) },
   handler: async (ctx, { id, aliases }) => {

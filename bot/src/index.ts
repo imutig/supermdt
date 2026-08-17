@@ -1,4 +1,4 @@
-import "./tz.js"; // fuseau Paris — doit s'exécuter avant tout usage de Date
+import "./tz.js"; // fuseau Paris - doit s'exécuter avant tout usage de Date
 import { Client, GatewayIntentBits, Partials, Events } from "discord.js";
 import { createServer } from "node:http";
 import { env } from "./env.js";
@@ -71,7 +71,7 @@ client.on(Events.ShardResume, (shardId, replayed) => console.log(`[bot] shard #$
 // Session invalidée : révocation non récupérable (token, kick, etc.). On ne peut
 // pas se reconnecter : on sort en erreur pour que Railway relance le process.
 client.on(Events.Invalidated, () => {
-  console.error("[bot] session invalidée (non récupérable) — redémarrage forcé.");
+  console.error("[bot] session invalidée (non récupérable) - redémarrage forcé.");
   process.exit(1);
 });
 
@@ -81,7 +81,7 @@ const isReady = (): boolean => client.isReady() && client.ws.status === 0;
 
 // Serveur HTTP unique : healthcheck Railway + endpoint /push (Convex prévient le
 // bot qu'il y a du travail, au lieu qu'il sonde en boucle). Un seul port exposé
-// par Railway, donc un seul serveur — voir handleHttp.
+// par Railway, donc un seul serveur - voir handleHttp.
 const port = Number(process.env.PORT ?? 8080);
 const server = createServer((req, res) => handleHttp(req, res, () => onPush(), isReady));
 // Le serveur HTTP ne doit jamais faire tomber le process (ex. EADDRINUSE) : on
@@ -108,6 +108,6 @@ process.on("unhandledRejection", (reason) => {
 // - uncaughtException : l'état du process peut être corrompu. On loggue puis on
 //   sort en erreur pour laisser Railway repartir sur une base saine.
 process.on("uncaughtException", (err) => {
-  console.error("[bot] exception non interceptée — arrêt du process :", err);
+  console.error("[bot] exception non interceptée - arrêt du process :", err);
   process.exit(1);
 });

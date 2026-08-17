@@ -40,7 +40,7 @@ export const me = query({
 
     // ---- Activité (arrestations + contraventions par moi) ----
     // Lu via les index PAR AGENT (by_creator / by_officer) : on ne lit que MES
-    // lignes et on ne re-souscrit qu'à MES écritures — au lieu de scanner (et de
+    // lignes et on ne re-souscrit qu'à MES écritures - au lieu de scanner (et de
     // s'abonner à) toute la table casierEntries/citations à chaque écriture d'un
     // autre agent. « Mes arrestations » = les casiers dont je suis le créateur
     // (l'officier verbalisateur qui a rédigé l'acte).

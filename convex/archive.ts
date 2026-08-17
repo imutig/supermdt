@@ -128,7 +128,7 @@ async function deletedRows(ctx: QueryCtx, table: TableNames): Promise<Doc[]> {
   // `undefined` triant sous toute valeur numérique dans un index Convex, la
   // borne `gt("deletedAt", 0)` saute d'emblée toutes les lignes VIVANTES au lieu
   // de scanner la table entière puis de filtrer (l'ancien `.filter(neq undefined)`
-  // lisait TOUTE la table — c'était le poste d'I/O dominant d'`archive.*`).
+  // lisait TOUTE la table - c'était le poste d'I/O dominant d'`archive.*`).
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return await (ctx.db.query(table) as any).withIndex("by_deleted", (q: any) => q.gt("deletedAt", 0)).collect();
 }

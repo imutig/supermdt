@@ -202,7 +202,7 @@ function BonusSection({ agentId, bonus }: {
           ref={reasonRef}
           defaultValue={bonus?.reason ?? ""}
           onBlur={save}
-          placeholder="Raison (optionnel) — ex. initiative exemplaire"
+          placeholder="Raison (optionnel) - ex. initiative exemplaire"
           className="h-8 min-w-0 flex-1 rounded-sm border border-border bg-surface px-2 text-[13px] outline-none focus:border-accent"
         />
       </div>

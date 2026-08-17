@@ -5,7 +5,7 @@ import { requireAgent, requirePermission, can } from "./rbac";
 import { writeAudit } from "./lib/audit";
 import { notify, NOTIFY_COLOR, deepLink } from "./lib/notify";
 
-// Section Saisies (item 10) — synchronisée write-through avec le NexusMDT
+// Section Saisies (item 10) - synchronisée write-through avec le NexusMDT
 // (/api/saisies). Les écritures passent par les actions nexusSync.createSaisie /
 // updateSaisie / deleteRecord ; les mutations ci-dessous font l'application locale.
 
@@ -84,7 +84,7 @@ export const list = query({
   },
 });
 
-// Types d'objets configurables (obsolète — Nexus impose une liste fixe) + "Autre"
+// Types d'objets configurables (obsolète - Nexus impose une liste fixe) + "Autre"
 // immuable. Conservé inerte pour compat ; la liste fixe Nexus est renvoyée.
 export const objectTypes = query({
   args: {},

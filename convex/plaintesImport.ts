@@ -88,7 +88,7 @@ function mapPlainte(raw: any) {
     numero: typeof raw.numero === "number" ? raw.numero : undefined,
     citoyen: raw.citoyen || null,
     contre: (raw.contre || "").trim(),
-    motif: (raw.raison || "—").trim(),
+    motif: (raw.raison || "-").trim(),
     status: (raw.statut || "En cours").trim(),
     raisonStatut: (raw.raisonStatut || "").trim(),
     avocats: Array.isArray(raw.avocats) ? raw.avocats.filter((x: any) => typeof x === "string") : [],
@@ -130,7 +130,7 @@ export const _upsertPlaintes = internalMutation({
       seenNexus.add(p.nexusId);
       const plaignantId = resolveCitizen(refs, p.citoyen);
       // Plaignant non recensé (citoyen.id null côté Nexus) : on garde le nom pour
-      // ne rien perdre — la fiche existe même sans citoyen local rattaché.
+      // ne rien perdre - la fiche existe même sans citoyen local rattaché.
       const plaignantName = plaignantId ? undefined : `${p.citoyen?.prenom ?? ""} ${p.citoyen?.nom ?? ""}`.trim() || "Non recensé";
       const { officiers, agentIds } = buildOfficers(p.officiers, refs);
       const importRef = p.numero != null ? String(p.numero) : `nx:${p.nexusId}`;

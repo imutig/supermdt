@@ -221,7 +221,7 @@ function ActivityTab() {
             <div className="min-w-0 flex-1">
               <div className="text-[12.5px]">
                 Vous {actionLabel(l.action)}
-                {l.resourceLabel && <span className="text-muted"> — {l.resourceLabel}</span>}
+                {l.resourceLabel && <span className="text-muted"> - {l.resourceLabel}</span>}
               </div>
             </div>
             {l.link && <span className="text-[11.5px] font-semibold text-accent">Ouvrir →</span>}

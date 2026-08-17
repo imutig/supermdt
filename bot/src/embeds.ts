@@ -225,7 +225,7 @@ export function absentsListEmbed(rows: { name: string; matricule: number | null;
     return baseEmbed(BRAND.green).setTitle("🗓️ Absents").setDescription("Aucun agent absent actuellement.");
   }
   const mat = (m: number | null) => (m != null ? `\`${String(m).padStart(5, "0")}\` ` : "");
-  const lines = rows.map((r) => `• ${mat(r.matricule)}**${r.name}** — jusqu'au ${date(r.until)}${r.reason ? ` · ${r.reason}` : ""}`);
+  const lines = rows.map((r) => `• ${mat(r.matricule)}**${r.name}** - jusqu'au ${date(r.until)}${r.reason ? ` · ${r.reason}` : ""}`);
   return baseEmbed(BRAND.warning)
     .setTitle(`🗓️ Absents - ${rows.length}`)
     .setDescription(lines.join("\n").slice(0, 4000));
@@ -249,7 +249,7 @@ export function trackingEmbed(item: import("./convex.js").TrackingItem): EmbedBu
     : "Aucune";
 
   const e = baseEmbed(color)
-    .setTitle(`${icon} ${item.label} — ${item.citizenName}`)
+    .setTitle(`${icon} ${item.label} - ${item.citizenName}`)
     .addFields(
       { name: "Chefs d'inculpation", value: chargeText },
       { name: "Amende", value: amendeLine, inline: true },
@@ -282,8 +282,8 @@ export function sanctionEmbed(s: import("./convex.js").SanctionAnnounce): EmbedB
   let sanctionLine = `**${s.sanction}**`;
   if (s.suspends) {
     sanctionLine += s.suspendedUntil
-      ? ` — mise à pied jusqu'au ${new Date(s.suspendedUntil).toLocaleString("fr-FR", { timeZone: "Europe/Paris", dateStyle: "short", timeStyle: "short" })}`
-      : " — mise à pied jusqu'à nouvel ordre";
+      ? ` - mise à pied jusqu'au ${new Date(s.suspendedUntil).toLocaleString("fr-FR", { timeZone: "Europe/Paris", dateStyle: "short", timeStyle: "short" })}`
+      : " - mise à pied jusqu'à nouvel ordre";
   }
   const body = [
     `__Effectif concerné :__ ${concerned(s.agentName, s.agentMatricule, s.agentDiscordId)}`,
@@ -314,7 +314,7 @@ export function convocationEmbed(c: import("./convex.js").ConvocationAnnounce): 
   lines.push("*Vous êtes prié(e) de vous présenter à la date indiquée. Toute absence non justifiée pourra faire l'objet de poursuites disciplinaires.*");
   return baseEmbed(BRAND.warning)
     .setAuthor({ name: issuer(c.byName, c.byMatricule) })
-    .setTitle("CONVOCATION — INTERNAL AFFAIRS DIVISION")
+    .setTitle("CONVOCATION - INTERNAL AFFAIRS DIVISION")
     .setDescription(lines.join("\n"))
     .setFooter({ text: ref ? `${IA_FOOTER} · ${ref}` : IA_FOOTER });
 }

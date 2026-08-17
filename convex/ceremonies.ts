@@ -417,7 +417,7 @@ export const announce = mutation({
     const lines = [
       "📌 **ANNONCE DE CÉRÉMONIE**",
       "",
-      `Une cérémonie${c.title ? ` (**${c.title}**)` : ""} se tiendra le **${ceremonyDateStr(c.at)}** à **${c.startTime}**${c.lieu ? ` — ${c.lieu}` : ""}.`,
+      `Une cérémonie${c.title ? ` (**${c.title}**)` : ""} se tiendra le **${ceremonyDateStr(c.at)}** à **${c.startTime}**${c.lieu ? ` - ${c.lieu}` : ""}.`,
       "",
       "La présence est **obligatoire**, sauf empêchement. En cas d'empêchement, merci de l'indiquer dans le roll call du jour.",
     ];

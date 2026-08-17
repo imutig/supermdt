@@ -126,7 +126,7 @@ export const copyGradePermissions = mutation({
   },
 });
 
-// Attribue (ou retire) une permission à TOUS les grades d'un coup — pratique pour
+// Attribue (ou retire) une permission à TOUS les grades d'un coup - pratique pour
 // les droits que tout le monde doit avoir.
 export const setPermissionAllGrades = mutation({
   args: { permissionId: v.id("permissions"), grant: v.boolean() },

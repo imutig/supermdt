@@ -6,7 +6,7 @@ import { writeAudit } from "./lib/audit";
 import { notify, NOTIFY_COLOR, deepLink } from "./lib/notify";
 
 // ============================================================================
-// AMENDES — entité « pénalité financière » (miroir de l'objet NexusMDT
+// AMENDES - entité « pénalité financière » (miroir de l'objet NexusMDT
 // /api/amendes). Une amende est AUTO-CRÉÉE (jamais à la main) lors de la
 // création d'une entrée de casier ou d'une contravention : pré-remplie depuis
 // la source, liée à celle-ci, poussée vers le Nexus (write-through), et les
@@ -72,7 +72,7 @@ export const setStatus = mutation({
       await ctx.scheduler.runAfter(0, internal.nexusSync.patchAmendeStatus, { amendeId, agentId: agent._id });
     }
     // Suivi Discord : le statut d'amende apparaît dans l'embed du dossier/de la
-    // contravention lié — on le marque « sale » pour que le bot ré-édite l'embed.
+    // contravention lié - on le marque « sale » pour que le bot ré-édite l'embed.
     if (a.casierEntryId) {
       const ce = await ctx.db.get(a.casierEntryId);
       if (ce && !ce.deletedAt) {
