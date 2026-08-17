@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Pencil, Trash2, Square, Check, X, Search, RefreshCw } from "lucide-react";
+import { Pencil, Trash2, Square, Check, X, Search, RefreshCw, ChevronRight } from "lucide-react";
 import { useMutation, useQuery, usePaginatedQuery } from "convex/react";
 import { api, type Id } from "@/lib/api";
 import { useToast } from "@/providers/toast";
@@ -117,6 +117,7 @@ export function Services() {
   const { can } = useCan();
   const canManage = can("services.manage");
   const [tab, setTab] = useState<"mine" | "ingame" | "all">("mine");
+  const [openWeeks, setOpenWeeks] = useState<Set<number>>(new Set());
   const mine = useQuery(api.services.mine);
   const ingame = useQuery(api.ingameService.myWeekly, tab === "ingame" ? { weeks: 10 } : "skip");
   const igConfig = useQuery(api.ingameService.config, tab === "all" && canManage ? {} : "skip");
@@ -202,20 +203,45 @@ export function Services() {
             </div>
           )}
           <div className="overflow-hidden rounded-card border border-border bg-surface">
-            <div className="grid grid-cols-[1.6fr_1fr] gap-3 border-b border-border px-4 py-[10px] text-[10px] font-bold uppercase tracking-[0.08em] text-faint">
-              <span>Semaine (lun. → dim.)</span><span>Temps en service</span>
+            <div className="grid grid-cols-[auto_1.6fr_.7fr_.8fr] items-center gap-3 border-b border-border px-4 py-[10px] text-[10px] font-bold uppercase tracking-[0.08em] text-faint">
+              <span className="w-[14px]" /><span>Semaine (lun. → dim.)</span><span>Services</span><span className="text-right">Temps en service</span>
             </div>
             {ingame === undefined ? (
               <div className="p-4"><SkeletonRows rows={5} /></div>
             ) : ingame.weeks.length === 0 ? (
               <EmptyState title="Aucun service in-game" message="Tes prises de service en jeu apparaîtront ici après la synchronisation." />
             ) : (
-              ingame.weeks.map((w) => (
-                <div key={w.weekStart} className="grid grid-cols-[1.6fr_1fr] gap-3 border-b border-border px-4 py-[10px] text-[12.5px] last:border-b-0">
-                  <span className="font-semibold">{w.label}<span className="ml-2 font-data text-[11px] font-normal text-faint">{new Date(w.weekStart).toLocaleDateString("fr-FR", { day: "2-digit", month: "short" })} – {new Date(w.weekEnd).toLocaleDateString("fr-FR", { day: "2-digit", month: "short" })}</span></span>
-                  <span className="font-data font-semibold" style={{ color: w.seconds > 0 ? "var(--text)" : "var(--faint)" }}>{w.display}</span>
-                </div>
-              ))
+              ingame.weeks.map((w) => {
+                const open = openWeeks.has(w.weekStart);
+                return (
+                  <div key={w.weekStart} className="border-b border-border last:border-b-0">
+                    <button
+                      onClick={() => setOpenWeeks((prev) => { const next = new Set(prev); next.has(w.weekStart) ? next.delete(w.weekStart) : next.add(w.weekStart); return next; })}
+                      disabled={w.count === 0}
+                      className="grid w-full grid-cols-[auto_1.6fr_.7fr_.8fr] items-center gap-3 px-4 py-[10px] text-left text-[12.5px] enabled:hover:bg-surface-2 disabled:cursor-default"
+                    >
+                      <ChevronRight className="h-[14px] w-[14px] shrink-0 text-faint transition-transform" style={{ transform: open ? "rotate(90deg)" : "none", opacity: w.count === 0 ? 0.25 : 1 }} />
+                      <span className="font-semibold">{w.label}<span className="ml-2 font-data text-[11px] font-normal text-faint">{new Date(w.weekStart).toLocaleDateString("fr-FR", { day: "2-digit", month: "short" })} – {new Date(w.weekEnd).toLocaleDateString("fr-FR", { day: "2-digit", month: "short" })}</span></span>
+                      <span className="font-data text-[11.5px] text-faint">{w.count}</span>
+                      <span className="text-right font-data font-semibold" style={{ color: w.seconds > 0 ? "var(--text)" : "var(--faint)" }}>{w.display}</span>
+                    </button>
+                    {open && w.services.length > 0 && (
+                      <div className="border-t border-border bg-surface-2 px-4 py-[4px]">
+                        {w.services.map((s, i) => (
+                          <div key={i} className="flex items-center gap-3 border-b border-border/60 py-[7px] text-[12px] last:border-b-0">
+                            <span className="w-[74px] shrink-0 font-data text-faint">{new Date(s.startedAt).toLocaleDateString("fr-FR", { weekday: "short", day: "2-digit" })}</span>
+                            <span className="flex-1 font-data">{new Date(s.startedAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })} – {new Date(s.endedAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}</span>
+                            {s.split && <span className="rounded-[4px] px-[6px] py-[1px] text-[10px] font-semibold" style={{ background: "color-mix(in srgb, var(--warning) 16%, transparent)", color: "var(--warning)" }}>à cheval</span>}
+                            <span className="w-[110px] shrink-0 text-right font-data font-semibold">
+                              {s.split ? <>{s.weekDisplay}<span className="ml-1 text-[10.5px] font-normal text-faint">/ {s.display}</span></> : s.display}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })
             )}
           </div>
         </>

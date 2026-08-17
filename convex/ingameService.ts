@@ -128,9 +128,25 @@ export const myWeekly = query({
       const p = parisParts(curStart - i * 7 * 86_400_000 + 12 * 3600_000); // midi pour éviter les bords DST
       const start = parisWallToEpoch(p.y, p.mo, p.d - ((new Date(Date.UTC(p.y, p.mo - 1, p.d)).getUTCDay() + 6) % 7), 0, 0);
       const end = weekEndOf(start);
-      const sec = overlapSeconds(rows, start, end);
+      // Détail : chaque service chevauchant la semaine, avec la part comptée pour
+      // CETTE semaine (un service à cheval est réparti entre deux semaines).
+      const services = [];
+      let sec = 0;
+      for (const s of rows) {
+        const a = Math.max(s.startedAt, start), b = Math.min(s.endedAt, end);
+        if (b <= a) continue;
+        const overlap = Math.floor((b - a) / 1000);
+        sec += overlap;
+        services.push({
+          startedAt: s.startedAt, endedAt: s.endedAt, seconds: s.seconds,
+          weekSeconds: overlap, weekDisplay: fmtHours(overlap), display: fmtHours(s.seconds),
+          split: a > s.startedAt || b < s.endedAt,
+          ingameName: s.ingameName ?? null,
+        });
+      }
+      services.sort((x, y) => x.startedAt - y.startedAt);
       const { week, year } = isoWeek(start);
-      out.push({ weekStart: start, weekEnd: end, label: `Semaine ${week} · ${year}`, seconds: sec, display: fmtHours(sec) });
+      out.push({ weekStart: start, weekEnd: end, label: `Semaine ${week} · ${year}`, seconds: sec, display: fmtHours(sec), count: services.length, services });
     }
     for (const s of rows) totalSec += s.seconds;
     return { weeks: out, totalSeconds: totalSec, totalDisplay: fmtHours(totalSec), linked: !!agent.discordId, count: rows.length };
