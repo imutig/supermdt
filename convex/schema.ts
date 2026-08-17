@@ -734,6 +734,49 @@ export default defineSchema({
     at: v.number(),
   }).index("by_agent", ["agentId"]),
 
+  // Configuration de la Formation Terrain (singleton). `traineeGradeId` = grade
+  // « en formation » (Officier 1 Probatoire) dont les agents apparaissent dans la
+  // liste ; à défaut, le plus bas grade opérationnel. Un agent promu au-dessus de
+  // ce grade bascule automatiquement dans l'historique.
+  ftoConfig: defineTable({
+    traineeGradeId: v.optional(v.id("grades")),
+    updatedBy: v.optional(v.id("agents")),
+    updatedAt: v.number(),
+  }),
+
+  // ---------- First Lincoln : évaluation de la première patrouille encadrée ----------
+  // Grille configurable de critères d'évaluation d'un « First Lincoln ».
+  flCriteria: defineTable({
+    section: v.string(),
+    label: v.string(),
+    kind: v.union(v.literal("SCALE"), v.literal("CHECK")),
+    position: v.number(),
+    active: v.boolean(),
+  }).index("by_position", ["position"]),
+
+  // Une évaluation First Lincoln d'un rookie, conduite par un évaluateur.
+  flEvaluations: defineTable({
+    agentId: v.id("agents"), // le rookie évalué
+    evaluatorId: v.id("agents"),
+    evaluatorName: v.string(),
+    at: v.number(), // date/heure de la patrouille évaluée
+    sector: v.optional(v.string()),
+    vehicle: v.optional(v.string()),
+    verdict: v.union(v.literal("EN_COURS"), v.literal("VALIDE"), v.literal("A_REVOIR"), v.literal("ECHEC")),
+    pointsForts: v.optional(v.string()),
+    axes: v.optional(v.string()),
+    conclusion: v.optional(v.string()),
+    createdAt: v.number(),
+  }).index("by_agent", ["agentId"]),
+
+  // Score d'un critère pour une évaluation First Lincoln donnée.
+  flScores: defineTable({
+    evaluationId: v.id("flEvaluations"),
+    criterionId: v.id("flCriteria"),
+    level: v.optional(v.number()), // SCALE : 0 (Exécrable) … 4 (Très Bien)
+    checked: v.optional(v.boolean()),
+  }).index("by_evaluation", ["evaluationId"]),
+
   academyRankPermissions: defineTable({
     rankId: v.id("academyRanks"),
     permissionId: v.id("permissions"),

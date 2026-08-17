@@ -1,6 +1,6 @@
 import { useQuery } from "convex/react";
 import { useNavigate } from "react-router-dom";
-import { GraduationCap, Users, ClipboardList, Radio, PenLine, ShieldCheck, ChevronRight, CheckSquare } from "lucide-react";
+import { GraduationCap, Users, ClipboardList, Radio, PenLine, ShieldCheck, ChevronRight, CheckSquare, Car } from "lucide-react";
 import { api } from "@/lib/api";
 import { useMe } from "@/hooks/useMe";
 import { SkeletonRows } from "@/components/common/Skeleton";
@@ -17,7 +17,8 @@ export function LspaDashboard() {
     { label: "Encadrants", value: d?.encadrants, icon: Users, to: "/lspa/effectif" },
     { label: "Promotions ouvertes", value: d?.promosOuvertes, icon: GraduationCap, to: "/lspa/promotions" },
     { label: "Sessions en cours", value: d?.sessionsEnCours, icon: Radio, to: "/lspa/quiz" },
-    { label: "Officiers 1 en formation", value: d?.offi1, icon: ShieldCheck, to: "/lspa/fto" },
+    { label: "Officiers en formation", value: d?.offi1, icon: ShieldCheck, to: "/lspa/fto" },
+    { label: "Rookies First Lincoln", value: d?.offi1, icon: Car, to: "/lspa/first-lincoln" },
   ];
 
   const todo = [

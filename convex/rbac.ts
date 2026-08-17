@@ -78,10 +78,15 @@ export const PERMISSION_SLUGS: { slug: string; domain: string; description: stri
   { slug: "lspa.session.manage", domain: "lspa", description: "Ouvrir et piloter une session de quiz" },
   { slug: "lspa.grade", domain: "lspa", description: "Corriger et publier les résultats" },
   { slug: "lspa.entretiens", domain: "lspa", description: "Accéder aux entretiens de l'académie" },
-  // FTO - formation terrain des Officiers 1
-  { slug: "fto.view", domain: "fto", description: "Consulter les fiches FTO des Officiers 1" },
+  // FTO - formation terrain des Officiers 1 Probatoire
+  { slug: "fto.view", domain: "fto", description: "Consulter les fiches FTO (Formation Terrain)" },
   { slug: "fto.edit", domain: "fto", description: "Remplir les fiches FTO" },
-  { slug: "fto.manage", domain: "fto", description: "Configurer la fiche FTO et attribuer les tuteurs" },
+  { slug: "fto.patrol", domain: "fto", description: "Ajouter un rapport de patrouille sur une fiche FTO" },
+  { slug: "fto.manage", domain: "fto", description: "Configurer la fiche FTO, le grade formé et attribuer les tuteurs" },
+  // First Lincoln - évaluation de la première patrouille encadrée
+  { slug: "firstlincoln.view", domain: "firstlincoln", description: "Accéder à First Lincoln et consulter les évaluations" },
+  { slug: "firstlincoln.evaluate", domain: "firstlincoln", description: "Créer et remplir une évaluation First Lincoln" },
+  { slug: "firstlincoln.manage", domain: "firstlincoln", description: "Configurer la grille d'évaluation First Lincoln" },
   // Statistiques
   { slug: "stats.view", domain: "stats", description: "Consulter les statistiques de la station" },
   // Dispatch

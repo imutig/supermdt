@@ -59,6 +59,8 @@ import { LspaTicketArchives } from "@/lspa/LspaTicketArchives";
 import { LspaEntretiens } from "@/lspa/LspaEntretiens";
 import { LspaFto } from "@/lspa/LspaFto";
 import { FtoSheet } from "@/lspa/FtoSheet";
+import { LspaFirstLincoln } from "@/lspa/LspaFirstLincoln";
+import { FlDossier } from "@/lspa/FlDossier";
 import { LspaQuiz } from "@/lspa/LspaQuiz";
 const QuizEditor = lazyReload(() => import("@/lspa/QuizEditor").then((m) => ({ default: m.QuizEditor })));
 const SessionScreen = lazyReload(() => import("@/lspa/session/SessionScreen").then((m) => ({ default: m.SessionScreen })));
@@ -185,6 +187,8 @@ function Gated() {
         <Route path="entretiens" element={<LspaEntretiens />} />
         <Route path="fto" element={<LspaFto />} />
         <Route path="fto/:id" element={<FtoSheet />} />
+        <Route path="first-lincoln" element={<LspaFirstLincoln />} />
+        <Route path="first-lincoln/:id" element={<FlDossier />} />
         <Route path="quiz" element={<RequirePerm perm="lspa.view"><LspaQuiz /></RequirePerm>} />
         <Route path="quiz/:id" element={<RequirePerm perm="lspa.quiz.view"><QuizEditor /></RequirePerm>} />
         <Route path="historique" element={<RequirePerm perm="lspa.session.manage"><LspaHistory /></RequirePerm>} />

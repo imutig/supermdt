@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { useNavigate, Navigate } from "react-router-dom";
 import { usePortals } from "@/hooks/usePortals";
-import { ShieldCheck, ChevronRight, Settings, Plus, Trash2, ChevronUp, ChevronDown, ArrowLeft, Star, ListChecks, SplitSquareHorizontal, Lock } from "lucide-react";
+import { ShieldCheck, ChevronRight, Settings, Plus, Trash2, ChevronUp, ChevronDown, ArrowLeft, Star, ListChecks, SplitSquareHorizontal, Lock, History } from "lucide-react";
 import { api } from "@/lib/api";
 import type { Id } from "convex/_generated/dataModel";
 import { useCan } from "@/hooks/useCan";
@@ -14,40 +14,59 @@ import { Button } from "@/components/common/Button";
 import { Modal } from "@/components/common/Modal";
 import { fmtMatricule } from "@/components/common/AgentTag";
 
-// Formation terrain : liste des Officiers 1, accès à leur fiche FTO. Jamais
-// accessible aux cadets (la formation terrain concerne les agents assermentés).
+type Row = { _id: string; name: string; matricule: number | null; avatarUrl: string | null; tutorName: string | null; canOpen: boolean; progress: number; gradeName?: string | null };
+
+// Formation terrain : liste des officiers en formation, accès à leur fiche FTO.
+// Jamais accessible aux cadets (la formation terrain concerne les assermentés).
 export function LspaFto() {
-  const list = useQuery(api.fto.listOffi1);
+  const ctx = useQuery(api.fto.context);
+  const active = useQuery(api.fto.listOffi1);
   const navigate = useNavigate();
   const { can } = useCan();
   const { academyMember } = usePortals();
   const me = useMe();
+  const [tab, setTab] = useState<"active" | "history">("active");
+  const graduated = useQuery(api.fto.listGraduated, tab === "history" ? {} : "skip");
   const [configuring, setConfiguring] = useState(false);
 
-  // Réservé à la Formation Terrain : Officier 2+, académie, owner.
+  // Réservé à la Formation Terrain : Officier confirmé+, académie, owner.
   if (me === undefined) return null;
   if (!me?.fieldTrainingAccess) return <Navigate to="/lspa" replace />;
   const canManage = me.agent.isOwner || academyMember || can("fto.manage");
+  const traineeLabel = ctx?.traineeGradeName ?? "Officier 1 Probatoire";
+  const formedLabel = ctx?.formedGradeName ?? "Officier 1 Confirmé";
+
+  const list = tab === "active" ? active : graduated;
 
   return (
     <div className="p-[22px_26px]" style={{ animation: "mdtFade .2s ease" }}>
-      <div className="mb-[18px] flex items-end gap-3">
+      <div className="mb-[16px] flex items-end gap-3">
         <div className="flex-1">
           <h1 className="m-0 text-[21px] font-bold tracking-tight">Formation Terrain</h1>
-          <div className="mt-[3px] text-[13px] text-muted">Les Officiers 1 en formation, encadrés par leur tuteur jusqu'au passage Officier 2.</div>
+          <div className="mt-[3px] text-[13px] text-muted">Les {traineeLabel} en formation, encadrés par leur tuteur jusqu'au passage {formedLabel}.</div>
         </div>
-        {canManage && <Button onClick={() => setConfiguring(true)}><Settings className="h-[15px] w-[15px]" /> Configurer la fiche</Button>}
+        {canManage && <Button onClick={() => setConfiguring(true)}><Settings className="h-[15px] w-[15px]" /> Configurer</Button>}
       </div>
 
-      {configuring && <FtoConfigModal onClose={() => setConfiguring(false)} />}
+      {/* Onglets : en formation / historique (fiches des agents formés) */}
+      <div className="mb-[14px] flex gap-[6px]">
+        <TabBtn on={tab === "active"} onClick={() => setTab("active")} icon={ShieldCheck}>En formation</TabBtn>
+        <TabBtn on={tab === "history"} onClick={() => setTab("history")} icon={History}>Historique</TabBtn>
+      </div>
+
+      {configuring && <FtoConfigModal ctx={ctx} onClose={() => setConfiguring(false)} />}
 
       {list === undefined ? (
         <div className="rounded-card border border-border bg-surface p-4"><SkeletonRows rows={4} /></div>
       ) : list.length === 0 ? (
-        <div className="rounded-card border border-border bg-surface"><EmptyState title="Aucun Officier 1" message="Les agents au grade Officier 1 apparaîtront ici." /></div>
+        <div className="rounded-card border border-border bg-surface">
+          {tab === "active"
+            ? <EmptyState title={`Aucun ${traineeLabel}`} message={`Les agents au grade ${traineeLabel} apparaîtront ici.`} />
+            : <EmptyState title="Historique vide" message="Les fiches des agents formés (promus au grade supérieur) apparaîtront ici." />}
+        </div>
       ) : (
         <div className="overflow-hidden rounded-card border border-border bg-surface">
-          {list.map((o) => (
+          {(list as Row[]).map((o) => (
             <button
               key={o._id}
               disabled={!o.canOpen}
@@ -55,11 +74,14 @@ export function LspaFto() {
               title={o.canOpen ? undefined : "Réservé au tuteur référent et à l'encadrement"}
               className="flex w-full items-center gap-[13px] border-b border-border px-[16px] py-[12px] text-left last:border-b-0 enabled:hover:bg-surface-2 disabled:cursor-default disabled:opacity-60"
             >
-              <span className="flex h-[34px] w-[34px] flex-shrink-0 items-center justify-center rounded-full bg-surface-2 text-accent"><ShieldCheck className="h-[16px] w-[16px]" /></span>
+              <span className="flex h-[34px] w-[34px] flex-shrink-0 items-center justify-center rounded-full bg-surface-2 text-accent">
+                {o.avatarUrl ? <img src={o.avatarUrl} alt="" className="h-full w-full rounded-full object-cover" /> : <ShieldCheck className="h-[16px] w-[16px]" />}
+              </span>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-[7px] text-[14px] font-semibold">
                   {fmtMatricule(o.matricule) && <span className="font-data text-[12px] text-accent">{fmtMatricule(o.matricule)}</span>}
                   <span className="truncate">{o.name}</span>
+                  {tab === "history" && o.gradeName && <span className="rounded-[5px] bg-surface-2 px-[7px] py-[1px] text-[10.5px] font-semibold text-muted">{o.gradeName}</span>}
                 </div>
                 <div className="text-[11.5px] text-muted">{o.tutorName ? `Tuteur : ${o.tutorName}` : "Sans tuteur"}</div>
               </div>
@@ -82,26 +104,51 @@ export function LspaFto() {
   );
 }
 
+function TabBtn({ on, onClick, icon: Icon, children }: { on: boolean; onClick: () => void; icon: typeof ShieldCheck; children: React.ReactNode }) {
+  return (
+    <button onClick={onClick} className="flex items-center gap-[6px] rounded-[8px] border px-[12px] py-[7px] text-[12.5px] font-semibold"
+      style={on ? { background: "var(--accent-soft)", borderColor: "var(--accent)", color: "var(--accent)" } : { background: "var(--surface-2)", borderColor: "var(--border)", color: "var(--muted)" }}>
+      <Icon className="h-[14px] w-[14px]" /> {children}
+    </button>
+  );
+}
+
 const KINDS = [
   { value: "SCALE", label: "Critère noté", icon: Star },
   { value: "CHECK_TP", label: "Théorie / Pratique", icon: SplitSquareHorizontal },
   { value: "CHECK", label: "Validation", icon: ListChecks },
 ] as const;
 
-function FtoConfigModal({ onClose }: { onClose: () => void }) {
+function FtoConfigModal({ ctx, onClose }: { ctx: { traineeGradeId: string | null; grades: { _id: string; name: string }[] } | undefined; onClose: () => void }) {
   const items = useQuery(api.fto.listItems);
   const seed = useMutation(api.fto.seedDefault);
   const move = useMutation(api.fto.moveItem);
   const remove = useMutation(api.fto.removeItem);
+  const setConfig = useMutation(api.fto.setConfig);
   const toast = useToast();
   const [editing, setEditing] = useState<"new" | { _id: string; section: string; label: string; kind: string } | null>(null);
 
   if (editing) return <ItemForm item={editing === "new" ? null : editing} onClose={() => setEditing(null)} />;
 
   return (
-    <Modal title="Configurer la fiche FTO" icon={<Settings className="h-[17px] w-[17px]" />} onClose={onClose} width={560}
+    <Modal title="Configurer la Formation Terrain" icon={<Settings className="h-[17px] w-[17px]" />} onClose={onClose} width={560}
       footer={<><Button variant="ghost" onClick={onClose}>Fermer</Button><Button variant="primary" onClick={() => setEditing("new")}><Plus className="h-[15px] w-[15px]" /> Ajouter un critère</Button></>}
     >
+      {/* Grade en formation (grade « formé ») */}
+      <label className="mb-[14px] flex flex-col gap-[5px]">
+        <span className="text-[11px] font-bold uppercase tracking-[0.07em] text-faint">Grade en formation</span>
+        <select
+          value={ctx?.traineeGradeId ?? ""}
+          onChange={(e) => void toast.guard(setConfig({ traineeGradeId: e.target.value ? (e.target.value as Id<"grades">) : null }), "Enregistrement impossible")}
+          className="h-9 w-full rounded-sm border border-border bg-surface-2 px-2 text-[13px] outline-none focus:border-accent"
+        >
+          <option value="">Automatique (plus bas grade opérationnel)</option>
+          {(ctx?.grades ?? []).map((g) => <option key={g._id} value={g._id}>{g.name}</option>)}
+        </select>
+        <span className="text-[11px] text-faint">Les agents à ce grade apparaissent en formation ; promus au-dessus, leur fiche passe à l'historique.</span>
+      </label>
+
+      <div className="mb-[8px] text-[11px] font-bold uppercase tracking-[0.07em] text-faint">Critères de la fiche</div>
       {items === undefined ? <SkeletonRows rows={6} /> : items.length === 0 ? (
         <div className="flex flex-col items-center gap-[12px] py-6 text-center">
           <div className="text-[13px] text-muted">Aucune fiche configurée.</div>

@@ -46,14 +46,15 @@ export const me = query({
       const mems = await ctx.db.query("promotionMembers").withIndex("by_agent", (q) => q.eq("agentId", agent._id)).collect();
       academyBlocked = mems.length > 0 && !mems.some((m) => m.status === "ACTIVE");
     }
-    // Accès Formation Terrain : Officier 2+ (grade opérationnel au-dessus de
-    // l'entrée Officier 1), membre de l'académie, ou owner.
+    // Accès Formation Terrain : Officier confirmé+ (grade opérationnel au-dessus
+    // du grade en formation, configurable), membre de l'académie, ou owner.
     let fieldTrainingAccess = agent.isOwner || !!academyRank;
     if (!fieldTrainingAccess && grade && !grade.academyOnly && !grade.external) {
       const op = (await ctx.db.query("grades").collect())
         .filter((g) => !g.academyOnly && !g.external)
         .sort((a, b) => a.position - b.position);
-      const entry = op[0];
+      const cfg = await ctx.db.query("ftoConfig").first();
+      const entry = (cfg?.traineeGradeId ? op.find((g) => g._id === cfg.traineeGradeId) : undefined) ?? op[0];
       fieldTrainingAccess = !!entry && grade.position > entry.position;
     }
     return {

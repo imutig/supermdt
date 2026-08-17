@@ -150,9 +150,13 @@ function Header({ agentId, data }: { agentId: Id<"agents">; data: SheetData }) {
     <div className="mb-[16px] flex flex-wrap items-center gap-4 rounded-card border border-border bg-surface p-[16px_18px]">
       {a.avatarUrl ? <img src={a.avatarUrl} alt="" className="h-[56px] w-[56px] rounded-[12px] border border-border object-cover" /> : <div className="flex h-[56px] w-[56px] items-center justify-center rounded-[12px] bg-surface-2 text-[18px] font-bold text-muted">{a.prenomRP.charAt(0)}{a.nomRP.charAt(0)}</div>}
       <div className="min-w-0 flex-1">
-        <h1 className="m-0 text-[20px] font-bold">{a.prenomRP} {a.nomRP}</h1>
+        <h1 className="m-0 flex flex-wrap items-center gap-[8px] text-[20px] font-bold">
+          {a.prenomRP} {a.nomRP}
+          {data.graduated && <span className="rounded-[6px] px-[8px] py-[2px] text-[11px] font-bold uppercase tracking-[0.05em]" style={{ background: "color-mix(in srgb, var(--success) 15%, transparent)", color: "var(--success)" }}>Formé</span>}
+        </h1>
         <div className="mt-[2px] text-[12.5px] text-muted">
-          {fmtMatricule(a.matricule) && <span className="font-data text-accent">{fmtMatricule(a.matricule)} · </span>}Officier 1 en formation terrain
+          {fmtMatricule(a.matricule) && <span className="font-data text-accent">{fmtMatricule(a.matricule)} · </span>}
+          {data.graduated ? `${data.currentGradeName ?? "Officier"} · formation terrain terminée` : `${data.traineeGradeName} en formation terrain`}
         </div>
       </div>
       <div className="flex flex-col items-end gap-[4px]">

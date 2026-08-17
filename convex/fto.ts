@@ -4,16 +4,37 @@ import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { requireAgent, can } from "./rbac";
 
-// FTO : formation terrain des Officiers 1, encadrés par un tuteur (officier
-// référent) jusqu'à leur passage Officier 2. Fiche configurable, remplie au fil
-// des patrouilles.
+// FTO : formation terrain des Officiers 1 Probatoire, encadrés par un tuteur
+// (officier référent) jusqu'à leur passage Officier 1 Confirmé. Fiche
+// configurable, remplie au fil des patrouilles. Le grade « en formation » est
+// configurable ; un agent promu au-dessus bascule dans l'historique.
 
-// Grade d'entrée (Officier 1) = plus bas grade opérationnel non extérieur.
-async function entryGrade(ctx: QueryCtx | MutationCtx) {
-  const grades = (await ctx.db.query("grades").collect())
+// Grades opérationnels (non académie, non extérieurs) triés par position.
+async function operationalGrades(ctx: QueryCtx | MutationCtx) {
+  return (await ctx.db.query("grades").collect())
     .filter((g) => !g.academyOnly && !g.external)
     .sort((a, b) => a.position - b.position);
-  return grades[0] ?? null;
+}
+
+// Grade « en formation terrain ». Configurable via ftoConfig ; à défaut, le plus
+// bas grade opérationnel (Officier 1 Probatoire). Exporté : First Lincoln
+// s'appuie sur le même grade en formation.
+export async function traineeGrade(ctx: QueryCtx | MutationCtx) {
+  const cfg = await ctx.db.query("ftoConfig").first();
+  if (cfg?.traineeGradeId) {
+    const g = await ctx.db.get(cfg.traineeGradeId);
+    if (g && !g.academyOnly && !g.external) return g;
+  }
+  return (await operationalGrades(ctx))[0] ?? null;
+}
+
+// Grade « confirmé » (atteint après passage) = grade opérationnel immédiatement
+// au-dessus du grade en formation. Sert au libellé « jusqu'au passage … ».
+async function formedGrade(ctx: QueryCtx | MutationCtx) {
+  const trainee = await traineeGrade(ctx);
+  if (!trainee) return null;
+  const ops = await operationalGrades(ctx);
+  return ops.find((g) => g.position > trainee.position) ?? null;
 }
 
 async function sheetDoc(ctx: QueryCtx | MutationCtx, agentId: Id<"agents">) {
@@ -25,13 +46,13 @@ function isAcademy(viewer: Doc<"agents">): boolean {
   return !!viewer.academyRankId;
 }
 
-// Officier 2 ou plus : grade opérationnel (non académie, non extérieur) placé
-// au-dessus du grade d'entrée (Officier 1).
+// Officier confirmé ou plus : grade opérationnel (non académie, non extérieur)
+// placé au-dessus du grade en formation (Officier 1 Probatoire).
 async function isOffi2Plus(ctx: QueryCtx | MutationCtx, viewer: Doc<"agents">): Promise<boolean> {
   if (!viewer.gradeId) return false;
   const g = await ctx.db.get(viewer.gradeId);
   if (!g || g.academyOnly || g.external) return false;
-  const entry = await entryGrade(ctx);
+  const entry = await traineeGrade(ctx);
   return !!entry && g.position > entry.position;
 }
 
@@ -52,10 +73,10 @@ async function assertEdit(ctx: MutationCtx, viewer: Doc<"agents">, agentId: Id<"
   if (!(await canEditSheet(ctx, viewer, agentId))) throw new ConvexError("Seul le tuteur FTO ou l'académie peut modifier cette fiche.");
 }
 
-// Ajouter un RAPPORT DE PATROUILLE : tout Officier 2+ (en plus de ceux qui
-// peuvent éditer la fiche).
+// Ajouter un RAPPORT DE PATROUILLE : permission dédiée `fto.patrol` (attribuée à
+// partir d'Officier 1 Confirmé), en plus de ceux qui peuvent éditer la fiche.
 async function canAddPatrol(ctx: QueryCtx | MutationCtx, viewer: Doc<"agents">, agentId: Id<"agents">): Promise<boolean> {
-  return (await canEditSheet(ctx, viewer, agentId)) || (await isOffi2Plus(ctx, viewer));
+  return (await canEditSheet(ctx, viewer, agentId)) || (await can(ctx, viewer, "fto.patrol"));
 }
 
 // Gérer le MODÈLE (critères configurables) et l'encadrement : académie, owner,
@@ -66,22 +87,59 @@ async function assertManage(ctx: QueryCtx | MutationCtx, viewer: Doc<"agents">) 
   throw new ConvexError("Réservé à l'encadrement de l'académie.");
 }
 
-// ---------- Liste des Officiers 1 ----------
+// Avancement (%) d'une fiche : part des critères actifs renseignés.
+async function sheetProgress(ctx: QueryCtx | MutationCtx, agentId: Id<"agents">, items: Doc<"ftoItems">[]): Promise<number> {
+  if (items.length === 0) return 0;
+  const entries = await ctx.db.query("ftoEntries").withIndex("by_agent", (q) => q.eq("agentId", agentId)).collect();
+  const byItem = new Map(entries.map((e) => [e.itemId as string, e]));
+  let filled = 0;
+  for (const it of items) {
+    const e = byItem.get(it._id as string);
+    if (!e) continue;
+    if (it.kind === "SCALE" && typeof e.level === "number") filled++;
+    else if (it.kind === "CHECK_TP" && (e.theorie || e.pratique)) filled++;
+    else if (it.kind === "CHECK" && e.checked) filled++;
+  }
+  return Math.round((filled / items.length) * 100);
+}
+
+// Libellés de la Formation Terrain : grade en formation + grade confirmé (pour
+// l'en-tête, la description et le sélecteur de configuration).
+export const context = query({
+  args: {},
+  handler: async (ctx) => {
+    const viewer = await requireAgent(ctx);
+    const trainee = await traineeGrade(ctx);
+    const formed = await formedGrade(ctx);
+    const cfg = await ctx.db.query("ftoConfig").first();
+    const canManage = viewer.isOwner || isAcademy(viewer) || (await can(ctx, viewer, "fto.manage"));
+    // Grades opérationnels proposables comme « grade en formation » (config).
+    const grades = canManage ? (await operationalGrades(ctx)).map((g) => ({ _id: g._id, name: g.name })) : [];
+    return {
+      traineeGradeId: cfg?.traineeGradeId ?? trainee?._id ?? null,
+      traineeGradeName: trainee?.name ?? "Officier 1 Probatoire",
+      formedGradeName: formed?.name ?? "Officier 1 Confirmé",
+      canManage,
+      grades,
+    };
+  },
+});
+
+// ---------- Liste des officiers en formation ----------
 
 export const listOffi1 = query({
   args: {},
   handler: async (ctx) => {
-    // Ouvert à tout agent assermenté : la liste des Officiers 1 est visible de
-    // tous, sauf des cadets. Seul l'accès à une fiche est restreint (référent ou
-    // fto.view), signalé par `canOpen` sur chaque ligne.
+    // Ouvert à tout agent assermenté : la liste des officiers en formation est
+    // visible de tous, sauf des cadets. Seul l'accès à une fiche est restreint
+    // (référent ou fto.view), signalé par `canOpen` sur chaque ligne.
     const viewer = await requireAgent(ctx);
     const viewerGrade = viewer.gradeId ? await ctx.db.get(viewer.gradeId) : null;
     if (viewerGrade?.academyOnly) return [];
-    const grade = await entryGrade(ctx);
+    const grade = await traineeGrade(ctx);
     if (!grade) return [];
     const hasFtoView = await hasFieldTraining(ctx, viewer);
     const items = (await ctx.db.query("ftoItems").withIndex("by_position").collect()).filter((i) => i.active !== false);
-    const totalItems = items.length;
 
     const agents = (await ctx.db.query("agents").withIndex("by_status", (q) => q.eq("status", "ACTIVE")).collect())
       .filter((a) => a.gradeId === grade._id && !a.isOwner);
@@ -91,16 +149,6 @@ export const listOffi1 = query({
       const sheet = await sheetDoc(ctx, a._id);
       const tutor = sheet?.tutorId ? await ctx.db.get(sheet.tutorId) : null;
       const canOpen = hasFtoView || sheet?.tutorId === viewer._id;
-      const entries = await ctx.db.query("ftoEntries").withIndex("by_agent", (q) => q.eq("agentId", a._id)).collect();
-      const byItem = new Map(entries.map((e) => [e.itemId as string, e]));
-      let filled = 0;
-      for (const it of items) {
-        const e = byItem.get(it._id as string);
-        if (!e) continue;
-        if (it.kind === "SCALE" && typeof e.level === "number") filled++;
-        else if (it.kind === "CHECK_TP" && (e.theorie || e.pratique)) filled++;
-        else if (it.kind === "CHECK" && e.checked) filled++;
-      }
       out.push({
         _id: a._id,
         name: `${a.prenomRP} ${a.nomRP}`,
@@ -108,10 +156,63 @@ export const listOffi1 = query({
         avatarUrl: a.avatarUrl ?? null,
         tutorName: tutor ? `${tutor.prenomRP} ${tutor.nomRP}` : null,
         canOpen,
-        progress: totalItems > 0 ? Math.round((filled / totalItems) * 100) : 0,
+        progress: await sheetProgress(ctx, a._id, items),
       });
     }
     return out.sort((a, b) => a.name.localeCompare(b.name));
+  },
+});
+
+// ---------- Historique : fiches des agents formés (promus au-dessus) ----------
+// Une fiche « graduée » = un agent qui possède des données FTO (fiche, critères
+// ou patrouilles) mais n'est plus au grade en formation. Calculé dynamiquement :
+// aucune migration au moment de la promotion.
+export const listGraduated = query({
+  args: {},
+  handler: async (ctx) => {
+    const viewer = await requireAgent(ctx);
+    const viewerGrade = viewer.gradeId ? await ctx.db.get(viewer.gradeId) : null;
+    if (viewerGrade?.academyOnly) return [];
+    const trainee = await traineeGrade(ctx);
+    const hasFtoView = await hasFieldTraining(ctx, viewer);
+    const items = (await ctx.db.query("ftoItems").withIndex("by_position").collect()).filter((i) => i.active !== false);
+
+    // Agents ayant une fiche (en-tête) : point de départ des dossiers ouverts.
+    const sheets = await ctx.db.query("ftoSheets").collect();
+    const out = [];
+    for (const s of sheets) {
+      const a = await ctx.db.get(s.agentId);
+      if (!a || a.isOwner || a.status !== "ACTIVE") continue;
+      // Toujours au grade en formation → reste dans la liste active, pas ici.
+      if (trainee && a.gradeId === trainee._id) continue;
+      const g = a.gradeId ? await ctx.db.get(a.gradeId) : null;
+      const tutor = s.tutorId ? await ctx.db.get(s.tutorId) : null;
+      out.push({
+        _id: a._id,
+        name: `${a.prenomRP} ${a.nomRP}`,
+        matricule: a.matricule ?? null,
+        avatarUrl: a.avatarUrl ?? null,
+        gradeName: g?.name ?? null,
+        tutorName: tutor ? `${tutor.prenomRP} ${tutor.nomRP}` : null,
+        canOpen: hasFtoView || s.tutorId === viewer._id,
+        progress: await sheetProgress(ctx, a._id, items),
+      });
+    }
+    return out.sort((a, b) => a.name.localeCompare(b.name));
+  },
+});
+
+// Configurer le grade « en formation terrain » (grade formé). Réservé à
+// l'encadrement (académie / fto.manage / owner).
+export const setConfig = mutation({
+  args: { traineeGradeId: v.union(v.id("grades"), v.null()) },
+  handler: async (ctx, { traineeGradeId }) => {
+    const viewer = await requireAgent(ctx);
+    await assertManage(ctx, viewer);
+    const cfg = await ctx.db.query("ftoConfig").first();
+    const patch = { traineeGradeId: traineeGradeId ?? undefined, updatedBy: viewer._id, updatedAt: Date.now() };
+    if (cfg) await ctx.db.patch(cfg._id, patch);
+    else await ctx.db.insert("ftoConfig", patch);
   },
 });
 
@@ -146,12 +247,19 @@ export const sheet = query({
       .sort((a, b) => b.startAt - a.startAt)
       .map((p) => ({ _id: p._id, startAt: p.startAt, endAt: p.endAt ?? null, lacunes: p.lacunes ?? "", progres: p.progres ?? "", general: p.general ?? "", authorName: p.authorName, mine: p.authorId === viewer._id }));
 
+    const trainee = await traineeGrade(ctx);
+    const agentGrade = agent.gradeId ? await ctx.db.get(agent.gradeId) : null;
+    const graduated = !!trainee && agent.gradeId !== trainee._id;
+
     return {
       agent: { _id: agent._id, prenomRP: agent.prenomRP, nomRP: agent.nomRP, matricule: agent.matricule ?? null, avatarUrl: agent.avatarUrl ?? null },
       tutor: tutor ? { _id: tutor._id, name: `${tutor.prenomRP} ${tutor.nomRP}`, matricule: tutor.matricule ?? null } : null,
       startAt: doc?.startAt ?? null,
       items: scored,
       patrols,
+      graduated,
+      traineeGradeName: trainee?.name ?? "Officier 1 Probatoire",
+      currentGradeName: agentGrade?.name ?? null,
       canEdit: await canEditSheet(ctx, viewer, agentId),
       canPatrol: await canAddPatrol(ctx, viewer, agentId),
     };
