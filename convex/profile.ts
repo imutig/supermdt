@@ -39,22 +39,23 @@ export const me = query({
     }
 
     // ---- Activité (arrestations + contraventions par moi) ----
+    // Lu via les index PAR AGENT (by_creator / by_officer) : on ne lit que MES
+    // lignes et on ne re-souscrit qu'à MES écritures — au lieu de scanner (et de
+    // s'abonner à) toute la table casierEntries/citations à chaque écriture d'un
+    // autre agent. « Mes arrestations » = les casiers dont je suis le créateur
+    // (l'officier verbalisateur qui a rédigé l'acte).
     let myArrests = 0, myArrestsMonth = 0;
     const monthAgo = now - 30 * DAY;
-    for (const e of await ctx.db.query("casierEntries").order("desc").take(2000)) {
+    for (const e of await ctx.db.query("casierEntries").withIndex("by_creator", (q) => q.eq("createdBy", agent._id)).collect()) {
       if (e.deletedAt || e.status === "ANNULEE") continue;
-      if (e.officerIds.includes(agent._id) || e.createdBy === agent._id) {
-        myArrests++;
-        if (e.at >= monthAgo) myArrestsMonth++;
-      }
+      myArrests++;
+      if (e.at >= monthAgo) myArrestsMonth++;
     }
     let myCitations = 0, myCitationsMonth = 0;
-    for (const c of await ctx.db.query("citations").order("desc").take(2000)) {
+    for (const c of await ctx.db.query("citations").withIndex("by_officer", (q) => q.eq("officerId", agent._id)).collect()) {
       if (c.deletedAt || c.status === "ANNULEE") continue;
-      if (c.officerId === agent._id) {
-        myCitations++;
-        if (c.at >= monthAgo) myCitationsMonth++;
-      }
+      myCitations++;
+      if (c.at >= monthAgo) myCitationsMonth++;
     }
 
     // ---- Mes rapports (lead + contributions) ----

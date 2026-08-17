@@ -9,10 +9,12 @@ crons.hourly("expirer les mandats", { minuteUTC: 5 }, internal.mandats.expireDue
 // Synchro depuis le NexusMDT (vizu) : citoyens + armes + véhicules + code pénal.
 // Reconnexion automatique (token frais par login). Reste inerte tant que
 // VIZU_EMAIL / VIZU_PASSWORD ne sont pas configurés (voir migration.autoSync).
-// Chaque passage relit tout le dataset (coûteux en Database I/O). Le write-through
-// gère déjà le temps réel : cet import n'est qu'un filet (changements hors-MDT +
-// réconciliation), donc espacé à 6 h. La synchro manuelle reste dispo à tout moment.
-crons.interval("synchro nexus", { hours: 6 }, internal.migration.autoSync, {});
+// Chaque passage relit TOUT le dataset local (citoyens + casiers + armes +
+// véhicules + code pénal + charges) pour dédupliquer/réconcilier : c'est le plus
+// gros poste de Database I/O du cron. Le write-through gère déjà le temps réel ;
+// cet import n'est qu'un filet (changements hors-MDT + réconciliation), donc
+// espacé à 24 h. La synchro manuelle reste dispo à tout moment pour rafraîchir.
+crons.interval("synchro nexus", { hours: 24 }, internal.migration.autoSync, {});
 
 // Synchro CIBLÉE des saisies toutes les 30 min : légère (une seule entité), pour
 // capter les saisies créées/modifiées/supprimées directement sur le Nexus. Le

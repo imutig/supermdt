@@ -1135,8 +1135,11 @@ export const ticketsDueForClose = query({
   args: { secret: v.string(), now: v.number() },
   handler: async (ctx, { secret, now }) => {
     assertBot(secret);
-    const rows = (await ctx.db.query("tickets").withIndex("by_status", (q) => q.eq("status", "OPEN")).collect())
-      .filter((t) => t.scheduledCloseAt != null && t.scheduledCloseAt <= now);
+    // Ne lit QUE les tickets ouverts réellement dus (scheduledCloseAt ∈ ]0, now]),
+    // au lieu de scanner tous les tickets ouverts toutes les 5 min.
+    const rows = await ctx.db.query("tickets")
+      .withIndex("by_close", (q) => q.eq("status", "OPEN").gt("scheduledCloseAt", 0).lte("scheduledCloseAt", now))
+      .collect();
     return rows.map((t) => ({ channelId: t.channelId, ownerId: t.ownerId, prenom: t.prenom, nom: t.nom }));
   },
 });
@@ -1331,11 +1334,14 @@ export const interviewReminders = query({
   args: { secret: v.string(), now: v.number() },
   handler: async (ctx, { secret, now }) => {
     assertBot(secret);
-    const tickets = await ctx.db.query("tickets").withIndex("by_status", (q) => q.eq("status", "OPEN")).collect();
+    // Ne lit QUE les tickets ouverts dont l'entretien tombe dans les 15 prochaines
+    // minutes (interviewAt ∈ ]now, now+15min]), au lieu de scanner tous les ouverts.
+    const tickets = await ctx.db.query("tickets")
+      .withIndex("by_interview", (q) => q.eq("status", "OPEN").gt("interviewAt", now).lte("interviewAt", now + 15 * 60_000))
+      .collect();
     const due = tickets.filter((t) =>
-      t.integrationStatus === "INTERVIEW" && t.interviewAt != null &&
-      t.interviewRemindedFor !== t.interviewAt &&
-      now >= t.interviewAt - 15 * 60_000 && now < t.interviewAt,
+      t.integrationStatus === "INTERVIEW" &&
+      t.interviewRemindedFor !== t.interviewAt,
     );
     return due.map((t) => ({ channelId: t.channelId, ownerId: t.ownerId, interviewById: t.interviewById ?? null, interviewAt: t.interviewAt!, prenom: t.prenom, nom: t.nom, interviewPresence: t.interviewPresence ?? null }));
   },

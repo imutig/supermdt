@@ -1334,6 +1334,8 @@ export default defineSchema({
     // Tri par date d'arrestation (les imports arrivent tous en même temps, donc
     // _creationTime ne reflète plus la chronologie réelle).
     .index("by_at", ["at"])
+    // Casiers créés par un agent (compteurs perso sans scanner toute la table).
+    .index("by_creator", ["createdBy"])
     // Casiers VIVANTS triés par date : q.eq("deletedAt", undefined).order("desc").
     // Évite de lire les casiers archivés dans les listes chaudes (accueil, historique).
     .index("by_live_at", ["deletedAt", "at"]),
@@ -1780,6 +1782,8 @@ export default defineSchema({
     .index("by_deleted", ["deletedAt"])
     .index("by_import", ["importRef"])
     .index("by_at", ["at"])
+    // Contraventions d'un officier (compteurs perso sans scanner toute la table).
+    .index("by_officer", ["officerId"])
     // Contraventions VIVANTES triées par date (listes chaudes sans lignes archivées).
     .index("by_live_at", ["deletedAt", "at"]),
 
@@ -2263,7 +2267,11 @@ export default defineSchema({
     .index("by_owner", ["ownerId"])
     // Les sondages du bot (rappels d'entretien, fermetures dues) ne concernent
     // que les tickets OUVERTS : cet index évite de relire tous les tickets clos.
-    .index("by_status", ["status"]),
+    .index("by_status", ["status"])
+    // Sondages bot ciblés : ne lire QUE les tickets réellement dus, au lieu de
+    // scanner tous les tickets ouverts toutes les 5 min (fermeture / rappel).
+    .index("by_close", ["status", "scheduledCloseAt"])
+    .index("by_interview", ["status", "interviewAt"]),
 
   // Archives des tickets de candidature (Police Academy) : conservées à la
   // fermeture définitive, consultables sur le portail LSPA. Journal complet +
