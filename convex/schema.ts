@@ -746,6 +746,8 @@ export default defineSchema({
     // Grades prioritaires pour recevoir 2 tutorés quand les tuteurs manquent
     // (l'académie est prioritaire par défaut).
     priorityGradeIds: v.optional(v.array(v.id("grades"))),
+    // Agents exclus de l'attribution automatique (ni tutorés, ni tuteurs).
+    excludedAgentIds: v.optional(v.array(v.id("agents"))),
     // Annonce Discord de l'attribution : salon et ping (IDs Discord).
     announceChannelId: v.optional(v.string()),
     announcePingId: v.optional(v.string()),

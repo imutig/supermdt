@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, Plus, Trash2, CheckSquare, Square, Clock, Radio } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, CheckSquare, Square, Clock, Radio, Search } from "lucide-react";
 import { api } from "@/lib/api";
 import type { Id } from "convex/_generated/dataModel";
 import { LoadingScreen } from "@/components/common/Loader";
@@ -166,32 +166,61 @@ function Header({ agentId, data }: { agentId: Id<"agents">; data: SheetData }) {
         </button>
         {data.startAt && <div className="text-[11px] text-faint">Début : {new Date(data.startAt).toLocaleDateString("fr-FR")}</div>}
       </div>
-      {editTutor && <TutorModal agentId={agentId} currentStart={data.startAt} onClose={() => setEditTutor(false)} />}
+      {editTutor && <TutorModal agentId={agentId} currentStart={data.startAt} currentTutorId={data.tutor?._id ?? null} onClose={() => setEditTutor(false)} />}
     </div>
   );
 }
 
-function TutorModal({ agentId, currentStart, onClose }: { agentId: Id<"agents">; currentStart: number | null; onClose: () => void }) {
+const norm = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+
+function TutorModal({ agentId, currentStart, currentTutorId, onClose }: { agentId: Id<"agents">; currentStart: number | null; currentTutorId: string | null; onClose: () => void }) {
   const tutors = useQuery(api.fto.tutors);
   const setHeader = useMutation(api.fto.setHeader);
   const toast = useToast();
-  const [tutorId, setTutorId] = useState("");
+  const [tutorId, setTutorId] = useState<string | null>(currentTutorId);
   const [date, setDate] = useState(currentStart ? new Date(currentStart).toISOString().slice(0, 10) : "");
+  const [q, setQ] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const needle = norm(q.trim());
+  const list = (tutors ?? []).filter((t) => !needle || norm(`${t.prenomRP} ${t.nomRP}`).includes(needle) || String(t.matricule ?? "").includes(needle));
+  const selected = (tutors ?? []).find((t) => t._id === tutorId) ?? null;
+
   return (
-    <Modal title="Encadrement" onClose={onClose} width={440}
+    <Modal title="Encadrement" onClose={onClose} width={460}
       footer={<><Button variant="ghost" onClick={onClose}>Fermer</Button>
-        <Button variant="primary" onClick={async () => {
-          await toast.guard(setHeader({ agentId, ...(tutorId ? { tutorId: tutorId as Id<"agents"> } : {}), ...(date ? { startAt: new Date(date).getTime() } : {}) }), "Enregistrement impossible");
-          onClose();
+        <Button variant="primary" loading={busy} onClick={async () => {
+          setBusy(true);
+          const r = await toast.guard(setHeader({ agentId, tutorId: (tutorId as Id<"agents">) ?? null, ...(date ? { startAt: new Date(date).getTime() } : {}) }), "Enregistrement impossible");
+          setBusy(false); if (r !== undefined) onClose();
         }}>Enregistrer</Button></>}
     >
       <div className="flex flex-col gap-[12px]">
-        <label className="flex flex-col gap-[5px]"><span className="text-[11px] font-bold uppercase tracking-[0.07em] text-faint">Officier référent (FTO)</span>
-          <select value={tutorId} onChange={(e) => setTutorId(e.target.value)} className="h-9 w-full rounded-sm border border-border bg-surface-2 px-2 text-[13px] outline-none focus:border-accent">
-            <option value="">Ne pas changer</option>
-            {(tutors ?? []).map((t) => <option key={t._id} value={t._id}>{fmtMatricule(t.matricule) ?? ""} {t.prenomRP} {t.nomRP}</option>)}
-          </select>
-        </label>
+        <div className="flex flex-col gap-[6px]">
+          <span className="text-[11px] font-bold uppercase tracking-[0.07em] text-faint">Officier référent (FTO)</span>
+          {selected && (
+            <div className="flex items-center gap-2 rounded-sm border border-accent bg-accent-soft px-[10px] py-[6px] text-[13px] font-semibold text-accent">
+              <span className="flex-1">{fmtMatricule(selected.matricule) ?? ""} {selected.prenomRP} {selected.nomRP}</span>
+              <button onClick={() => setTutorId(null)} className="text-[11px] font-semibold text-muted hover:text-danger">Retirer</button>
+            </div>
+          )}
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-[9px] top-1/2 h-[14px] w-[14px] -translate-y-1/2 text-faint" />
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Rechercher un tuteur…" className="h-9 w-full rounded-sm border border-border bg-surface-2 pl-[30px] pr-3 text-[13px] outline-none focus:border-accent" />
+          </div>
+          <div className="max-h-[240px] overflow-y-auto rounded-sm border border-border">
+            {tutors === undefined ? (
+              <div className="p-3 text-[12px] text-faint">Chargement…</div>
+            ) : list.length === 0 ? (
+              <div className="p-3 text-[12px] text-faint">Aucun tuteur trouvé.</div>
+            ) : list.map((t) => (
+              <button key={t._id} onClick={() => setTutorId(t._id)} className="flex w-full items-center gap-2 border-b border-border px-[10px] py-[7px] text-left text-[13px] last:border-b-0 hover:bg-surface-2" style={tutorId === t._id ? { background: "var(--accent-soft)" } : undefined}>
+                {fmtMatricule(t.matricule) && <span className="font-data text-[11.5px] text-accent">{fmtMatricule(t.matricule)}</span>}
+                <span className="truncate">{t.prenomRP} {t.nomRP}</span>
+              </button>
+            ))}
+          </div>
+        </div>
         <label className="flex flex-col gap-[5px]"><span className="text-[11px] font-bold uppercase tracking-[0.07em] text-faint">Début de formation</span>
           <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="h-9 w-full rounded-sm border border-border bg-surface-2 px-2 text-[13px] outline-none focus:border-accent" />
         </label>

@@ -30,6 +30,7 @@ export function LspaFto() {
   const [tab, setTab] = useState<"active" | "history">("active");
   const graduated = useQuery(api.fto.listGraduated, tab === "history" ? {} : "skip");
   const [configuring, setConfiguring] = useState(false);
+  const [assignOpen, setAssignOpen] = useState(false);
   const [q, setQ] = useState("");
   const autoAssign = useMutation(api.fto.autoAssignTutors);
   const announce = useMutation(api.fto.announceTutors);
@@ -40,9 +41,12 @@ export function LspaFto() {
   if (!me?.fieldTrainingAccess) return <Navigate to="/lspa" replace />;
   const canManage = me.agent.isOwner || academyMember || can("fto.manage");
 
-  const doAutoAssign = async () => {
-    const r = await toast.guard(autoAssign({}), "Attribution impossible");
-    if (r) toast.success(`Attribution : ${r.trainees} tutoré(s) répartis sur ${r.tutors} tuteur(s) (max ${r.maxPerTutor}/tuteur).`);
+  const doAutoAssign = async (onlyUnassigned: boolean) => {
+    setAssignOpen(false);
+    const r = await toast.guard(autoAssign({ onlyUnassigned }), "Attribution impossible");
+    if (r) toast.success(onlyUnassigned
+      ? (r.assigned === 0 ? "Tous les officiers ont déjà un tuteur." : `${r.assigned} officier(s) sans tuteur attribué(s) (max ${r.maxPerTutor}/tuteur).`)
+      : `Réattribution : ${r.trainees} tutoré(s) sur ${r.tutors} tuteur(s) (max ${r.maxPerTutor}/tuteur).`);
   };
   const doAnnounce = async () => {
     const r = await toast.guard(announce({}), "Annonce impossible");
@@ -66,7 +70,7 @@ export function LspaFto() {
         </div>
         {canManage && (
           <div className="flex flex-wrap gap-[8px]">
-            <Button variant="primary" onClick={doAutoAssign}><Wand2 className="h-[15px] w-[15px]" /> Attribuer les tuteurs</Button>
+            <Button variant="primary" onClick={() => setAssignOpen(true)}><Wand2 className="h-[15px] w-[15px]" /> Attribuer les tuteurs</Button>
             <Button onClick={doAnnounce}><Megaphone className="h-[15px] w-[15px]" /> Annoncer</Button>
             <Button onClick={() => setConfiguring(true)}><Settings className="h-[15px] w-[15px]" /> Configurer</Button>
           </div>
@@ -84,6 +88,23 @@ export function LspaFto() {
       </div>
 
       {configuring && <FtoConfigModal ctx={ctx} onClose={() => setConfiguring(false)} />}
+
+      {assignOpen && (
+        <Modal title="Attribuer les tuteurs" icon={<Wand2 className="h-[17px] w-[17px]" />} onClose={() => setAssignOpen(false)} width={480}
+          footer={<Button variant="ghost" onClick={() => setAssignOpen(false)}>Annuler</Button>}
+        >
+          <div className="flex flex-col gap-[10px]">
+            <button onClick={() => void doAutoAssign(true)} className="rounded-sm border border-border bg-surface-2 p-[13px] text-left hover:border-accent">
+              <div className="text-[13.5px] font-semibold">Agents sans tuteur uniquement</div>
+              <div className="mt-[2px] text-[12px] text-muted">Conserve les tuteurs déjà attribués et ne place que les nouveaux officiers, en tenant compte des charges existantes.</div>
+            </button>
+            <button onClick={() => void doAutoAssign(false)} className="rounded-sm border border-border bg-surface-2 p-[13px] text-left hover:border-accent">
+              <div className="text-[13.5px] font-semibold">Réattribuer tout le monde</div>
+              <div className="mt-[2px] text-[12px] text-muted">Repart de zéro et redistribue l'ensemble des officiers de façon équilibrée (écrase les tuteurs actuels).</div>
+            </button>
+          </div>
+        </Modal>
+      )}
 
       {list === undefined ? (
         <div className="rounded-card border border-border bg-surface p-4"><SkeletonRows rows={4} /></div>
@@ -155,6 +176,7 @@ type FtoCtx = {
   grades: { _id: string; name: string }[];
   tutorGradeIds: string[];
   priorityGradeIds: string[];
+  excludedAgentIds: string[];
   announceChannelId: string;
   announcePingId: string;
 };
@@ -218,6 +240,7 @@ function FtoConfigModal({ ctx, onClose }: { ctx: FtoCtx | undefined; onClose: ()
           </div>
         </div>
         <div className="mt-[8px] text-[11px] text-faint">Les membres de la Police Academy sont tuteurs éligibles et prioritaires par défaut, quel que soit leur grade.</div>
+        <ExclusionPicker ctx={ctx} />
       </div>
 
       {/* Annonce Discord de l'attribution */}
@@ -263,6 +286,51 @@ function FtoConfigModal({ ctx, onClose }: { ctx: FtoCtx | undefined; onClose: ()
         </div>
       )}
     </Modal>
+  );
+}
+
+// Exclusions de l'attribution auto : recherche + puces retirables.
+function ExclusionPicker({ ctx }: { ctx: FtoCtx | undefined }) {
+  const candidates = useQuery(api.fto.assignmentCandidates, {});
+  const setConfig = useMutation(api.fto.setConfig);
+  const toast = useToast();
+  const [q, setQ] = useState("");
+  const excluded = new Set(ctx?.excludedAgentIds ?? []);
+  const save = (ids: string[]) => void toast.guard(setConfig({ excludedAgentIds: ids as Id<"agents">[] }), "Enregistrement impossible");
+  const toggle = (id: string) => { const n = new Set(excluded); n.has(id) ? n.delete(id) : n.add(id); save([...n]); };
+
+  const all = candidates ?? [];
+  const chips = all.filter((c) => excluded.has(c._id));
+  const needle = norm(q.trim());
+  const matches = needle ? all.filter((c) => !excluded.has(c._id) && (norm(c.name).includes(needle) || String(c.matricule ?? "").includes(needle))).slice(0, 8) : [];
+
+  return (
+    <div className="mt-[10px] border-t border-border pt-[10px]">
+      <div className="mb-[5px] text-[12px] font-semibold">Exclure de l'attribution automatique</div>
+      {chips.length > 0 && (
+        <div className="mb-[7px] flex flex-wrap gap-[6px]">
+          {chips.map((c) => (
+            <span key={c._id} className="flex items-center gap-[5px] rounded-[6px] border border-border bg-surface px-[8px] py-[3px] text-[11.5px]">
+              {c.name}<button onClick={() => toggle(c._id)} className="text-faint hover:text-danger">✕</button>
+            </span>
+          ))}
+        </div>
+      )}
+      <div className="relative">
+        <Search className="pointer-events-none absolute left-[9px] top-1/2 h-[13px] w-[13px] -translate-y-1/2 text-faint" />
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Rechercher un agent à exclure…" className="h-9 w-full rounded-sm border border-border bg-surface px-[30px] text-[12.5px] outline-none focus:border-accent" />
+      </div>
+      {matches.length > 0 && (
+        <div className="mt-[5px] overflow-hidden rounded-sm border border-border">
+          {matches.map((c) => (
+            <button key={c._id} onClick={() => { toggle(c._id); setQ(""); }} className="flex w-full items-center gap-2 border-b border-border px-[10px] py-[6px] text-left text-[12.5px] last:border-b-0 hover:bg-surface">
+              <span className="flex-1 truncate">{c.name}</span>
+              <span className="rounded-[4px] bg-surface px-[6px] py-[1px] text-[10px] font-semibold text-faint">{c.role === "trainee" ? "En formation" : "Tuteur"}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 

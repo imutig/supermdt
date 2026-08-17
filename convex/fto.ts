@@ -127,9 +127,32 @@ export const context = query({
       grades,
       tutorGradeIds: (cfg?.tutorGradeIds ?? []) as string[],
       priorityGradeIds: (cfg?.priorityGradeIds ?? []) as string[],
+      excludedAgentIds: (cfg?.excludedAgentIds ?? []) as string[],
       announceChannelId: cfg?.announceChannelId ?? "",
       announcePingId: cfg?.announcePingId ?? "",
     };
+  },
+});
+
+// Candidats à l'exclusion de l'attribution auto : officiers en formation + tuteurs
+// éligibles (avec leur rôle pour l'affichage). Réservé à l'encadrement.
+export const assignmentCandidates = query({
+  args: {},
+  handler: async (ctx) => {
+    const viewer = await requireAgent(ctx);
+    if (!(viewer.isOwner || isAcademy(viewer) || (await can(ctx, viewer, "fto.manage")))) return [];
+    const cfg = await ctx.db.query("ftoConfig").first();
+    const tutorGrades = new Set((cfg?.tutorGradeIds ?? []).map((g) => g as string));
+    const trainee = await traineeGrade(ctx);
+    const out = new Map<string, { _id: string; name: string; matricule: number | null; role: "trainee" | "tutor" }>();
+    for (const a of await ctx.db.query("agents").withIndex("by_status", (q) => q.eq("status", "ACTIVE")).collect()) {
+      if (a.isOwner) continue;
+      const isTrainee = trainee && a.gradeId === trainee._id;
+      const isTutor = !isTrainee && (!!a.academyRankId || (a.gradeId != null && tutorGrades.has(a.gradeId as string)));
+      if (!isTrainee && !isTutor) continue;
+      out.set(a._id as string, { _id: a._id, name: `${a.prenomRP} ${a.nomRP}`, matricule: a.matricule ?? null, role: isTrainee ? "trainee" : "tutor" });
+    }
+    return [...out.values()].sort((a, b) => a.name.localeCompare(b.name));
   },
 });
 
@@ -219,6 +242,7 @@ export const setConfig = mutation({
     traineeGradeId: v.optional(v.union(v.id("grades"), v.null())),
     tutorGradeIds: v.optional(v.array(v.id("grades"))),
     priorityGradeIds: v.optional(v.array(v.id("grades"))),
+    excludedAgentIds: v.optional(v.array(v.id("agents"))),
     announceChannelId: v.optional(v.string()),
     announcePingId: v.optional(v.string()),
   },
@@ -230,6 +254,7 @@ export const setConfig = mutation({
       ...(a.traineeGradeId !== undefined ? { traineeGradeId: a.traineeGradeId ?? undefined } : {}),
       ...(a.tutorGradeIds !== undefined ? { tutorGradeIds: a.tutorGradeIds } : {}),
       ...(a.priorityGradeIds !== undefined ? { priorityGradeIds: a.priorityGradeIds } : {}),
+      ...(a.excludedAgentIds !== undefined ? { excludedAgentIds: a.excludedAgentIds } : {}),
       ...(a.announceChannelId !== undefined ? { announceChannelId: a.announceChannelId.trim() || undefined } : {}),
       ...(a.announcePingId !== undefined ? { announcePingId: a.announcePingId.trim() || undefined } : {}),
       updatedBy: viewer._id,
@@ -271,19 +296,25 @@ async function eligibleTutors(ctx: MutationCtx): Promise<{ agent: Doc<"agents">;
 //    puis grades prioritaires du plus haut au plus bas, puis les autres grades
 //    éligibles du plus haut au plus bas.
 export const autoAssignTutors = mutation({
-  args: {},
-  handler: async (ctx) => {
+  // onlyUnassigned = true : ne touche pas aux fiches déjà pourvues d'un tuteur,
+  // n'attribue que les officiers sans tuteur (l'équilibrage tient compte des
+  // charges existantes). Sinon : réattribution complète de tout le monde.
+  args: { onlyUnassigned: v.optional(v.boolean()) },
+  handler: async (ctx, { onlyUnassigned }) => {
     const viewer = await requireAgent(ctx);
     await assertManage(ctx, viewer);
     const trainee = await traineeGrade(ctx);
     if (!trainee) throw new ConvexError("Aucun grade en formation configuré.");
+    const cfg = await ctx.db.query("ftoConfig").first();
+    const excluded = new Set((cfg?.excludedAgentIds ?? []).map((id) => id as string));
     const trainees = (await ctx.db.query("agents").withIndex("by_status", (q) => q.eq("status", "ACTIVE")).collect())
-      .filter((a) => a.gradeId === trainee._id && !a.isOwner)
+      .filter((a) => a.gradeId === trainee._id && !a.isOwner && !excluded.has(a._id as string))
       .sort((a, b) => (a.matricule ?? 0) - (b.matricule ?? 0));
     if (trainees.length === 0) throw new ConvexError("Aucun officier en formation à attribuer.");
 
-    const tutors = await eligibleTutors(ctx);
+    const tutors = (await eligibleTutors(ctx)).filter((t) => !excluded.has(t.agent._id as string));
     if (tutors.length === 0) throw new ConvexError("Aucun tuteur éligible. Sélectionnez des grades de tuteurs.");
+    const eligibleIds = new Set(tutors.map((t) => t.agent._id as string));
 
     // Ordre de priorité (palier) : académie (0), grade prioritaire (1), autre grade
     // éligible (2) ; à palier égal, le grade le plus haut d'abord, puis matricule.
@@ -291,29 +322,45 @@ export const autoAssignTutors = mutation({
     const ordered = [...tutors].sort((x, y) =>
       tier(x) - tier(y) || y.gradePosition - x.gradePosition || (x.agent.matricule ?? 0) - (y.agent.matricule ?? 0));
     const counts = new Map(ordered.map((t) => [t.agent._id as string, 0]));
-    const assignment = new Map<string, Id<"agents">>(); // traineeId -> tutorId
 
+    // Fiches courantes : tuteur déjà attribué ?
+    const currentTutor = new Map<string, Id<"agents"> | null>();
     for (const tr of trainees) {
-      // Tuteur le moins chargé, plus tôt dans l'ordre prioritaire à égalité.
+      const doc = await sheetDoc(ctx, tr._id);
+      currentTutor.set(tr._id as string, doc?.tutorId ?? null);
+    }
+
+    // Qui doit être (ré)attribué, et charges de départ.
+    const toAssign: Doc<"agents">[] = [];
+    for (const tr of trainees) {
+      const tut = currentTutor.get(tr._id as string) ?? null;
+      if (onlyUnassigned && tut && eligibleIds.has(tut as string)) {
+        // On conserve : sa charge compte pour l'équilibrage.
+        counts.set(tut as string, (counts.get(tut as string) ?? 0) + 1);
+      } else {
+        toAssign.push(tr);
+      }
+    }
+    if (onlyUnassigned && toAssign.length === 0) {
+      return { trainees: trainees.length, tutors: tutors.length, assigned: 0, maxPerTutor: Math.max(0, ...counts.values()) };
+    }
+
+    // Attribue les officiers concernés au tuteur le moins chargé (départage par
+    // ordre de priorité), en partant des charges déjà en place.
+    for (const tr of toAssign) {
       let best = ordered[0];
       for (const t of ordered) if ((counts.get(t.agent._id as string) ?? 0) < (counts.get(best.agent._id as string) ?? 0)) best = t;
       counts.set(best.agent._id as string, (counts.get(best.agent._id as string) ?? 0) + 1);
-      assignment.set(tr._id as string, best.agent._id);
-    }
-
-    // Écrit les tuteurs dans les fiches (crée la fiche au besoin).
-    for (const tr of trainees) {
-      const tutorId = assignment.get(tr._id as string)!;
       const doc = await sheetDoc(ctx, tr._id);
-      if (doc) await ctx.db.patch(doc._id, { tutorId });
-      else await ctx.db.insert("ftoSheets", { agentId: tr._id, tutorId });
+      if (doc) await ctx.db.patch(doc._id, { tutorId: best.agent._id });
+      else await ctx.db.insert("ftoSheets", { agentId: tr._id, tutorId: best.agent._id });
     }
 
-    const perTutor = [...counts.values()];
     return {
       trainees: trainees.length,
       tutors: tutors.length,
-      maxPerTutor: perTutor.length ? Math.max(...perTutor) : 0,
+      assigned: toAssign.length,
+      maxPerTutor: Math.max(0, ...counts.values()),
     };
   },
 });
