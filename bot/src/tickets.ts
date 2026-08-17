@@ -510,7 +510,10 @@ function recruiterOverwrites(guild: Guild, cfg: TicketConfig) {
   const rows: { id: string; allow: bigint[]; deny: bigint[] }[] = [
     { id: guild.roles.everyone.id, allow: [], deny: [PermissionFlagsBits.ViewChannel] },
   ];
-  for (const r of cfg.recruiterRoleIds) rows.push({ id: r, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.AttachFiles], deny: [] });
+  // On ignore les rôles qui n'existent plus / sont invalides : sinon discord.js
+  // jette « Supplied parameter is not a cached User or Role » et la création du
+  // salon échoue entièrement.
+  for (const r of cfg.recruiterRoleIds) if (guild.roles.cache.has(r)) rows.push({ id: r, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.AttachFiles], deny: [] });
   if (guild.members.me) rows.push({ id: guild.members.me.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ManageChannels, PermissionFlagsBits.ManageMessages], deny: [] });
   return rows;
 }
@@ -1030,9 +1033,11 @@ function presenceButtons(promotionId: string) {
 // Crée la catégorie d'une promo (droits : staff configuré + bot, @everyone masqué).
 async function createPromoCategory(guild: Guild, name: string, cfg: TicketConfig): Promise<string | null> {
   try {
+    // On filtre les rôles inexistants / invalides : un seul ID périmé faisait
+    // échouer toute la création (« Supplied parameter is not a cached User or Role »).
     const overwrites = [
       { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
-      ...cfg.promoRoleIds.map((id) => ({ id, allow: [PermissionFlagsBits.ViewChannel] })),
+      ...cfg.promoRoleIds.filter((id) => guild.roles.cache.has(id)).map((id) => ({ id, allow: [PermissionFlagsBits.ViewChannel] })),
       ...(guild.members.me ? [{ id: guild.members.me.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ManageChannels] }] : []),
     ];
     const cat = await guild.channels.create({ name, type: ChannelType.GuildCategory, permissionOverwrites: overwrites });
