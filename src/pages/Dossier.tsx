@@ -6,6 +6,7 @@ import { useApp } from "@/providers/app-state";
 import { NotesPanel } from "@/components/dossier/NotesPanel";
 import { NoteModal } from "@/components/dossier/NoteModal";
 import { CasierEntryModal } from "@/components/dossier/CasierEntryModal";
+import { AmendeStatusSelect } from "@/components/dossier/AmendeStatusSelect";
 import { ContraventionModal } from "@/components/dossier/ContraventionModal";
 import { VehicleModal } from "@/components/dossier/VehicleModal";
 import { EditIdentityModal } from "@/components/dossier/EditIdentityModal";
@@ -589,6 +590,12 @@ export function Dossier() {
                             ${e.totalFine.toLocaleString("fr-FR")}
                           </b>
                         </span>
+                        {e.amende && (
+                          <span className="inline-flex items-center gap-[6px] text-muted">
+                            Statut
+                            <AmendeStatusSelect amende={e.amende} compact />
+                          </span>
+                        )}
                         <span className="text-muted">
                           Prison <b className="font-data text-text">{fmtDur(e.totalJailSeconds)}</b>
                         </span>

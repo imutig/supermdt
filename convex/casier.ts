@@ -43,6 +43,14 @@ async function officerViews(
 type AgentId = import("./_generated/dataModel").Id<"agents">;
 type EntryId = import("./_generated/dataModel").Id<"casierEntries">;
 
+// Amende (entité financière) liée à une entrée de casier : id + statut courant,
+// pour piloter le statut directement depuis le casier (liste + fiche).
+async function linkedAmende(ctx: QueryCtx, entryId: EntryId): Promise<{ _id: import("./_generated/dataModel").Id<"amendes">; statut: string } | null> {
+  const rows = await ctx.db.query("amendes").withIndex("by_casier", (q) => q.eq("casierEntryId", entryId)).collect();
+  const a = rows.find((x) => !x.deletedAt);
+  return a ? { _id: a._id, statut: a.statut } : null;
+}
+
 // Ensemble final des agents impliqués : le créateur en 1re position (jamais
 // retiré), suivi des autres agents distincts. Dédup par id.
 function officerSet(creator: AgentId, others: AgentId[] | undefined): AgentId[] {
@@ -226,6 +234,7 @@ export const byCitizen = query({
         dossierStatus: e.dossierStatus ?? null,
         closed: e.closed ?? false,
         finePaid: e.finePaid ?? false,
+        amende: await linkedAmende(ctx, e._id),
         totalFine: e.totalFine,
         totalJailSeconds: e.totalJailSeconds,
         dojRequired: e.dojRequired,
@@ -312,6 +321,7 @@ export const getEntry = query({
       dossierStatus: e.dossierStatus ?? "",
       forceUsed: e.forceUsed ?? false,
       finePaid: e.finePaid ?? false,
+      amende: await linkedAmende(ctx, e._id),
       closed: e.closed ?? false,
       jugement: e.jugement ?? null,
       baremeAmende: e.baremeAmende ?? null,

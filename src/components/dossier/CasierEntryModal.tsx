@@ -9,6 +9,7 @@ import { RichTextEditor } from "@/components/common/RichTextEditor";
 import { ImageGallery } from "@/components/common/ImageGallery";
 import { ReportSearchPicker, VehicleSearchPicker, WeaponSearchPicker } from "@/components/dossier/LinkPickers";
 import { EditChargesModal } from "@/components/calc/EditChargesModal";
+import { AmendeStatusSelect } from "@/components/dossier/AmendeStatusSelect";
 import { useCan } from "@/hooks/useCan";
 import { useToast } from "@/providers/toast";
 
@@ -173,25 +174,18 @@ export function CasierEntryModal({ entryId, canDelete: canDeleteAny, onClose }: 
                 <div className="bg-surface-2 px-3 py-[10px]"><div className="mb-[3px] text-[10px] font-bold uppercase tracking-[0.08em] text-faint">DOJ</div><div className="text-[13px] font-semibold" style={{ color: entry.dojRequired ? "var(--critical)" : "var(--muted)" }}>{entry.dojRequired ? "Requise" : "Non"}</div></div>
               </div>
 
-              {/* Statut de l'amende (item 4) */}
-              {entry.totalFine > 0 && (
+              {/* Statut de l'amende — lien direct vers l'amende créée dans « Amendes » */}
+              {entry.amende ? (
                 <div className="flex items-center gap-2">
                   <div className={H + " mb-0 flex-1"}>Statut de l'amende</div>
-                  {(["nonpaid", "paid"] as const).map((k) => {
-                    const on = k === "paid" ? a.finePaid : !a.finePaid;
-                    const paid = k === "paid";
-                    return (
-                      <button key={k} disabled={!canEdit} onClick={() => canEdit && setA({ ...a, finePaid: paid })}
-                        className="rounded-[6px] border px-[11px] py-[6px] text-[12px] font-semibold disabled:cursor-default"
-                        style={on
-                          ? paid ? { background: "color-mix(in srgb, var(--success) 14%, transparent)", borderColor: "var(--success)", color: "var(--success)" } : { background: "rgba(220,38,38,0.10)", borderColor: "rgba(220,38,38,0.4)", color: "var(--danger)" }
-                          : { background: "var(--surface-2)", borderColor: "var(--border)", color: "var(--muted)" }}>
-                        {paid ? "Payée" : "Non payée"}
-                      </button>
-                    );
-                  })}
+                  <AmendeStatusSelect amende={entry.amende} />
                 </div>
-              )}
+              ) : entry.totalFine > 0 ? (
+                <div className="flex items-center gap-2">
+                  <div className={H + " mb-0 flex-1"}>Statut de l'amende</div>
+                  <span className="text-[12px] text-faint">Aucune amende liée.</span>
+                </div>
+              ) : null}
 
               {/* Timer de garde à vue (live) */}
               {entry.totalJailSeconds > 0 && entry.status !== "ANNULEE" && (
