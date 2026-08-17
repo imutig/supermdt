@@ -10,7 +10,7 @@ import { Button } from "@/components/common/Button";
 import { Modal } from "@/components/common/Modal";
 import { fmtMatricule } from "@/components/common/AgentTag";
 import { useToast } from "@/providers/toast";
-import { VERDICTS, verdictMeta } from "@/lspa/LspaFirstLincoln";
+import { VERDICTS, verdictMeta, appreciation } from "@/lspa/LspaFirstLincoln";
 
 // Échelle de notation (index stocké : 0 = Exécrable … 4 = Très Bien).
 const LEVELS = [
@@ -25,8 +25,9 @@ type Criterion = { _id: string; section: string; label: string; kind: "SCALE" | 
 type Score = { criterionId: string; level: number | null; checked: boolean };
 type Evaluation = {
   _id: string; evaluatorName: string; at: number; sector: string; vehicle: string;
-  verdict: string; pointsForts: string; axes: string; conclusion: string; mine: boolean; scores: Score[];
+  verdict: string; scorePct: number | null; pointsForts: string; axes: string; conclusion: string; mine: boolean; scores: Score[];
 };
+type Thresholds = { pass: number; potential: number };
 
 export function FlDossier() {
   const { id } = useParams<{ id: string }>();
@@ -54,6 +55,18 @@ export function FlDossier() {
             {fmtMatricule(a.matricule) && <span className="font-data text-accent">{fmtMatricule(a.matricule)} · </span>}{a.gradeName ?? "First Lincoln"}
           </div>
         </div>
+        {(() => {
+          // Score de référence = dernière évaluation (évaluations triées récentes en tête).
+          const latest = (data.evaluations as Evaluation[]).find((e) => e.scorePct != null);
+          const appr = latest ? appreciation(latest.scorePct, data.thresholds as Thresholds) : null;
+          if (!latest || latest.scorePct == null) return null;
+          return (
+            <div className="flex flex-col items-end gap-[3px]">
+              <span className="font-data text-[26px] font-bold leading-none" style={{ color: appr?.color ?? "var(--text)" }}>{latest.scorePct}%</span>
+              {appr && <span className="rounded-[6px] px-[8px] py-[2px] text-[11px] font-bold uppercase" style={{ background: `color-mix(in srgb, ${appr.color} 14%, transparent)`, color: appr.color }}>{appr.label}{appr.note ? ` · ${appr.note}` : ""}</span>}
+            </div>
+          );
+        })()}
         {data.canEvaluate && <Button variant="primary" onClick={() => setEditing("new")}><Plus className="h-[15px] w-[15px]" /> Nouvelle évaluation</Button>}
       </div>
 
@@ -64,11 +77,11 @@ export function FlDossier() {
       )}
 
       {data.evaluations.length === 0 ? (
-        <div className="rounded-card border border-border bg-surface"><EmptyState title="Aucune évaluation" message="Les évaluations First Lincoln de ce rookie apparaîtront ici." /></div>
+        <div className="rounded-card border border-border bg-surface"><EmptyState title="Aucune évaluation" message="Les évaluations First Lincoln de cet agent apparaîtront ici." /></div>
       ) : (
         <div className="flex flex-col gap-[14px]">
           {(data.evaluations as Evaluation[]).map((e) => (
-            <EvalCard key={e._id} e={e} critById={critById} canEdit={data.canEvaluate} canManage={data.canManage} onEdit={() => setEditing(e)} />
+            <EvalCard key={e._id} e={e} critById={critById} thresholds={data.thresholds as Thresholds} canEdit={data.canEvaluate} canManage={data.canManage} onEdit={() => setEditing(e)} />
           ))}
         </div>
       )}
@@ -78,9 +91,10 @@ export function FlDossier() {
   );
 }
 
-function EvalCard({ e, critById, canEdit, canManage, onEdit }: { e: Evaluation; critById: Map<string, Criterion>; canEdit: boolean; canManage: boolean; onEdit: () => void }) {
+function EvalCard({ e, critById, thresholds, canEdit, canManage, onEdit }: { e: Evaluation; critById: Map<string, Criterion>; thresholds: Thresholds; canEdit: boolean; canManage: boolean; onEdit: () => void }) {
   const remove = useMutation(api.firstLincoln.removeEvaluation);
   const vm = verdictMeta(e.verdict);
+  const appr = appreciation(e.scorePct, thresholds);
   const scoreBySection: Record<string, { c: Criterion; s: Score }[]> = {};
   for (const s of e.scores) {
     const c = critById.get(s.criterionId);
@@ -96,6 +110,8 @@ function EvalCard({ e, critById, canEdit, canManage, onEdit }: { e: Evaluation; 
         {e.vehicle && <span className="flex items-center gap-[5px] text-[12px] text-muted"><Car className="h-[12px] w-[12px]" />{e.vehicle}</span>}
         <span className="text-[12px] text-faint">· {e.evaluatorName}</span>
         <div className="flex-1" />
+        {e.scorePct != null && <span className="font-data text-[15px] font-bold" style={{ color: appr?.color ?? "var(--text)" }}>{e.scorePct}%</span>}
+        {appr && <span className="rounded-[6px] px-[9px] py-[3px] text-[11px] font-bold uppercase" title={appr.note ?? undefined} style={{ background: `color-mix(in srgb, ${appr.color} 14%, transparent)`, color: appr.color }}>{appr.label}</span>}
         <span className="rounded-[6px] px-[9px] py-[3px] text-[11px] font-bold uppercase" style={{ background: `color-mix(in srgb, ${vm.color} 14%, transparent)`, color: vm.color }}>{vm.label}</span>
         {(e.mine || canManage) && canEdit && <button onClick={onEdit} className="text-faint hover:text-text" title="Modifier"><Pencil className="h-[13px] w-[13px]" /></button>}
         {(e.mine || canManage) && <button onClick={() => void remove({ evaluationId: e._id as Id<"flEvaluations"> })} className="text-faint hover:text-danger" title="Supprimer"><Trash2 className="h-[13px] w-[13px]" /></button>}

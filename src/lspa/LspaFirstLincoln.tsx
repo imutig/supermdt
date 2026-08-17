@@ -22,6 +22,14 @@ export function verdictMeta(v: string) {
   return VERDICTS.find((x) => x.v === v) ?? VERDICTS[0];
 }
 
+// Appréciation dérivée du score (%) selon les seuils configurés.
+export function appreciation(pct: number | null | undefined, th: { pass: number; potential: number }) {
+  if (pct == null) return null;
+  if (pct >= th.pass) return { label: "Passage", color: "var(--success)", note: null as string | null };
+  if (pct >= th.potential) return { label: "Passage potentiel", color: "var(--warning)", note: "selon l'instructeur" };
+  return { label: "FL ratée", color: "var(--danger)", note: null as string | null };
+}
+
 const norm = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
 export function LspaFirstLincoln() {
@@ -35,6 +43,8 @@ export function LspaFirstLincoln() {
   if (access === undefined) return null;
   if (!access.view) return <Navigate to="/lspa" replace />;
 
+  const traineeLabel = access.traineeGradeName;
+  const th = access.thresholds;
   const needle = norm(q.trim());
   const list = rawList === undefined ? undefined : needle
     ? rawList.filter((o) => norm(o.name).includes(needle) || String(o.matricule ?? "").includes(needle))
@@ -45,13 +55,13 @@ export function LspaFirstLincoln() {
       <div className="mb-[16px] flex items-end gap-3">
         <div className="flex-1">
           <h1 className="m-0 text-[21px] font-bold tracking-tight">First Lincoln</h1>
-          <div className="mt-[3px] text-[13px] text-muted">Évaluation de la première patrouille menée en lead par le rookie, sous supervision.</div>
+          <div className="mt-[3px] text-[13px] text-muted">Évaluation de la première patrouille menée en lead par l'{traineeLabel}, sous supervision.</div>
         </div>
         {access.manage && <Button onClick={() => setConfiguring(true)}><Settings className="h-[15px] w-[15px]" /> Configurer</Button>}
       </div>
 
       <div className="mb-[14px] flex flex-wrap items-center gap-[8px]">
-        <TabBtn on={tab === "active"} onClick={() => setTab("active")} icon={Users}>Rookies</TabBtn>
+        <TabBtn on={tab === "active"} onClick={() => setTab("active")} icon={Users}>{traineeLabel}</TabBtn>
         <TabBtn on={tab === "history"} onClick={() => setTab("history")} icon={History}>Historique</TabBtn>
         <div className="relative ml-auto min-w-[200px] flex-1 sm:max-w-[280px]">
           <Search className="pointer-events-none absolute left-[10px] top-1/2 h-[14px] w-[14px] -translate-y-1/2 text-faint" />
@@ -68,13 +78,13 @@ export function LspaFirstLincoln() {
           {needle
             ? <EmptyState title="Aucun résultat" message="Aucun agent ne correspond à cette recherche." />
             : tab === "active"
-            ? <EmptyState title="Aucun rookie" message="Les agents en formation terrain apparaîtront ici pour leur First Lincoln." />
-            : <EmptyState title="Historique vide" message="Les rookies évalués puis promus apparaîtront ici." />}
+            ? <EmptyState title={`Aucun ${traineeLabel}`} message={`Les agents au grade ${traineeLabel} apparaîtront ici pour leur First Lincoln.`} />
+            : <EmptyState title="Historique vide" message="Les agents évalués puis promus apparaîtront ici." />}
         </div>
       ) : (
         <div className="overflow-hidden rounded-card border border-border bg-surface">
           {list.map((o) => {
-            const vm = o.lastVerdict ? verdictMeta(o.lastVerdict) : null;
+            const appr = appreciation(o.lastScorePct, th);
             return (
               <button key={o._id} onClick={() => navigate(`/lspa/first-lincoln/${o._id}`)}
                 className="flex w-full items-center gap-[13px] border-b border-border px-[16px] py-[12px] text-left last:border-b-0 hover:bg-surface-2">
@@ -89,7 +99,8 @@ export function LspaFirstLincoln() {
                   </div>
                   <div className="text-[11.5px] text-muted">{o.count === 0 ? "Aucune évaluation" : `${o.count} évaluation${o.count > 1 ? "s" : ""}`}</div>
                 </div>
-                {vm && <span className="flex-shrink-0 rounded-[6px] px-[8px] py-[3px] text-[11px] font-bold uppercase" style={{ background: `color-mix(in srgb, ${vm.color} 14%, transparent)`, color: vm.color }}>{vm.label}</span>}
+                {o.lastScorePct != null && <span className="flex-shrink-0 font-data text-[13px] font-bold" style={{ color: appr?.color ?? "var(--text)" }}>{o.lastScorePct}%</span>}
+                {appr && <span className="flex-shrink-0 rounded-[6px] px-[8px] py-[3px] text-[11px] font-bold uppercase" style={{ background: `color-mix(in srgb, ${appr.color} 14%, transparent)`, color: appr.color }}>{appr.label}</span>}
                 <ChevronRight className="h-[16px] w-[16px] flex-shrink-0 text-faint" />
               </button>
             );
@@ -114,6 +125,35 @@ const KINDS = [
   { value: "CHECK", label: "Validation", icon: ListChecks },
 ] as const;
 
+// Seuils d'appréciation : score de passage et seuil « passage potentiel ».
+function ThresholdEditor() {
+  const cfg = useQuery(api.firstLincoln.getConfig);
+  const save = useMutation(api.firstLincoln.setConfig);
+  const toast = useToast();
+  const [pass, setPass] = useState<number | null>(null);
+  const [potential, setPotential] = useState<number | null>(null);
+  const p = pass ?? cfg?.pass ?? 80;
+  const pot = potential ?? cfg?.potential ?? 60;
+  const commit = (np: number, npot: number) => void toast.guard(save({ passThreshold: np, potentialThreshold: npot }), "Enregistrement impossible");
+  const F = "h-9 w-[72px] rounded-sm border border-border bg-surface-2 px-2 text-[13px] outline-none focus:border-accent";
+  return (
+    <div className="mb-[16px] rounded-sm border border-border bg-surface-2 p-[12px]">
+      <div className="mb-[8px] text-[11px] font-bold uppercase tracking-[0.07em] text-faint">Seuils d'appréciation</div>
+      <div className="flex flex-wrap items-end gap-[14px]">
+        <label className="flex flex-col gap-[4px]">
+          <span className="text-[11px] font-semibold" style={{ color: "var(--success)" }}>Passage ≥</span>
+          <div className="flex items-center gap-[4px]"><input type="number" min={0} max={100} value={p} onChange={(e) => setPass(Number(e.target.value))} onBlur={() => commit(p, Math.min(pot, p))} className={F} /><span className="text-[12px] text-faint">%</span></div>
+        </label>
+        <label className="flex flex-col gap-[4px]">
+          <span className="text-[11px] font-semibold" style={{ color: "var(--warning)" }}>Passage potentiel ≥</span>
+          <div className="flex items-center gap-[4px]"><input type="number" min={0} max={100} value={pot} onChange={(e) => setPotential(Number(e.target.value))} onBlur={() => commit(p, pot)} className={F} /><span className="text-[12px] text-faint">%</span></div>
+        </label>
+      </div>
+      <div className="mt-[8px] text-[11px] text-faint">≥ {p}% = Passage · {pot}–{p - 1}% = Passage potentiel (selon l'instructeur) · &lt; {pot}% = FL ratée.</div>
+    </div>
+  );
+}
+
 function FlConfigModal({ onClose }: { onClose: () => void }) {
   const items = useQuery(api.firstLincoln.listCriteria);
   const seed = useMutation(api.firstLincoln.seedDefault);
@@ -128,6 +168,8 @@ function FlConfigModal({ onClose }: { onClose: () => void }) {
     <Modal title="Configurer la grille First Lincoln" icon={<Settings className="h-[17px] w-[17px]" />} onClose={onClose} width={560}
       footer={<><Button variant="ghost" onClick={onClose}>Fermer</Button><Button variant="primary" onClick={() => setEditing("new")}><Plus className="h-[15px] w-[15px]" /> Ajouter un critère</Button></>}
     >
+      <ThresholdEditor />
+      <div className="mb-[8px] text-[11px] font-bold uppercase tracking-[0.07em] text-faint">Critères d'évaluation</div>
       {items === undefined ? <SkeletonRows rows={6} /> : items.length === 0 ? (
         <div className="flex flex-col items-center gap-[12px] py-6 text-center">
           <div className="text-[13px] text-muted">Aucune grille configurée.</div>

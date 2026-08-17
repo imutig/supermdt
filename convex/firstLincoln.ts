@@ -11,8 +11,33 @@ import { traineeGrade } from "./fto";
 // Section de la Police Academy : accessible via permission configurée ; les
 // membres de l'académie y accèdent quel que soit leur grade.
 
+const DEFAULT_PASS = 80;
+const DEFAULT_POTENTIAL = 60;
+
 function isAcademy(viewer: Doc<"agents">): boolean {
   return !!viewer.academyRankId;
+}
+
+async function thresholds(ctx: QueryCtx | MutationCtx): Promise<{ pass: number; potential: number }> {
+  const cfg = await ctx.db.query("flConfig").first();
+  return { pass: cfg?.passThreshold ?? DEFAULT_PASS, potential: cfg?.potentialThreshold ?? DEFAULT_POTENTIAL };
+}
+
+// Score d'aptitude (%) d'une évaluation = moyenne pondérée des critères réellement
+// appréciés. SCALE : niveau/4 (Exécrable = 0, Très Bien = 1), compté seulement s'il
+// est noté. CHECK : toujours compté (validé = 1, sinon 0). null si rien d'apprécié.
+function evalScorePct(scores: Doc<"flScores">[], criteria: Doc<"flCriteria">[]): number | null {
+  const byCrit = new Map(scores.map((s) => [s.criterionId as string, s]));
+  let sum = 0, denom = 0;
+  for (const c of criteria) {
+    const s = byCrit.get(c._id as string);
+    if (c.kind === "SCALE") {
+      if (s && typeof s.level === "number") { sum += s.level / 4; denom += 1; }
+    } else {
+      sum += s?.checked ? 1 : 0; denom += 1;
+    }
+  }
+  return denom === 0 ? null : Math.round((sum / denom) * 100);
 }
 
 // Accéder à la section / consulter les évaluations.
@@ -49,17 +74,27 @@ export const access = query({
   args: {},
   handler: async (ctx) => {
     const viewer = await requireAgent(ctx);
+    const trainee = await traineeGrade(ctx);
     return {
       view: await canView(ctx, viewer),
       evaluate: await canEvaluate(ctx, viewer),
       manage: await canManage(ctx, viewer),
+      traineeGradeName: trainee?.name ?? "Officier 1 Probatoire",
+      thresholds: await thresholds(ctx),
     };
   },
 });
 
-// ---------- Liste des rookies (actifs + historique) ----------
-async function rookieRow(ctx: QueryCtx, a: Doc<"agents">) {
+// ---------- Liste (actifs + historique) ----------
+// Dernier score (%) d'un agent = score de son évaluation la plus récente.
+async function rookieRow(ctx: QueryCtx, a: Doc<"agents">, criteria: Doc<"flCriteria">[]) {
   const evals = await ctx.db.query("flEvaluations").withIndex("by_agent", (q) => q.eq("agentId", a._id)).collect();
+  let lastScorePct: number | null = null;
+  if (evals.length) {
+    const last = [...evals].sort((x, y) => y.at - x.at)[0];
+    const scores = await ctx.db.query("flScores").withIndex("by_evaluation", (q) => q.eq("evaluationId", last._id)).collect();
+    lastScorePct = evalScorePct(scores, criteria);
+  }
   return {
     _id: a._id,
     name: `${a.prenomRP} ${a.nomRP}`,
@@ -67,24 +102,25 @@ async function rookieRow(ctx: QueryCtx, a: Doc<"agents">) {
     avatarUrl: a.avatarUrl ?? null,
     count: evals.length,
     lastVerdict: latestVerdict(evals),
+    lastScorePct,
     lastAt: evals.length ? Math.max(...evals.map((e) => e.at)) : null,
   };
 }
 
-// Actifs : agents au grade en formation. Historique désactivé -> [] côté client.
 export const listRookies = query({
   args: { history: v.optional(v.boolean()) },
   handler: async (ctx, { history }) => {
     const viewer = await requireAgent(ctx);
     await assertView(ctx, viewer);
     const trainee = await traineeGrade(ctx);
+    const criteria = (await ctx.db.query("flCriteria").withIndex("by_position").collect()).filter((c) => c.active !== false);
 
     if (!history) {
       if (!trainee) return [];
       const agents = (await ctx.db.query("agents").withIndex("by_status", (q) => q.eq("status", "ACTIVE")).collect())
         .filter((a) => a.gradeId === trainee._id && !a.isOwner);
       const out = [];
-      for (const a of agents) out.push({ ...(await rookieRow(ctx, a)), gradeName: null as string | null });
+      for (const a of agents) out.push({ ...(await rookieRow(ctx, a, criteria)), gradeName: null as string | null });
       return out.sort((a, b) => a.name.localeCompare(b.name));
     }
 
@@ -98,7 +134,7 @@ export const listRookies = query({
       if (!a || a.isOwner || a.status !== "ACTIVE") continue;
       if (trainee && a.gradeId === trainee._id) continue; // encore en formation
       const g = a.gradeId ? await ctx.db.get(a.gradeId) : null;
-      out.push({ ...(await rookieRow(ctx, a)), gradeName: g?.name ?? null });
+      out.push({ ...(await rookieRow(ctx, a, criteria)), gradeName: g?.name ?? null });
     }
     return out.sort((a, b) => a.name.localeCompare(b.name));
   },
@@ -129,6 +165,7 @@ export const dossier = query({
         sector: e.sector ?? "",
         vehicle: e.vehicle ?? "",
         verdict: e.verdict,
+        scorePct: evalScorePct(scores, criteria),
         pointsForts: e.pointsForts ?? "",
         axes: e.axes ?? "",
         conclusion: e.conclusion ?? "",
@@ -144,9 +181,34 @@ export const dossier = query({
       agent: { _id: agent._id, prenomRP: agent.prenomRP, nomRP: agent.nomRP, matricule: agent.matricule ?? null, avatarUrl: agent.avatarUrl ?? null, gradeName: grade?.name ?? null },
       criteria: criteria.map((c) => ({ _id: c._id, section: c.section, label: c.label, kind: c.kind })),
       evaluations,
+      thresholds: await thresholds(ctx),
       canEvaluate: await canEvaluate(ctx, viewer),
       canManage: await canManage(ctx, viewer),
     };
+  },
+});
+
+// Seuils d'appréciation (lecture pour le formulaire de configuration).
+export const getConfig = query({
+  args: {},
+  handler: async (ctx) => {
+    const viewer = await requireAgent(ctx);
+    await assertView(ctx, viewer);
+    return await thresholds(ctx);
+  },
+});
+
+export const setConfig = mutation({
+  args: { passThreshold: v.number(), potentialThreshold: v.number() },
+  handler: async (ctx, { passThreshold, potentialThreshold }) => {
+    const viewer = await requireAgent(ctx);
+    await assertManage(ctx, viewer);
+    const pass = Math.max(0, Math.min(100, Math.round(passThreshold)));
+    const potential = Math.max(0, Math.min(pass, Math.round(potentialThreshold)));
+    const cfg = await ctx.db.query("flConfig").first();
+    const patch = { passThreshold: pass, potentialThreshold: potential, updatedBy: viewer._id, updatedAt: Date.now() };
+    if (cfg) await ctx.db.patch(cfg._id, patch);
+    else await ctx.db.insert("flConfig", patch);
   },
 });
 

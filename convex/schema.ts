@@ -777,6 +777,16 @@ export default defineSchema({
     checked: v.optional(v.boolean()),
   }).index("by_evaluation", ["evaluationId"]),
 
+  // Seuils d'appréciation First Lincoln (singleton). Un score >= passThreshold =
+  // « Passage » ; entre potentialThreshold et passThreshold = « Passage potentiel
+  // selon l'instructeur » ; en dessous = « FL ratée ».
+  flConfig: defineTable({
+    passThreshold: v.number(),
+    potentialThreshold: v.number(),
+    updatedBy: v.optional(v.id("agents")),
+    updatedAt: v.number(),
+  }),
+
   academyRankPermissions: defineTable({
     rankId: v.id("academyRanks"),
     permissionId: v.id("permissions"),

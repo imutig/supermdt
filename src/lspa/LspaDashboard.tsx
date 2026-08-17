@@ -18,7 +18,7 @@ export function LspaDashboard() {
     { label: "Promotions ouvertes", value: d?.promosOuvertes, icon: GraduationCap, to: "/lspa/promotions" },
     { label: "Sessions en cours", value: d?.sessionsEnCours, icon: Radio, to: "/lspa/quiz" },
     { label: "Officiers en formation", value: d?.offi1, icon: ShieldCheck, to: "/lspa/fto" },
-    { label: "Rookies First Lincoln", value: d?.offi1, icon: Car, to: "/lspa/first-lincoln" },
+    { label: "En First Lincoln", value: d?.offi1, icon: Car, to: "/lspa/first-lincoln" },
   ];
 
   const todo = [
