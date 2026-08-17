@@ -1355,6 +1355,8 @@ export default defineSchema({
     }),
     formulaParam: v.optional(v.any()),
     isRecidive: v.boolean(),
+    // Tentative / complicité (label SuperMDT ; n'affecte pas le calcul ni Nexus).
+    attemptType: v.optional(v.union(v.literal("TENTATIVE"), v.literal("COMPLICITE"))),
     computedFine: v.number(),
     computedJailSeconds: v.number(),
     onDecision: v.boolean(),
@@ -1855,6 +1857,8 @@ export default defineSchema({
     }),
     formulaParam: v.optional(v.any()),
     isRecidive: v.boolean(),
+    // Tentative / complicité (label SuperMDT ; n'affecte pas le calcul ni Nexus).
+    attemptType: v.optional(v.union(v.literal("TENTATIVE"), v.literal("COMPLICITE"))),
     computedFine: v.number(),
     onDecision: v.boolean(),
   }).index("by_citation", ["citationId"]),

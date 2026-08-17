@@ -5,6 +5,8 @@ import { useAction, useMutation, useQuery } from "convex/react";
 import { api, type Id } from "@/lib/api";
 import { AgentTag } from "@/components/common/AgentTag";
 import { useToast } from "@/providers/toast";
+import { useCan } from "@/hooks/useCan";
+import { EditChargesModal } from "@/components/calc/EditChargesModal";
 import { ContraventionDoc } from "@/components/docs/ContraventionDoc";
 
 // Détail complet d'une contravention (§6). Miroir du modal casier, sans prison ni arrestation.
@@ -21,13 +23,18 @@ export function ContraventionModal({
   // L'agent verbalisateur peut annuler sa contravention sans la permission.
   const canDelete = canDeleteAny || !!entry?.mine;
   const remove = useMutation(api.citations.remove);
+  const updateCharges = useMutation(api.citations.updateCharges);
   const deleteSynced = useAction(api.nexusSync.deleteRecord);
   const nexusStatus = useQuery(api.nexusSync.myStatus);
   const syncActive = !!nexusStatus?.configured && nexusStatus.status === "OK";
+  const { can } = useCan();
   const toast = useToast();
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState(false);
   const [doc, setDoc] = useState(false);
+  const [editCharges, setEditCharges] = useState(false);
+  // Contravention non annulée : les chefs sont réédiables (item 2).
+  const canEditCharges = can("contraventions.create") && !!entry && entry.status !== "ANNULEE";
 
   async function doDelete() {
     setBusy(true);
@@ -45,6 +52,7 @@ export function ContraventionModal({
   }
 
   return (
+    <>
     <div
       onClick={onClose}
       className="fixed inset-0 z-[60] flex justify-end"
@@ -116,14 +124,21 @@ export function ContraventionModal({
               </div>
 
               <div>
-                <div className="mb-[8px] text-[10.5px] font-bold uppercase tracking-[0.09em] text-faint">
-                  Charges ({entry.charges.length})
+                <div className="mb-[8px] flex items-center gap-2">
+                  <div className="flex-1 text-[10.5px] font-bold uppercase tracking-[0.09em] text-faint">
+                    Charges ({entry.charges.length})
+                  </div>
+                  {canEditCharges && (
+                    <button onClick={() => setEditCharges(true)} className="rounded-sm border border-border bg-surface-2 px-[10px] py-[5px] text-[11.5px] font-semibold text-muted hover:border-border-strong">
+                      Modifier les chefs d'inculpation
+                    </button>
+                  )}
                 </div>
                 <div className="flex flex-col gap-[8px]">
                   {entry.charges.map((ch, i) => (
                     <div key={i} className="rounded-sm border border-border bg-surface-2 px-[12px] py-[10px]">
                       <div className="flex items-baseline gap-2">
-                        <span className="flex-1 text-[13px] font-semibold">{ch.name}</span>
+                        <span className="flex-1 text-[13px] font-semibold">{ch.displayName}</span>
                         <span className="font-data text-[13px] font-semibold">
                           {ch.onDecision ? "À décision" : `$${ch.computedFine.toLocaleString("fr-FR")}`}
                         </span>
@@ -170,5 +185,15 @@ export function ContraventionModal({
 
       {doc && <ContraventionDoc citationId={citationId} onClose={() => setDoc(false)} />}
     </div>
+    {editCharges && entry && (
+      <EditChargesModal
+        title="Modifier les chefs d'inculpation"
+        isCitation={true}
+        initialCharges={entry.charges}
+        onSave={(charges) => updateCharges({ citationId, charges })}
+        onClose={() => setEditCharges(false)}
+      />
+    )}
+    </>
   );
 }

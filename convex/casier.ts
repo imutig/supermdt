@@ -7,6 +7,7 @@ import { writeAudit } from "./lib/audit";
 import { touchStats } from "./stats";
 import { notify, NOTIFY_COLOR, deepLink } from "./lib/notify";
 import { computeCharge } from "./lib/calc";
+import { chargeDisplayName } from "./lib/charges";
 import { parisInfractionStamp } from "./citations";
 
 // Officiers affichables d'une entrée, avec état de rattachement.
@@ -37,6 +38,103 @@ async function officerViews(
     out.push({ name: l.name, matricule: l.matricule, linked: true });
   }
   return out;
+}
+
+// Type d'une charge saisie (casier / rapport / dossier), label tentative inclus.
+type ChargeInput = {
+  penalChargeId: import("./_generated/dataModel").Id<"penalCharges">;
+  param?: number;
+  isRecidive: boolean;
+  attemptType?: "TENTATIVE" | "COMPLICITE";
+};
+type ChargeSnap = {
+  penalChargeId: ChargeInput["penalChargeId"];
+  snapshot: {
+    name: string;
+    category: string;
+    severity: string;
+    sensitive: boolean;
+    fineRaw: string;
+    jailSeconds?: number;
+    dojRequest: boolean;
+    sanctions: string[];
+  };
+  formulaParam?: number;
+  isRecidive: boolean;
+  attemptType?: "TENTATIVE" | "COMPLICITE";
+  computedFine: number;
+  computedJailSeconds: number;
+  onDecision: boolean;
+};
+
+// Construit les snapshots + totaux d'une liste de chefs d'inculpation. Source de
+// vérité partagée par addEntry et updateCharges. Valide aussi les bornes de
+// quantité (§3). Le calcul est INCHANGÉ (tentative / complicité = label seul).
+async function buildCharges(
+  ctx: QueryCtx,
+  defcon: { name: string; fineMultiplier: number; sensitiveFineMultiplier: number },
+  charges: ChargeInput[],
+): Promise<{ snaps: ChargeSnap[]; totalFine: number; totalJail: number; sanctions: string[]; dojRequired: boolean }> {
+  // Validation des bornes de quantité (§3) : le paramètre doit être dans [min, max].
+  for (const c of charges) {
+    const pc = await ctx.db.get(c.penalChargeId);
+    if (!pc) continue;
+    if (pc.minParam != null && (c.param ?? 0) < pc.minParam)
+      throw new ConvexError(`« ${pc.name} » : quantité minimale ${pc.minParam}.`);
+    if (pc.maxParam != null && (c.param ?? 0) > pc.maxParam)
+      throw new ConvexError(`« ${pc.name} » : quantité maximale ${pc.maxParam}.`);
+  }
+
+  let totalFine = 0;
+  let totalJail = 0;
+  const sanctions = new Set<string>();
+  let dojRequired = false;
+  const snaps: ChargeSnap[] = [];
+
+  for (const c of charges) {
+    const pc = await ctx.db.get(c.penalChargeId);
+    if (!pc) continue;
+    const cat = await ctx.db.get(pc.categoryId);
+    const sev = pc.severityId ? await ctx.db.get(pc.severityId) : null;
+    const sanctionNames: string[] = [];
+    for (const sid of pc.sanctionIds) {
+      const s = await ctx.db.get(sid);
+      if (s) sanctionNames.push(s.name);
+    }
+    const res = computeCharge({
+      fine: pc.fine,
+      jailSeconds: pc.jailSeconds ?? 0,
+      sensitive: cat?.sensitive ?? false,
+      defcon,
+      param: c.param,
+      isRecidive: c.isRecidive,
+    });
+    totalFine += res.fine;
+    totalJail += res.jailSeconds;
+    sanctionNames.forEach((s) => sanctions.add(s));
+    if (pc.dojRequest) dojRequired = true;
+    snaps.push({
+      penalChargeId: pc._id,
+      snapshot: {
+        name: pc.name,
+        category: cat?.name ?? "",
+        severity: sev?.name ?? "",
+        sensitive: cat?.sensitive ?? false,
+        fineRaw: pc.fine.raw,
+        jailSeconds: pc.jailSeconds ?? undefined,
+        dojRequest: pc.dojRequest,
+        sanctions: sanctionNames,
+      },
+      formulaParam: c.param,
+      isRecidive: c.isRecidive,
+      attemptType: c.attemptType,
+      computedFine: res.fine,
+      computedJailSeconds: res.jailSeconds,
+      onDecision: res.onDecision,
+    });
+  }
+
+  return { snaps, totalFine, totalJail, sanctions: [...sanctions], dojRequired };
 }
 
 // DEFCON courant (dupliqué de defcon.ts pour usage interne).
@@ -81,7 +179,7 @@ export const byCitizen = query({
         lieu: e.lieu,
         officer: (await officerViews(ctx, e))[0] ?? { name: "-", matricule: null, linked: true },
         chargeCount: charges.length,
-        charges: charges.map((c) => c.snapshot.name),
+        charges: charges.map((c) => chargeDisplayName(c.snapshot.name, c.attemptType)),
       });
     }
     return out;
@@ -162,7 +260,10 @@ export const getEntry = query({
       jugement: e.jugement ?? null,
       baremeAmende: e.baremeAmende ?? null,
       charges: charges.map((c) => ({
+        // Nom brut + label d'affichage (tentative / complicité).
         name: c.snapshot.name,
+        attemptType: c.attemptType ?? null,
+        displayName: chargeDisplayName(c.snapshot.name, c.attemptType),
         category: c.snapshot.category,
         severity: c.snapshot.severity,
         sensitive: c.snapshot.sensitive,
@@ -172,6 +273,7 @@ export const getEntry = query({
         isRecidive: c.isRecidive,
         onDecision: c.onDecision,
         formulaParam: c.formulaParam,
+        penalChargeId: c.penalChargeId ?? null,
       })),
     };
   },
@@ -304,6 +406,8 @@ export const addEntry = mutation({
         penalChargeId: v.id("penalCharges"),
         param: v.optional(v.number()),
         isRecidive: v.boolean(),
+        // Tentative / complicité (label seul ; n'affecte ni calcul ni Nexus).
+        attemptType: v.optional(v.union(v.literal("TENTATIVE"), v.literal("COMPLICITE"))),
       }),
     ),
     derouleFaits: v.optional(v.string()),
@@ -332,80 +436,7 @@ export const addEntry = mutation({
     const defcon = await currentDefcon(ctx);
     if (!defcon) throw new ConvexError("DEFCON non configuré.");
 
-    // Validation des bornes de quantité (§3) : le paramètre doit être dans [min, max].
-    for (const c of args.charges) {
-      const pc = await ctx.db.get(c.penalChargeId);
-      if (!pc) continue;
-      if (pc.minParam != null && (c.param ?? 0) < pc.minParam)
-        throw new ConvexError(`« ${pc.name} » : quantité minimale ${pc.minParam}.`);
-      if (pc.maxParam != null && (c.param ?? 0) > pc.maxParam)
-        throw new ConvexError(`« ${pc.name} » : quantité maximale ${pc.maxParam}.`);
-    }
-
-    let totalFine = 0;
-    let totalJail = 0;
-    const sanctions = new Set<string>();
-    let dojRequired = false;
-    const snaps: {
-      penalChargeId: (typeof args.charges)[number]["penalChargeId"];
-      snapshot: {
-        name: string;
-        category: string;
-        severity: string;
-        sensitive: boolean;
-        fineRaw: string;
-        jailSeconds?: number;
-        dojRequest: boolean;
-        sanctions: string[];
-      };
-      formulaParam?: number;
-      isRecidive: boolean;
-      computedFine: number;
-      computedJailSeconds: number;
-      onDecision: boolean;
-    }[] = [];
-
-    for (const c of args.charges) {
-      const pc = await ctx.db.get(c.penalChargeId);
-      if (!pc) continue;
-      const cat = await ctx.db.get(pc.categoryId);
-      const sev = pc.severityId ? await ctx.db.get(pc.severityId) : null;
-      const sanctionNames: string[] = [];
-      for (const sid of pc.sanctionIds) {
-        const s = await ctx.db.get(sid);
-        if (s) sanctionNames.push(s.name);
-      }
-      const res = computeCharge({
-        fine: pc.fine,
-        jailSeconds: pc.jailSeconds ?? 0,
-        sensitive: cat?.sensitive ?? false,
-        defcon,
-        param: c.param,
-        isRecidive: c.isRecidive,
-      });
-      totalFine += res.fine;
-      totalJail += res.jailSeconds;
-      sanctionNames.forEach((s) => sanctions.add(s));
-      if (pc.dojRequest) dojRequired = true;
-      snaps.push({
-        penalChargeId: pc._id,
-        snapshot: {
-          name: pc.name,
-          category: cat?.name ?? "",
-          severity: sev?.name ?? "",
-          sensitive: cat?.sensitive ?? false,
-          fineRaw: pc.fine.raw,
-          jailSeconds: pc.jailSeconds ?? undefined,
-          dojRequest: pc.dojRequest,
-          sanctions: sanctionNames,
-        },
-        formulaParam: c.param,
-        isRecidive: c.isRecidive,
-        computedFine: res.fine,
-        computedJailSeconds: res.jailSeconds,
-        onDecision: res.onDecision,
-      });
-    }
+    const { snaps, totalFine, totalJail, sanctions, dojRequired } = await buildCharges(ctx, defcon, args.charges);
 
     // Dossier d'arrestation pour délit majeur / crime, sinon simple rapport (item 6).
     const isDossier = snaps.some((s) => s.snapshot.severity === "Crime" || s.snapshot.severity === "Délit majeur");
@@ -506,6 +537,105 @@ export const addEntry = mutation({
         footer: `Émise par ${agent.prenomRP} ${agent.nomRP}`,
       });
     }
+
+    return entryId;
+  },
+});
+
+// Édition des chefs d'inculpation d'une entrée NON clôturée (item 2). Recalcule
+// les totaux (logique de calcul INCHANGÉE), remplace les snapshots de charges et
+// met à jour l'amende liée (montant + objet) localement, avec répercussion Nexus.
+export const updateCharges = mutation({
+  args: {
+    entryId: v.id("casierEntries"),
+    charges: v.array(
+      v.object({
+        penalChargeId: v.id("penalCharges"),
+        param: v.optional(v.number()),
+        isRecidive: v.boolean(),
+        attemptType: v.optional(v.union(v.literal("TENTATIVE"), v.literal("COMPLICITE"))),
+      }),
+    ),
+  },
+  handler: async (ctx, { entryId, charges }) => {
+    const agent = await requireAgent(ctx);
+    await requirePermission(ctx, agent, "casier.create");
+    const e = await ctx.db.get(entryId);
+    if (!e) throw new ConvexError("Entrée introuvable.");
+    if (e.deletedAt) throw new ConvexError("Entrée archivée.");
+    // Un dossier clôturé n'est modifiable qu'avec la permission spéciale (item I).
+    if (e.closed && !(await can(ctx, agent, "casier.editClosed"))) {
+      throw new ConvexError("Ce dossier est clôturé. Seul un haut gradé peut le modifier.");
+    }
+    const defcon = await currentDefcon(ctx);
+    if (!defcon) throw new ConvexError("DEFCON non configuré.");
+
+    const { snaps, totalFine, totalJail, sanctions, dojRequired } = await buildCharges(ctx, defcon, charges);
+
+    // Remplace les snapshots de charges.
+    const old = await ctx.db.query("casierCharges").withIndex("by_entry", (q) => q.eq("entryId", entryId)).collect();
+    for (const c of old) await ctx.db.delete(c._id);
+    for (const s of snaps) await ctx.db.insert("casierCharges", { entryId, ...s });
+
+    // Patch des totaux (calcul inchangé, tentative / complicité = label seul).
+    await ctx.db.patch(entryId, { totalFine, totalJailSeconds: totalJail, dojRequired, sanctions });
+
+    const citizen = await ctx.db.get(e.citizenId);
+    const objet = snaps.map((s) => s.snapshot.name).join(" + ") || undefined; // noms bruts (jamais préfixés, va vers Nexus)
+
+    // Amende liée : mise à jour locale du montant + objet, puis répercussion Nexus.
+    const amende = (await ctx.db.query("amendes").withIndex("by_casier", (q) => q.eq("casierEntryId", entryId)).collect())
+      .find((a) => !a.deletedAt);
+    if (amende) {
+      await ctx.db.patch(amende._id, { montant: totalFine, objet });
+      if (amende.nexusId) {
+        await ctx.scheduler.runAfter(0, internal.nexusSync.patchAmende, { amendeId: amende._id, agentId: agent._id });
+      }
+    } else if (totalFine > 0) {
+      // Pas d'amende à l'origine (montant nul à la création) et il y a désormais
+      // un montant dû : on la crée (miroir du bloc de addEntry) et on la pousse.
+      const { date, heure } = parisInfractionStamp();
+      const amendeStatut = e.finePaid ? "Payée" : "Notifiée";
+      const amendeId = await ctx.db.insert("amendes", {
+        citizenId: e.citizenId,
+        sourceType: "CASIER",
+        casierEntryId: entryId,
+        typeAmende: "Amende de police",
+        statut: amendeStatut,
+        objet,
+        montant: totalFine,
+        dateInfraction: date,
+        heureInfraction: heure,
+        lieuInfraction: e.lieu || undefined,
+        autoriteCompetente: "LSPD - Los Santos Police Department",
+        verbalisateurNom: `${agent.prenomRP} ${agent.nomRP}`,
+        matriculeAgent: agent.matricule ?? undefined,
+        description: (e.derouleFaits || e.reportBody || e.notes) || undefined,
+        at: Date.now(),
+        createdBy: agent._id,
+      });
+      await ctx.scheduler.runAfter(0, internal.nexusSync.pushAmende, { amendeId, agentId: agent._id });
+    }
+
+    await writeAudit(ctx, agent, {
+      action: "casier.charges_update",
+      resourceType: "casierEntry",
+      resourceId: entryId,
+      resourceLabel: citizen ? `${citizen.prenom} ${citizen.nom}` : "",
+      metadata: { totalFine, charges: snaps.length },
+    });
+    await touchStats(ctx);
+    await notify(ctx, "casier.update", {
+      title: "Chefs d'inculpation modifiés",
+      description: citizen ? `**${citizen.prenom} ${citizen.nom}**` : undefined,
+      color: NOTIFY_COLOR.muted,
+      fields: [
+        { name: "Chefs d'accusation", value: String(snaps.length), inline: true },
+        ...(totalFine > 0 ? [{ name: "Amende", value: `$${totalFine.toLocaleString("fr-FR")}`, inline: true }] : []),
+      ],
+      url: await deepLink(ctx, `/citoyen/${e.citizenId}`),
+      footer: `Modifié par ${agent.prenomRP} ${agent.nomRP}`,
+    });
 
     return entryId;
   },

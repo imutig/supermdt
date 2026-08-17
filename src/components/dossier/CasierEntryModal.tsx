@@ -6,7 +6,8 @@ import { api, type Id } from "@/lib/api";
 import { AgentTag } from "@/components/common/AgentTag";
 import { RichTextEditor } from "@/components/common/RichTextEditor";
 import { ImageGallery } from "@/components/common/ImageGallery";
-import { MultiSelect } from "@/components/common/MultiSelect";
+import { ReportSearchPicker, VehicleSearchPicker, WeaponSearchPicker } from "@/components/dossier/LinkPickers";
+import { EditChargesModal } from "@/components/calc/EditChargesModal";
 import { useCan } from "@/hooks/useCan";
 import { useToast } from "@/providers/toast";
 
@@ -36,6 +37,7 @@ export function CasierEntryModal({ entryId, canDelete: canDeleteAny, onClose }: 
   const syncActive = !!nexusStatus?.configured && nexusStatus.status === "OK";
   // Édition write-through : pousse vers le Nexus si le casier y est lié, sinon local.
   const updateArrest = useAction(api.nexusSync.updateArrest);
+  const updateCharges = useMutation(api.casier.updateCharges);
   const closeDossier = useMutation(api.casier.closeDossier);
   const reopenDossier = useMutation(api.casier.reopenDossier);
   const { can } = useCan();
@@ -43,14 +45,15 @@ export function CasierEntryModal({ entryId, canDelete: canDeleteAny, onClose }: 
   const canEditClosed = can("casier.editClosed");
   const locked = !!entry?.closed && !canEditClosed; // dossier clos, verrouillé pour les non-hauts-gradés
   const canEdit = can("casier.edit") && !locked;
+  // Édition des chefs d'inculpation : perm casier.create, entrée non clôturée
+  // (ou haut gradé sur un dossier clos).
+  const canEditCharges = can("casier.create") && (!entry?.closed || canEditClosed);
 
-  const reports = useQuery(api.reports.list, canEdit ? {} : "skip");
-  const vehicleOpts = useQuery(api.vehicles.pickerList, canEdit ? {} : "skip");
-  const weaponOpts = useQuery(api.weapons.pickerList, canEdit ? {} : "skip");
   const opts = useQuery(api.configEditors.options);
 
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState(false);
+  const [editCharges, setEditCharges] = useState(false);
 
   // Volet arrestation éditable (dérivé de l'entrée).
   const [init, setInit] = useState(false);
@@ -103,6 +106,7 @@ export function CasierEntryModal({ entryId, canDelete: canDeleteAny, onClose }: 
   const H = "mb-[8px] text-[10.5px] font-bold uppercase tracking-[0.09em] text-faint";
 
   return (
+    <>
     <div onClick={onClose} className="fixed inset-0 z-[60] flex justify-end" style={{ background: "var(--scrim)", backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)", animation: "mdtFade .15s ease" }}>
       <div onClick={(e) => e.stopPropagation()} className="flex h-full w-[600px] max-w-[94vw] flex-col border-l border-border-strong bg-elev shadow-[-24px_0_70px_rgba(0,0,0,.3)]" style={{ animation: "mdtSlide .26s cubic-bezier(.16,1,.3,1)" }}>
         <div className="flex flex-shrink-0 items-center gap-3 border-b border-border px-[18px] py-4">
@@ -172,11 +176,18 @@ export function CasierEntryModal({ entryId, canDelete: canDeleteAny, onClose }: 
 
               {/* Charges */}
               <div>
-                <div className={H}>Charges ({entry.charges.length})</div>
+                <div className="mb-[8px] flex items-center gap-2">
+                  <div className={H + " mb-0 flex-1"}>Charges ({entry.charges.length})</div>
+                  {canEditCharges && (
+                    <button onClick={() => setEditCharges(true)} className="rounded-sm border border-border bg-surface-2 px-[10px] py-[5px] text-[11.5px] font-semibold text-muted hover:border-border-strong">
+                      Modifier les chefs d'inculpation
+                    </button>
+                  )}
+                </div>
                 <div className="flex flex-col gap-[8px]">
                   {entry.charges.map((ch, i) => (
                     <div key={i} className="rounded-sm border border-border bg-surface-2 px-[12px] py-[10px]">
-                      <div className="flex items-baseline gap-2"><span className="flex-1 text-[13px] font-semibold">{ch.name}</span><span className="font-data text-[13px] font-semibold">{ch.onDecision ? "À décision" : `$${ch.computedFine.toLocaleString("fr-FR")}`}</span></div>
+                      <div className="flex items-baseline gap-2"><span className="flex-1 text-[13px] font-semibold">{ch.displayName}</span><span className="font-data text-[13px] font-semibold">{ch.onDecision ? "À décision" : `$${ch.computedFine.toLocaleString("fr-FR")}`}</span></div>
                       <div className="mt-[5px] flex flex-wrap gap-[6px] text-[11px]">
                         <span className="rounded-[4px] border border-border bg-surface px-[6px] py-[1px] text-muted">{ch.category}</span>
                         {ch.severity && <span className="rounded-[4px] border border-border bg-surface px-[6px] py-[1px] text-muted">{ch.severity}</span>}
@@ -236,14 +247,11 @@ export function CasierEntryModal({ entryId, canDelete: canDeleteAny, onClose }: 
                 <>
                   <div><div className={H}>Rapport lié</div>
                     {canEdit ? (
-                      <select value={a.linkedReportId} onChange={(e) => setA({ ...a, linkedReportId: e.target.value })} className={F}>
-                        <option value="">- Sélectionner un rapport -</option>
-                        {(reports ?? []).map((r) => <option key={r._id} value={r._id}>{r.title}</option>)}
-                      </select>
+                      <ReportSearchPicker value={a.linkedReportId} onChange={(id) => setA({ ...a, linkedReportId: id })} initialLabel={entry.linkedReport?.title} />
                     ) : <div className="text-[13px]">{entry.linkedReport?.title ?? "-"}</div>}
                   </div>
-                  <div><div className={H}>Véhicules impliqués</div>{canEdit ? <MultiSelect options={vehicleOpts} selected={a.vehicleIds} onChange={(ids) => setA({ ...a, vehicleIds: ids })} placeholder="Ajouter un véhicule…" /> : <div className="text-[13px]">{entry.vehicles.map((v) => v.label).join(", ") || "-"}</div>}</div>
-                  <div><div className={H}>Armes utilisées</div>{canEdit ? <MultiSelect options={weaponOpts} selected={a.weaponIds} onChange={(ids) => setA({ ...a, weaponIds: ids })} placeholder="Ajouter une arme…" /> : <div className="text-[13px]">{entry.weapons.map((w) => w.label).join(", ") || "-"}</div>}</div>
+                  <div><div className={H}>Véhicules impliqués</div>{canEdit ? <VehicleSearchPicker selected={a.vehicleIds} onChange={(ids) => setA({ ...a, vehicleIds: ids })} initialLabels={Object.fromEntries(entry.vehicles.map((v) => [v._id, v.label]))} /> : <div className="text-[13px]">{entry.vehicles.map((v) => v.label).join(", ") || "-"}</div>}</div>
+                  <div><div className={H}>Armes utilisées</div>{canEdit ? <WeaponSearchPicker selected={a.weaponIds} onChange={(ids) => setA({ ...a, weaponIds: ids })} initialLabels={Object.fromEntries(entry.weapons.map((w) => [w._id, w.label]))} /> : <div className="text-[13px]">{entry.weapons.map((w) => w.label).join(", ") || "-"}</div>}</div>
                   <div className="grid grid-cols-2 gap-3">
                     <div><div className={H}>Statut du dossier</div>
                       {canEdit ? <select value={a.dossierStatus} onChange={(e) => setA({ ...a, dossierStatus: e.target.value })} className={F}><option value="">-</option>{(opts?.dossierStatuses ?? []).map((s) => <option key={s._id} value={s.name}>{s.name}</option>)}</select> : <div className="text-[13px]">{a.dossierStatus || "-"}</div>}
@@ -285,6 +293,16 @@ export function CasierEntryModal({ entryId, canDelete: canDeleteAny, onClose }: 
         )}
       </div>
     </div>
+    {editCharges && entry && (
+      <EditChargesModal
+        title="Modifier les chefs d'inculpation"
+        isCitation={false}
+        initialCharges={entry.charges}
+        onSave={(charges) => updateCharges({ entryId, charges })}
+        onClose={() => setEditCharges(false)}
+      />
+    )}
+    </>
   );
 }
 

@@ -57,7 +57,7 @@ export function CitationBody({ entry, reference }: { entry: Entry; reference: st
               {entry.charges.map((c, i) => (
                 <div key={i} className="flex items-center gap-3 rounded-[8px] border p-3" style={{ borderColor: "#e5e8ec" }}>
                   <div className="flex-1">
-                    <div className="text-[12.5px] font-semibold">{c.name}</div>
+                    <div className="text-[12.5px] font-semibold">{c.displayName}</div>
                     <div className="mt-[2px] flex gap-3 text-[11px]" style={{ color: "#5c626e" }}>
                       {c.category && <span>{c.category}</span>}
                       {c.isRecidive && <span style={{ color: "#c02828" }}>Récidive</span>}

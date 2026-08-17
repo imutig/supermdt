@@ -553,7 +553,7 @@ export const _rollbackCitation = internalMutation({
 export const createContravention = action({
   args: {
     citizenId: v.id("citizens"), vehicleId: v.optional(v.id("vehicles")),
-    charges: v.array(v.object({ penalChargeId: v.id("penalCharges"), param: v.optional(v.number()), isRecidive: v.boolean() })),
+    charges: v.array(v.object({ penalChargeId: v.id("penalCharges"), param: v.optional(v.number()), isRecidive: v.boolean(), attemptType: v.optional(v.union(v.literal("TENTATIVE"), v.literal("COMPLICITE"))) })),
     notes: v.optional(v.string()),
   },
   handler: async (ctx, a): Promise<Id<"citations">> => {
@@ -687,6 +687,40 @@ export const patchAmendeStatus = internalAction({
   },
 });
 
+// PATCH /api/amendes/:id — répercute un changement de montant / objet (édition
+// des chefs d'inculpation, item 2). Best-effort, calqué sur patchAmendeStatus.
+// N'ENVOIE JAMAIS la tentative / complicité (label SuperMDT uniquement).
+export const patchAmende = internalAction({
+  args: { amendeId: v.id("amendes"), agentId: v.id("agents") },
+  handler: async (ctx, { amendeId, agentId }): Promise<void> => {
+    const amende = await ctx.runQuery(internal.amendes._get, { amendeId });
+    if (!amende?.nexusId) return;
+
+    let credAgentId = agentId;
+    let cred: Cred | null = await ctx.runQuery(internal.nexusSync._credFor, { agentId });
+    if (!cred) {
+      const any = await ctx.runQuery(internal.nexusSync._anyLinkedCred, {});
+      if (any) { cred = { email: any.email, secretEnc: any.secretEnc, tokenCache: any.tokenCache, tokenExpiry: any.tokenExpiry }; credAgentId = any.agentId; }
+    }
+    if (!cred) return;
+
+    const t0 = Date.now();
+    let res: Response;
+    try {
+      res = await nexusFetch(ctx, credAgentId, cred, `/api/amendes/${amende.nexusId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ entity: "lspd", montant: amende.montant, objet: amende.objet }) });
+    } catch (e) {
+      await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: "amende", op: "PATCH", ok: false, durationMs: Date.now() - t0, agentId, error: e instanceof Error ? e.message : String(e) });
+      return;
+    }
+    if (!res.ok) {
+      const txt = await res.text().catch(() => "");
+      await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: "amende", op: "PATCH", ok: false, httpStatus: res.status, durationMs: Date.now() - t0, agentId, error: txt.slice(0, 160) });
+      return;
+    }
+    await ctx.runMutation(internal.nexusSync._log, { direction: "WRITE", entity: "amende", op: "PATCH", ok: true, httpStatus: res.status, durationMs: Date.now() - t0, agentId, detail: `$${amende.montant}` });
+  },
+});
+
 // ---------------------- Casier (dossier / rapport) write-through ----------------------
 export const _casierForPush = internalQuery({
   args: { entryId: v.id("casierEntries") },
@@ -723,7 +757,7 @@ export const _rollbackCasier = internalMutation({
 export const createCasier = action({
   args: {
     citizenId: v.id("citizens"),
-    charges: v.array(v.object({ penalChargeId: v.id("penalCharges"), param: v.optional(v.number()), isRecidive: v.boolean() })),
+    charges: v.array(v.object({ penalChargeId: v.id("penalCharges"), param: v.optional(v.number()), isRecidive: v.boolean(), attemptType: v.optional(v.union(v.literal("TENTATIVE"), v.literal("COMPLICITE"))) })),
     derouleFaits: v.optional(v.string()), lieu: v.optional(v.string()),
     cuffedAt: v.optional(v.string()), mirandaAt: v.optional(v.string()),
     rightsLawyer: v.optional(v.boolean()), rightsFood: v.optional(v.boolean()), rightsMedical: v.optional(v.boolean()),

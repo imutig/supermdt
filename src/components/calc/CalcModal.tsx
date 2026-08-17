@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { X } from "lucide-react";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { api, type Id } from "@/lib/api";
@@ -8,35 +8,14 @@ import { useDocSender } from "@/components/docs/DocSender";
 import { Clover } from "@/components/common/Clover";
 import { RichTextEditor } from "@/components/common/RichTextEditor";
 import { ImageGallery } from "@/components/common/ImageGallery";
-import { MultiSelect } from "@/components/common/MultiSelect";
+import { ChargePicker, type Row, rowFine, rowError, fmtMoney, fmtDur } from "@/components/calc/ChargePicker";
+import { ReportSearchPicker, VehicleSearchPicker, WeaponSearchPicker } from "@/components/dossier/LinkPickers";
 import { FEATURES } from "@/lib/features";
-
-interface Charge {
-  _id: Id<"penalCharges">;
-  name: string;
-  categoryName: string;
-  sensitive: boolean;
-  severityName: string | null;
-  fine: { kind: string; amount?: number; unit?: string; raw: string };
-  jailSeconds: number | null;
-  dojRequest: boolean;
-  minParam: number | null;
-  maxParam: number | null;
-  sanctions: string[];
-}
-interface Row {
-  uid: number;
-  charge: Charge;
-  param: number;
-  isRecidive: boolean;
-}
-let uidSeq = 1;
 
 export function CalcModal() {
   const { calcOpen, closeCalc, calcCitizenId, calcMode } = useApp();
   const toast = useToast();
   const isCitation = calcMode === "contravention";
-  const [pq, setPq] = useState("");
   const [rows, setRows] = useState<Row[]>([]);
   const [place, setPlace] = useState("");
   const [busy, setBusy] = useState(false);
@@ -59,18 +38,7 @@ export function CalcModal() {
 
   const citizenId = calcCitizenId as Id<"citizens"> | null;
   const citizen = useQuery(api.citizens.getById, citizenId ? { id: citizenId } : "skip");
-  const dossierReports = useQuery(api.reports.list, calcOpen && !isCitation ? {} : "skip");
-  const vehicleOpts = useQuery(api.vehicles.pickerList, calcOpen && !isCitation ? {} : "skip");
-  const weaponOpts = useQuery(api.weapons.pickerList, calcOpen && !isCitation ? {} : "skip");
   const cfgOpts = useQuery(api.configEditors.options, calcOpen && !isCitation ? {} : "skip");
-  const allCharges = useQuery(api.penal.listCharges, calcOpen ? { search: pq || undefined } : "skip") as
-    | Charge[]
-    | undefined;
-  // En contravention, seules les infractions de sévérité "Contravention" sont proposables (§4).
-  const charges = useMemo(
-    () => (allCharges && isCitation ? allCharges.filter((c) => c.severityName === "Contravention") : allCharges),
-    [allCharges, isCitation],
-  );
   const addEntry = useMutation(api.casier.addEntry);
   const addCitation = useMutation(api.citations.create);
   const createCasierSynced = useAction(api.nexusSync.createCasier);
@@ -79,16 +47,6 @@ export function CalcModal() {
   const syncActive = !!nexusStatus?.configured && nexusStatus.status === "OK";
   const canWrite = FEATURES.judicialWrite || syncActive;
   const docSender = useDocSender();
-
-  const pickerGroups = useMemo(() => {
-    if (!charges) return [];
-    const byCat = new Map<string, Charge[]>();
-    for (const c of charges) {
-      if (!byCat.has(c.categoryName)) byCat.set(c.categoryName, []);
-      byCat.get(c.categoryName)!.push(c);
-    }
-    return [...byCat.entries()].map(([label, list]) => ({ label, list: list.slice(0, 12) }));
-  }, [charges]);
 
   if (!calcOpen) return null;
 
@@ -107,23 +65,6 @@ export function CalcModal() {
     );
   }
 
-  const add = (c: Charge) =>
-    setRows((r) => [...r, { uid: uidSeq++, charge: c, param: c.fine.kind === "PER_UNIT" ? 1 : 0, isRecidive: false }]);
-  const remove = (uid: number) => setRows((r) => r.filter((x) => x.uid !== uid));
-  const patch = (uid: number, p: Partial<Row>) =>
-    setRows((r) => r.map((x) => (x.uid === uid ? { ...x, ...p } : x)));
-
-  const baseOf = (row: Row) => {
-    const f = row.charge.fine;
-    if (f.kind === "FIXED") return f.amount ?? 0;
-    if (f.kind === "PER_UNIT") return (f.amount ?? 0) * (row.param || 1);
-    if (f.kind === "FORMULA") return row.param || 0;
-    return 0;
-  };
-  // Item 4 : plus de multiplicateur DEFCON. Item 6 : plus de facteur récidive.
-  const rowFine = (row: Row) =>
-    row.charge.fine.kind === "ON_DECISION" ? 0 : Math.round(baseOf(row));
-
   // Dossier d'arrestation dès qu'une charge est un Crime ou un Délit majeur, sinon simple rapport.
   const isDossier = rows.some((r) => r.charge.severityName === "Crime" || r.charge.severityName === "Délit majeur");
   const arrestLabel = isDossier ? "Dossier d'arrestation" : "Rapport d'arrestation";
@@ -134,16 +75,6 @@ export function CalcModal() {
   const totalJail = rows.reduce((s, r) => s + (r.charge.jailSeconds ?? 0), 0);
   const sanctions = [...new Set(rows.flatMap((r) => r.charge.sanctions))];
   const dojRequired = rows.some((r) => r.charge.dojRequest);
-
-  // Bornes de quantité (§3) : bloque la validation si un paramètre est hors [min, max].
-  const rowError = (row: Row): string | null => {
-    if (row.charge.fine.kind !== "PER_UNIT" && row.charge.fine.kind !== "FORMULA") return null;
-    if (row.charge.minParam != null && row.param < row.charge.minParam)
-      return `Quantité minimale : ${row.charge.minParam}`;
-    if (row.charge.maxParam != null && row.param > row.charge.maxParam)
-      return `Quantité maximale : ${row.charge.maxParam}`;
-    return null;
-  };
   const hasErrors = rows.some((r) => rowError(r) !== null);
 
   async function validate() {
@@ -157,6 +88,7 @@ export function CalcModal() {
       penalChargeId: r.charge._id,
       param: r.param,
       isRecidive: false, // récidive retirée (item 6)
+      attemptType: r.attemptType || undefined, // tentative / complicité (label seul)
     }));
     const casierArgs = {
       citizenId,
@@ -265,118 +197,7 @@ export function CalcModal() {
             </div>
           )}
 
-          {/* Picker */}
-          <div>
-            <div className="mb-2 text-[10.5px] font-bold uppercase tracking-[0.09em] text-faint">
-              Ajouter une charge - code pénal
-            </div>
-            <input
-              value={pq}
-              onChange={(e) => setPq(e.target.value)}
-              placeholder="Rechercher une infraction…"
-              className="mb-[9px] h-9 w-full rounded-sm border border-border bg-surface-2 px-3 text-[13px] text-text outline-none focus:border-accent"
-            />
-            <div className="max-h-[176px] overflow-y-auto rounded-sm border border-border">
-              {charges === undefined && (
-                <div className="px-3 py-6 text-center text-[12px] text-faint">Chargement…</div>
-              )}
-              {charges && charges.length === 0 && (
-                <div className="px-3 py-6 text-center text-[12px] text-faint">Aucune infraction.</div>
-              )}
-              {charges && pq.trim()
-                ? charges.slice(0, 25).map((c) => (
-                    <button
-                      key={c._id}
-                      onClick={() => add(c)}
-                      className="flex w-full items-center gap-[10px] border-b border-border px-3 py-[9px] text-left hover:bg-accent-soft"
-                    >
-                      <span className="flex-1 text-[12.5px]">
-                        {c.name}
-                        <span className="ml-2 text-[10.5px] text-faint">{c.categoryName}</span>
-                      </span>
-                      <span className="font-data text-[11px] text-muted">{c.fine.raw}</span>
-                      <span className="text-[16px] font-normal leading-none text-accent">+</span>
-                    </button>
-                  ))
-                : pickerGroups.map((g) => (
-                    <div key={g.label}>
-                      <div className="sticky top-0 bg-surface-2 px-3 py-[7px] text-[10px] font-bold uppercase tracking-[0.08em] text-faint">
-                        {g.label}
-                      </div>
-                      {g.list.map((c) => (
-                        <button
-                          key={c._id}
-                          onClick={() => add(c)}
-                          className="flex w-full items-center gap-[10px] border-b border-border px-3 py-[9px] text-left hover:bg-accent-soft"
-                        >
-                          <span className="flex-1 text-[12.5px]">{c.name}</span>
-                          <span className="font-data text-[11px] text-muted">{c.fine.raw}</span>
-                          <span className="text-[16px] font-normal leading-none text-accent">+</span>
-                        </button>
-                      ))}
-                    </div>
-                  ))}
-            </div>
-          </div>
-
-          {/* Selected */}
-          <div>
-            <div className="mb-[9px] flex items-center gap-2">
-              <div className="text-[10.5px] font-bold uppercase tracking-[0.09em] text-faint">
-                Charges retenues
-              </div>
-              <span className="font-data text-[11px] text-muted">{rows.length}</span>
-            </div>
-            {rows.length === 0 && (
-              <div className="rounded-sm border border-dashed border-border px-[22px] py-[22px] text-center text-[12.5px] text-faint">
-                Aucune charge - ajoutez une infraction ci-dessus.
-              </div>
-            )}
-            <div className="flex flex-col gap-[9px]">
-              {rows.map((r) => (
-                <div key={r.uid} className="rounded-sm border border-border bg-surface px-3 py-[11px]">
-                  <div className="flex items-start gap-[9px]">
-                    <div className="flex-1">
-                      <div className="text-[13px] font-semibold">{r.charge.name}</div>
-                      <div className="mt-[2px] text-[11px] text-muted">
-                        {r.charge.categoryName}
-                        {r.charge.jailSeconds ? ` · Prison ${fmtDur(r.charge.jailSeconds)}` : ""}
-                      </div>
-                    </div>
-                    <span className="font-data text-[14px] font-bold">
-                      {r.charge.fine.kind === "ON_DECISION" ? "DOJ" : fmtMoney(rowFine(r))}
-                    </span>
-                    <button
-                      onClick={() => remove(r.uid)}
-                      className="flex h-[22px] w-[22px] flex-shrink-0 items-center justify-center rounded-[6px] border border-border text-[12px] leading-none text-faint hover:border-danger hover:text-danger"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                  {(r.charge.fine.kind === "PER_UNIT" || r.charge.fine.kind === "FORMULA") && (
-                    <div className="mt-[10px] flex flex-wrap items-center gap-[9px]">
-                      <div className="flex items-center gap-[7px] rounded-[6px] border border-border bg-surface-2 px-[9px] py-1">
-                        <span className="text-[11px] text-muted">
-                          {r.charge.fine.kind === "PER_UNIT" ? `Quantité` : "Montant de base"}
-                        </span>
-                        <input
-                          value={r.param}
-                          onChange={(e) => patch(r.uid, { param: parseInt(e.target.value) || 0 })}
-                          className="h-6 w-[64px] rounded-[5px] border border-border bg-surface px-[6px] text-center font-data text-[12px] text-text outline-none focus:border-accent"
-                        />
-                        {r.charge.fine.unit && <span className="text-[11px] text-faint">{r.charge.fine.unit}</span>}
-                      </div>
-                    </div>
-                  )}
-                  {rowError(r) && (
-                    <div className="mt-[8px] rounded-[5px] px-[8px] py-[5px] text-[11.5px] font-semibold" style={{ background: "rgba(220,38,38,0.10)", color: "var(--danger)" }}>
-                      {rowError(r)}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
+          <ChargePicker rows={rows} setRows={setRows} isCitation={isCitation} />
 
           {/* Déroulé + lieu (casier uniquement) */}
           {!isCitation && (
@@ -456,13 +277,10 @@ export function CalcModal() {
               <div><div className={LBL}>Images</div><ImageGallery urls={dImages} onChange={setDImages} emptyLabel="Aucune image." /></div>
               <div><div className={LBL}>Avocat</div><input value={dAvocat} onChange={(e) => setDAvocat(e.target.value)} placeholder="Nom de l'avocat" className={INP} /></div>
               <div><div className={LBL}>Rapport lié</div>
-                <select value={dLinkedReport} onChange={(e) => setDLinkedReport(e.target.value)} className={INP}>
-                  <option value="">- Sélectionner un rapport -</option>
-                  {(dossierReports ?? []).map((r) => <option key={r._id} value={r._id}>{r.title}</option>)}
-                </select>
+                <ReportSearchPicker value={dLinkedReport} onChange={setDLinkedReport} />
               </div>
-              <div><div className={LBL}>Véhicules impliqués</div><MultiSelect options={vehicleOpts} selected={dVehicles} onChange={setDVehicles} placeholder="Ajouter un véhicule…" /></div>
-              <div><div className={LBL}>Armes utilisées</div><MultiSelect options={weaponOpts} selected={dWeapons} onChange={setDWeapons} placeholder="Ajouter une arme…" /></div>
+              <div><div className={LBL}>Véhicules impliqués</div><VehicleSearchPicker selected={dVehicles} onChange={setDVehicles} /></div>
+              <div><div className={LBL}>Armes utilisées</div><WeaponSearchPicker selected={dWeapons} onChange={setDWeapons} /></div>
               <div className="grid grid-cols-2 gap-3">
                 <div><div className={LBL}>Statut du dossier</div>
                   <select value={dStatus} onChange={(e) => setDStatus(e.target.value)} className={INP}>
@@ -546,14 +364,4 @@ export function CalcModal() {
       </div>
     </div>
   );
-}
-
-function fmtMoney(n: number) {
-  return "$" + n.toLocaleString("fr-FR");
-}
-function fmtDur(seconds: number) {
-  if (!seconds) return "Aucune";
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  return [h ? `${h}h` : "", m ? `${m}min` : ""].filter(Boolean).join(" ") || `${seconds}s`;
 }

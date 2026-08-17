@@ -7,6 +7,7 @@ import { writeAudit } from "./lib/audit";
 import { touchStats } from "./stats";
 import { notify, NOTIFY_COLOR, deepLink } from "./lib/notify";
 import { computeCharge } from "./lib/calc";
+import { chargeDisplayName } from "./lib/charges";
 import { parisParts } from "./lib/paris";
 
 // Date / heure d'infraction (heure de Paris) au format Nexus (JJ/MM/AAAA, HH:MM).
@@ -24,6 +25,66 @@ async function currentDefcon(ctx: QueryCtx) {
   if (!last) return def;
   if (last.until != null && last.until < Date.now()) return def;
   return (await ctx.db.get(last.levelId)) ?? def;
+}
+
+type CitationChargeInput = {
+  penalChargeId: import("./_generated/dataModel").Id<"penalCharges">;
+  param?: number;
+  isRecidive: boolean;
+  attemptType?: "TENTATIVE" | "COMPLICITE";
+};
+
+// Construit les snapshots + total d'une contravention. Partagé par create et
+// updateCharges. Refuse toute infraction non "Contravention" (§4). Calcul
+// INCHANGÉ (tentative / complicité = label seul).
+async function buildCitationCharges(
+  ctx: QueryCtx,
+  defcon: { name: string; fineMultiplier: number; sensitiveFineMultiplier: number },
+  charges: CitationChargeInput[],
+) {
+  let totalFine = 0;
+  const snaps = [];
+  for (const c of charges) {
+    const pc = await ctx.db.get(c.penalChargeId);
+    if (!pc) continue;
+    const cat = await ctx.db.get(pc.categoryId);
+    const sev = pc.severityId ? await ctx.db.get(pc.severityId) : null;
+    // Une contravention ne peut retenir que des infractions de sévérité "Contravention" (§4).
+    if (sev?.name !== "Contravention") {
+      throw new ConvexError(`« ${pc.name} » n'est pas une contravention.`);
+    }
+    const sanctionNames: string[] = [];
+    for (const sid of pc.sanctionIds) {
+      const s = await ctx.db.get(sid);
+      if (s) sanctionNames.push(s.name);
+    }
+    const res = computeCharge({
+      fine: pc.fine,
+      sensitive: cat?.sensitive ?? false,
+      defcon,
+      param: c.param,
+      isRecidive: c.isRecidive,
+    });
+    totalFine += res.fine;
+    snaps.push({
+      penalChargeId: pc._id,
+      snapshot: {
+        name: pc.name,
+        category: cat?.name ?? "",
+        severity: sev?.name ?? "",
+        sensitive: cat?.sensitive ?? false,
+        fineRaw: pc.fine.raw,
+        dojRequest: pc.dojRequest,
+        sanctions: sanctionNames,
+      },
+      formulaParam: c.param,
+      isRecidive: c.isRecidive,
+      attemptType: c.attemptType,
+      computedFine: res.fine,
+      onDecision: res.onDecision,
+    });
+  }
+  return { snaps, totalFine };
 }
 
 // Officier verbalisateur avec état de rattachement. Contravention importée du
@@ -64,7 +125,7 @@ export const byCitizen = query({
         status: c.status,
         totalFine: c.totalFine,
         officer: await citationOfficer(ctx, c),
-        motif: charges.map((x) => x.snapshot.name).join(", ") || "-",
+        motif: charges.map((x) => chargeDisplayName(x.snapshot.name, x.attemptType)).join(", ") || "-",
       });
     }
     return out;
@@ -101,6 +162,8 @@ export const getEntry = query({
       notes: c.notes,
       charges: charges.map((ch) => ({
         name: ch.snapshot.name,
+        attemptType: ch.attemptType ?? null,
+        displayName: chargeDisplayName(ch.snapshot.name, ch.attemptType),
         category: ch.snapshot.category,
         severity: ch.snapshot.severity,
         sensitive: ch.snapshot.sensitive,
@@ -108,6 +171,8 @@ export const getEntry = query({
         computedFine: ch.computedFine,
         isRecidive: ch.isRecidive,
         onDecision: ch.onDecision,
+        formulaParam: ch.formulaParam,
+        penalChargeId: ch.penalChargeId ?? null,
       })),
     };
   },
@@ -163,7 +228,7 @@ export const recent = query({
         _id: c._id,
         citizenId: c.citizenId,
         citizenName: citizen ? `${citizen.prenom} ${citizen.nom}` : "-",
-        motif: charges.map((x) => x.snapshot.name).join(", ") || "-",
+        motif: charges.map((x) => chargeDisplayName(x.snapshot.name, x.attemptType)).join(", ") || "-",
         totalFine: c.totalFine,
         officer: await citationOfficer(ctx, c),
         status: c.status,
@@ -183,6 +248,8 @@ export const create = mutation({
         penalChargeId: v.id("penalCharges"),
         param: v.optional(v.number()),
         isRecidive: v.boolean(),
+        // Tentative / complicité (label seul ; n'affecte ni calcul ni Nexus).
+        attemptType: v.optional(v.union(v.literal("TENTATIVE"), v.literal("COMPLICITE"))),
       }),
     ),
     notes: v.optional(v.string()),
@@ -193,47 +260,7 @@ export const create = mutation({
     const defcon = await currentDefcon(ctx);
     if (!defcon) throw new ConvexError("DEFCON non configuré.");
 
-    let totalFine = 0;
-    const snaps = [];
-    for (const c of args.charges) {
-      const pc = await ctx.db.get(c.penalChargeId);
-      if (!pc) continue;
-      const cat = await ctx.db.get(pc.categoryId);
-      const sev = pc.severityId ? await ctx.db.get(pc.severityId) : null;
-      // Une contravention ne peut retenir que des infractions de sévérité "Contravention" (§4).
-      if (sev?.name !== "Contravention") {
-        throw new ConvexError(`« ${pc.name} » n'est pas une contravention.`);
-      }
-      const sanctionNames: string[] = [];
-      for (const sid of pc.sanctionIds) {
-        const s = await ctx.db.get(sid);
-        if (s) sanctionNames.push(s.name);
-      }
-      const res = computeCharge({
-        fine: pc.fine,
-        sensitive: cat?.sensitive ?? false,
-        defcon,
-        param: c.param,
-        isRecidive: c.isRecidive,
-      });
-      totalFine += res.fine;
-      snaps.push({
-        penalChargeId: pc._id,
-        snapshot: {
-          name: pc.name,
-          category: cat?.name ?? "",
-          severity: sev?.name ?? "",
-          sensitive: cat?.sensitive ?? false,
-          fineRaw: pc.fine.raw,
-          dojRequest: pc.dojRequest,
-          sanctions: sanctionNames,
-        },
-        formulaParam: c.param,
-        isRecidive: c.isRecidive,
-        computedFine: res.fine,
-        onDecision: res.onDecision,
-      });
-    }
+    const { snaps, totalFine } = await buildCitationCharges(ctx, defcon, args.charges);
 
     const id = await ctx.db.insert("citations", {
       citizenId: args.citizenId,
@@ -299,5 +326,81 @@ export const create = mutation({
 
     await touchStats(ctx);
     return id;
+  },
+});
+
+// Édition des chefs d'une contravention non annulée (item 2). Recalcule le total
+// (calcul INCHANGÉ), remplace les snapshots, met à jour l'amende liée (montant +
+// objet) localement + répercussion Nexus. Pas de notion de « clôture » ici.
+export const updateCharges = mutation({
+  args: {
+    citationId: v.id("citations"),
+    charges: v.array(
+      v.object({
+        penalChargeId: v.id("penalCharges"),
+        param: v.optional(v.number()),
+        isRecidive: v.boolean(),
+        attemptType: v.optional(v.union(v.literal("TENTATIVE"), v.literal("COMPLICITE"))),
+      }),
+    ),
+  },
+  handler: async (ctx, { citationId, charges }) => {
+    const agent = await requireAgent(ctx);
+    await requirePermission(ctx, agent, "contraventions.create");
+    const c = await ctx.db.get(citationId);
+    if (!c) throw new ConvexError("Contravention introuvable.");
+    if (c.deletedAt) throw new ConvexError("Contravention archivée.");
+    const defcon = await currentDefcon(ctx);
+    if (!defcon) throw new ConvexError("DEFCON non configuré.");
+
+    const { snaps, totalFine } = await buildCitationCharges(ctx, defcon, charges);
+
+    const old = await ctx.db.query("citationCharges").withIndex("by_citation", (q) => q.eq("citationId", citationId)).collect();
+    for (const ch of old) await ctx.db.delete(ch._id);
+    for (const s of snaps) await ctx.db.insert("citationCharges", { citationId, ...s });
+
+    await ctx.db.patch(citationId, { totalFine });
+
+    const citizen = await ctx.db.get(c.citizenId);
+    const objet = snaps.map((s) => s.snapshot.name).join(" + ") || undefined; // noms bruts (jamais préfixés, va vers Nexus)
+
+    const amende = (await ctx.db.query("amendes").withIndex("by_citation", (q) => q.eq("citationId", citationId)).collect())
+      .find((a) => !a.deletedAt);
+    if (amende) {
+      await ctx.db.patch(amende._id, { montant: totalFine, objet });
+      if (amende.nexusId) {
+        await ctx.scheduler.runAfter(0, internal.nexusSync.patchAmende, { amendeId: amende._id, agentId: agent._id });
+      }
+    } else if (totalFine > 0) {
+      const { date, heure } = parisInfractionStamp();
+      const amendeId = await ctx.db.insert("amendes", {
+        citizenId: c.citizenId,
+        sourceType: "CONTRAVENTION",
+        citationId,
+        typeAmende: "Amende de police",
+        statut: "Notifiée",
+        objet,
+        montant: totalFine,
+        dateInfraction: date,
+        heureInfraction: heure,
+        autoriteCompetente: "LSPD - Los Santos Police Department",
+        verbalisateurNom: `${agent.prenomRP} ${agent.nomRP}`,
+        matriculeAgent: agent.matricule ?? undefined,
+        description: c.notes || undefined,
+        at: Date.now(),
+        createdBy: agent._id,
+      });
+      await ctx.scheduler.runAfter(0, internal.nexusSync.pushAmende, { amendeId, agentId: agent._id });
+    }
+
+    await writeAudit(ctx, agent, {
+      action: "citation.charges_update",
+      resourceType: "citation",
+      resourceId: citationId,
+      resourceLabel: citizen ? `${citizen.prenom} ${citizen.nom}` : "",
+      metadata: { totalFine, charges: snaps.length },
+    });
+    await touchStats(ctx);
+    return citationId;
   },
 });
