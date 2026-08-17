@@ -710,6 +710,27 @@ export const ensureNexusComplaintStatuses = internalMutation({
   },
 });
 
+// Inspection d'un dossier/rapport Nexus : structure exacte d'une charge (champs
+// quantite / tentative / complicite / aggravation) pour le write-through.
+export const inspectNexusDossier = internalAction({
+  args: { token: v.optional(v.string()) },
+  handler: async (ctx, { token }): Promise<{ dossierChargeKeys: string[] | null; dossierChargeSample: any; rapportChargeSample: any; dossierKeys: string[] | null }> => {
+    const tk = token || process.env.VIZU_TOKEN || (await ctx.runAction(internal.nexusSync.anyLinkedToken, {})) || undefined;
+    if (!tk) throw new ConvexError("Aucun token et aucun compte Nexus lié.");
+    const dossiers = await apiGet("/api/dossiers?entity=lspd&page=1&limit=20", tk).then((j: any) => j.dossiers || j.casiers || []);
+    const rapports = await apiGet("/api/rapports?entity=lspd&page=1&limit=20", tk).then((j: any) => j.rapports || []).catch(() => []);
+    const withCharges = dossiers.find((d: any) => Array.isArray(d.charges) && d.charges.length) ?? dossiers[0] ?? null;
+    const firstCharge = withCharges?.charges?.[0] ?? null;
+    const rWithCharges = rapports.find((r: any) => Array.isArray(r.charges) && r.charges.length) ?? rapports[0] ?? null;
+    return {
+      dossierKeys: withCharges ? Object.keys(withCharges) : null,
+      dossierChargeKeys: firstCharge && typeof firstCharge === "object" ? Object.keys(firstCharge) : null,
+      dossierChargeSample: firstCharge,
+      rapportChargeSample: rWithCharges?.charges?.[0] ?? null,
+    };
+  },
+});
+
 // Inspection des amendes Nexus : statuts réels + un échantillon (contrat d'écriture).
 export const inspectNexusAmendes = internalAction({
   args: { token: v.optional(v.string()) },
