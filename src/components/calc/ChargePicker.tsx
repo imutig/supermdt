@@ -33,7 +33,9 @@ export const nextUid = () => uidSeq++;
 
 export function baseOf(row: Row) {
   const f = row.charge.fine;
-  if (f.kind === "FIXED") return f.amount ?? 0;
+  // La quantité (Qté) multiplie désormais le barème FIXED comme le PER_UNIT
+  // (garde `|| 1` : une ligne à param 0 vaut ×1, jamais $0).
+  if (f.kind === "FIXED") return (f.amount ?? 0) * (row.param || 1);
   if (f.kind === "PER_UNIT") return (f.amount ?? 0) * (row.param || 1);
   if (f.kind === "FORMULA") return row.param || 0;
   return 0;
@@ -92,8 +94,10 @@ export function ChargePicker({
     return [...byCat.entries()].map(([label, list]) => ({ label, list: list.slice(0, 12) }));
   }, [charges]);
 
+  // Qté par défaut = 1 pour TOUS les barèmes (la quantité multiplie désormais
+  // aussi les FIXED). Pour FORMULA, `param` est le montant de base (saisi ensuite).
   const add = (c: Charge) =>
-    setRows((r) => [...r, { uid: nextUid(), charge: c, param: c.fine.kind === "PER_UNIT" ? 1 : 0, isRecidive: false, attemptType: "" }]);
+    setRows((r) => [...r, { uid: nextUid(), charge: c, param: 1, isRecidive: false, attemptType: "" }]);
   const remove = (uid: number) => setRows((r) => r.filter((x) => x.uid !== uid));
   const patch = (uid: number, p: Partial<Row>) => setRows((r) => r.map((x) => (x.uid === uid ? { ...x, ...p } : x)));
 
@@ -175,10 +179,10 @@ export function ChargePicker({
                   ✕
                 </button>
               </div>
-              {(r.charge.fine.kind === "PER_UNIT" || r.charge.fine.kind === "FORMULA") && (
+              {r.charge.fine.kind !== "ON_DECISION" && (
                 <div className="mt-[10px] flex flex-wrap items-center gap-[9px]">
                   <div className="flex items-center gap-[7px] rounded-[6px] border border-border bg-surface-2 px-[9px] py-1">
-                    <span className="text-[11px] text-muted">{r.charge.fine.kind === "PER_UNIT" ? `Quantité` : "Montant de base"}</span>
+                    <span className="text-[11px] text-muted">{r.charge.fine.kind === "FORMULA" ? "Montant de base" : "Quantité"}</span>
                     <input
                       value={r.param}
                       onChange={(e) => patch(r.uid, { param: parseInt(e.target.value) || 0 })}

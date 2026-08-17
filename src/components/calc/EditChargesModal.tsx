@@ -68,7 +68,16 @@ export function EditChargesModal({
         maxParam: null,
         sanctions: [],
       };
-      const param = typeof ec.formulaParam === "number" ? ec.formulaParam : charge.fine.kind === "PER_UNIT" ? 1 : 0;
+      // Charge vivante : param = quantité stockée (Qté par défaut 1 ; FORMULA 0 =
+      // montant à saisir). Stub (charge purgée) : son `amount` est déjà le total
+      // calculé -> param neutre (1) pour ne pas re-multiplier à l'affichage.
+      const param = !live
+        ? 1
+        : typeof ec.formulaParam === "number"
+          ? ec.formulaParam
+          : charge.fine.kind === "FORMULA"
+            ? 0
+            : 1;
       built.push({ uid: nextUid(), charge, param, isRecidive: false, attemptType: (ec.attemptType ?? "") as AttemptType });
     }
     setRows(built);

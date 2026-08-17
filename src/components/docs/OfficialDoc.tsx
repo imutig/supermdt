@@ -1,4 +1,4 @@
-import { useRef, useState, type ReactNode, type RefObject } from "react";
+import { useRef, useState, type ReactNode, type Ref } from "react";
 import { X, Download, Send } from "lucide-react";
 import { toPng } from "html-to-image";
 import { useAction } from "convex/react";
@@ -21,16 +21,23 @@ export function DocSheet({
   subtitle,
   reference,
   innerRef,
+  sheetIndex,
+  sheetCount,
   children,
 }: {
   title: string;
   subtitle: string;
   reference: string;
-  innerRef?: RefObject<HTMLDivElement>;
+  innerRef?: Ref<HTMLDivElement>;
+  // Numéro de feuille (1-based) et total : l'indicateur « Feuille k/N » n'apparaît
+  // que sur un document multi-feuilles.
+  sheetIndex?: number;
+  sheetCount?: number;
   children: ReactNode;
 }) {
   const me = useMe();
   const officerName = me ? `${fmtMatricule(me.agent.matricule) ?? ""} ${me.agent.prenomRP} ${me.agent.nomRP}`.trim() : "-";
+  const multi = !!sheetCount && sheetCount > 1;
 
   return (
     <div ref={innerRef} className="h-fit bg-white p-[48px] text-[#0b0d10]" style={{ width: 820, flexShrink: 0, fontFamily: "'Inter',system-ui,sans-serif" }}>
@@ -43,6 +50,7 @@ export function DocSheet({
         <div className="text-right text-[10.5px]" style={{ color: "#5c626e" }}>
           <div className="font-data font-semibold">{reference}</div>
           <div>Émis le {new Date().toLocaleDateString("fr-FR")}</div>
+          {multi && <div className="font-semibold" style={{ color: "#2E6B2F" }}>Feuille {sheetIndex}/{sheetCount}</div>}
         </div>
       </div>
 
@@ -84,7 +92,26 @@ export async function snapshotDoc(node: HTMLElement) {
   return await toPng(node, { pixelRatio: 2, backgroundColor: "#ffffff", cacheBust: true, style: { margin: "0" } });
 }
 
+// Nom de fichier d'une feuille : inchangé pour un document mono-feuille, suffixé
+// « -1of2 » / « -2of2 » sinon (juste avant l'extension).
+export function sheetFilename(filename: string, index: number, count: number): string {
+  if (count <= 1) return filename;
+  const dot = filename.lastIndexOf(".");
+  const base = dot >= 0 ? filename.slice(0, dot) : filename;
+  const ext = dot >= 0 ? filename.slice(dot) : ".png";
+  return `${base}-${index + 1}of${count}${ext}`;
+}
+
+// Embed Discord d'une feuille : embed complet sur la première, rappel léger
+// (titre + couleur) sur les suivantes pour ne pas dupliquer champs et lien.
+export function sheetEmbed(embed: DocEmbed, index: number, count: number): DocEmbed {
+  if (count <= 1 || index === 0) return embed;
+  return { title: `${embed.title} · Feuille ${index + 1}/${count}`, color: embed.color };
+}
+
 // Aperçu plein écran avec téléchargement et envoi Discord manuel.
+// Un document est composé d'une ou plusieurs feuilles : `sheets` en fournit le
+// corps ; le fallback `children` conserve l'API mono-feuille historique.
 export function OfficialDoc({
   toolbarTitle,
   subtitle,
@@ -94,6 +121,7 @@ export function OfficialDoc({
   discordEvent,
   discordEmbed,
   discordPath,
+  sheets,
   children,
   onClose,
 }: {
@@ -105,37 +133,54 @@ export function OfficialDoc({
   discordEvent: string;
   discordEmbed: DocEmbed;
   discordPath?: string;
-  children: ReactNode;
+  sheets?: ReactNode[];
+  children?: ReactNode;
   onClose: () => void;
 }) {
-  const docRef = useRef<HTMLDivElement>(null);
+  const bodies = sheets && sheets.length > 0 ? sheets : [children];
+  const count = bodies.length;
+  const sheetRefs = useRef<Array<HTMLDivElement | null>>([]);
   const [busy, setBusy] = useState<"png" | "discord" | null>(null);
   const postDocument = useAction(api.webhooks.postDocument);
   const toast = useToast();
 
   async function download() {
-    if (!docRef.current) return;
     setBusy("png");
     try {
-      const a = document.createElement("a");
-      a.download = filename;
-      a.href = await snapshotDoc(docRef.current);
-      a.click();
+      for (let i = 0; i < count; i++) {
+        const node = sheetRefs.current[i];
+        if (!node) continue;
+        const a = document.createElement("a");
+        a.download = sheetFilename(filename, i, count);
+        a.href = await snapshotDoc(node);
+        a.click();
+      }
     } finally {
       setBusy(null);
     }
   }
 
   async function sendDiscord() {
-    if (!docRef.current) return;
     setBusy("discord");
     try {
-      const dataUrl = await snapshotDoc(docRef.current);
-      const res = await toast.guard(
-        postDocument({ event: discordEvent, filename, base64: dataUrl.split(",")[1], embed: discordEmbed, path: discordPath }),
-        "Envoi impossible",
-      );
-      if (res === "ok") toast.success("Document envoyé sur Discord.");
+      let res: string | undefined;
+      for (let i = 0; i < count; i++) {
+        const node = sheetRefs.current[i];
+        if (!node) continue;
+        const dataUrl = await snapshotDoc(node);
+        res = await toast.guard(
+          postDocument({
+            event: discordEvent,
+            filename: sheetFilename(filename, i, count),
+            base64: dataUrl.split(",")[1],
+            embed: sheetEmbed(discordEmbed, i, count),
+            // Le lien vers le MDT n'accompagne que la première feuille.
+            path: i === 0 ? discordPath : undefined,
+          }),
+          "Envoi impossible",
+        );
+      }
+      if (res === "ok") toast.success(count > 1 ? `Document (${count} feuilles) envoyé sur Discord.` : "Document envoyé sur Discord.");
       else if (res) toast.warning(`Discord : ${res}`);
     } finally {
       setBusy(null);
@@ -151,17 +196,26 @@ export function OfficialDoc({
           <Send className="h-[15px] w-[15px]" /> {busy === "discord" ? "Envoi…" : "Envoyer sur Discord"}
         </button>
         <button onClick={download} disabled={busy !== null} className="mdt-press flex items-center gap-[7px] rounded-[9px] bg-accent px-[14px] py-[8px] text-[13px] font-semibold text-accent-contrast hover:brightness-[1.06] disabled:opacity-50">
-          <Download className="h-[15px] w-[15px]" /> {busy === "png" ? "Génération…" : "Télécharger (image)"}
+          <Download className="h-[15px] w-[15px]" /> {busy === "png" ? "Génération…" : count > 1 ? `Télécharger (${count} images)` : "Télécharger (image)"}
         </button>
         <button onClick={onClose} className="flex h-[34px] w-[34px] items-center justify-center rounded-sm border border-border bg-surface-2 text-muted hover:border-border-strong"><X className="h-4 w-4" /></button>
       </div>
 
-      <div className="flex flex-1 justify-center overflow-auto p-6">
-        <div className="h-fit shadow-[0_10px_40px_rgba(0,0,0,.3)]">
-          <DocSheet title={title} subtitle={subtitle} reference={reference} innerRef={docRef}>
-            {children}
-          </DocSheet>
-        </div>
+      <div className="flex flex-1 flex-col items-center gap-6 overflow-auto p-6">
+        {bodies.map((body, i) => (
+          <div key={i} className="h-fit shadow-[0_10px_40px_rgba(0,0,0,.3)]">
+            <DocSheet
+              title={title}
+              subtitle={subtitle}
+              reference={reference}
+              sheetIndex={i + 1}
+              sheetCount={count}
+              innerRef={(el) => { sheetRefs.current[i] = el; }}
+            >
+              {body}
+            </DocSheet>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -216,5 +270,104 @@ export function Stat({ label, value }: { label: string; value: string }) {
       <div className="text-[9.5px] font-bold uppercase tracking-[0.06em]" style={{ color: "#98a0ab" }}>{label}</div>
       <div className="mt-1 font-data text-[17px] font-bold">{value}</div>
     </div>
+  );
+}
+
+// ── Pagination des narratifs ────────────────────────────────────────────────
+// Un texte long (rapport d'arrestation, déroulé des faits, observations) est
+// réparti sur plusieurs feuilles pour ne jamais produire une image géante.
+
+export type NarrativeSection = { heading: string; text: string };
+
+// Budget souple par feuille : on ouvre une nouvelle feuille dès que l'un des
+// deux seuils est dépassé.
+const SHEET_CHAR_BUDGET = 2500;
+const SHEET_LINE_BUDGET = 40;
+// Largeur utile ~724px / ~12.5px : estimation grossière du nb de caractères
+// par ligne rendue, pour compter les lignes visuelles d'un paragraphe.
+const CHARS_PER_LINE = 95;
+
+type NarrativeBlock = { sectionIdx: number; heading: string; continued: boolean; paragraphs: string[] };
+
+function estLines(text: string): number {
+  return text.split("\n").reduce((n, ln) => n + Math.max(1, Math.ceil(ln.length / CHARS_PER_LINE)), 0);
+}
+
+// Coupe un paragraphe démesuré sur des frontières de mots pour qu'aucun
+// fragment ne dépasse `max` caractères (les textes issus du rich-text peuvent
+// n'avoir aucun saut de ligne).
+function splitLong(text: string, max: number): string[] {
+  if (text.length <= max) return [text];
+  const out: string[] = [];
+  let cur = "";
+  for (const token of text.split(/(\s+)/)) {
+    if (cur.length + token.length > max && cur.trim()) {
+      out.push(cur.trim());
+      cur = "";
+    }
+    cur += token;
+  }
+  if (cur.trim()) out.push(cur.trim());
+  return out;
+}
+
+// Répartit des sections narratives en feuilles. Renvoie un corps de feuille
+// (ReactNode) par feuille ; tableau vide si tout est vide (document mono-feuille).
+export function buildNarrativeSheets(sections: NarrativeSection[]): ReactNode[] {
+  const paras: { sectionIdx: number; heading: string; text: string }[] = [];
+  sections.forEach((s, si) => {
+    const text = (s.text ?? "").trim();
+    if (!text) return;
+    const parts = text.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
+    (parts.length ? parts : [text]).forEach((part) => {
+      splitLong(part, SHEET_CHAR_BUDGET).forEach((chunk) => paras.push({ sectionIdx: si, heading: s.heading, text: chunk }));
+    });
+  });
+  if (paras.length === 0) return [];
+
+  const sheets: NarrativeBlock[][] = [];
+  let sheet: NarrativeBlock[] = [];
+  let chars = 0;
+  let lines = 0;
+  const seen = new Set<number>();
+
+  for (const p of paras) {
+    const pLines = estLines(p.text) + 1; // +1 : espacement inter-paragraphe
+    const overflow = sheet.length > 0 && (chars + p.text.length > SHEET_CHAR_BUDGET || lines + pLines > SHEET_LINE_BUDGET);
+    if (overflow) {
+      sheets.push(sheet);
+      sheet = [];
+      chars = 0;
+      lines = 0;
+    }
+    let block = sheet[sheet.length - 1];
+    if (!block || block.sectionIdx !== p.sectionIdx) {
+      block = { sectionIdx: p.sectionIdx, heading: p.heading, continued: seen.has(p.sectionIdx), paragraphs: [] };
+      sheet.push(block);
+      seen.add(p.sectionIdx);
+      lines += 2; // coût visuel de l'en-tête de bloc
+    }
+    block.paragraphs.push(p.text);
+    chars += p.text.length;
+    lines += pLines;
+  }
+  if (sheet.length) sheets.push(sheet);
+
+  return sheets.map((blocks, i) => <NarrativeSheetBody key={i} blocks={blocks} />);
+}
+
+function NarrativeSheetBody({ blocks }: { blocks: NarrativeBlock[] }) {
+  return (
+    <>
+      {blocks.map((b, i) => (
+        <div key={i} className="mb-5">
+          <DocBlock title={b.continued ? `${b.heading} (suite)` : b.heading}>
+            <div className="whitespace-pre-wrap rounded-[8px] border p-4 text-[12.5px] leading-[1.6]" style={{ borderColor: "#e5e8ec" }}>
+              {b.paragraphs.join("\n\n")}
+            </div>
+          </DocBlock>
+        </div>
+      ))}
+    </>
   );
 }

@@ -24,18 +24,25 @@ export function computeCharge(opts: {
   isRecidive?: boolean;
 }): { fine: number; jailSeconds: number; onDecision: boolean } {
   const { fine, param } = opts;
+  const rawJail = opts.jailSeconds ?? 0;
 
   if (fine.kind === "ON_DECISION") {
-    return { fine: 0, jailSeconds: opts.jailSeconds ?? 0, onDecision: true };
+    return { fine: 0, jailSeconds: rawJail, onDecision: true };
   }
 
+  // La quantité (`param`) multiplie la peine des barèmes FIXED et PER_UNIT
+  // (amende ET prison). Le garde `|| 1` évite qu'une ancienne ligne à param
+  // 0/undefined ne ramène le total à zéro.
   let base = 0;
+  let jailSeconds = rawJail;
   switch (fine.kind) {
     case "FIXED":
-      base = fine.amount ?? 0;
+      base = (fine.amount ?? 0) * (param || 1);
+      jailSeconds = rawJail * (param || 1);
       break;
     case "PER_UNIT":
       base = (fine.amount ?? 0) * (param ?? 1);
+      jailSeconds = rawJail * (param || 1);
       break;
     case "FORMULA":
       // Le montant résolu (drogue/cat. arme/estimation) est saisi côté UI et passé en `param`.
@@ -48,5 +55,5 @@ export function computeCharge(opts: {
   // Item 4 : plus de multiplicateur DEFCON. Item 6 : plus de facteur récidive.
   const fineAmount = Math.round(base);
 
-  return { fine: fineAmount, jailSeconds: opts.jailSeconds ?? 0, onDecision: false };
+  return { fine: fineAmount, jailSeconds, onDecision: false };
 }

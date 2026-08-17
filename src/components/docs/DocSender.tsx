@@ -1,13 +1,15 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { useAction, useQuery } from "convex/react";
 import { api, type Id } from "@/lib/api";
-import { DocSheet, snapshotDoc, type DocEmbed } from "./OfficialDoc";
-import { CitationBody, citationMeta } from "./ContraventionDoc";
-import { CasierBody, casierMeta } from "./CasierDoc";
+import { DocSheet, snapshotDoc, sheetFilename, sheetEmbed, type DocEmbed } from "./OfficialDoc";
+import { citationMeta, citationSheets } from "./ContraventionDoc";
+import { casierMeta, casierSheets } from "./CasierDoc";
 
 // Envoi automatique du document officiel sur Discord juste après sa création.
 // L'image ne peut être produite que par le navigateur : le document est donc
 // monté hors écran, capturé, puis transmis à l'action Convex qui le relaie.
+// Un document peut compter plusieurs feuilles (rapport narratif long) : chacune
+// est capturée puis envoyée dans l'ordre.
 type Job = { kind: "citation"; id: Id<"citations"> } | { kind: "casier"; id: Id<"casierEntries"> };
 
 const Ctx = createContext<{ send: (job: Job) => void } | null>(null);
@@ -38,63 +40,119 @@ export function DocSenderProvider({ children }: { children: ReactNode }) {
   );
 }
 
-// Capture puis envoie dès que la feuille est rendue. `done` évite un second
-// envoi si le composant re-rend (nouvelle donnée, réabonnement Convex).
-function useAutoSend(ready: boolean, event: string, filename: string, embed: DocEmbed | null, path: string | undefined, onDone: () => void) {
-  const nodeRef = useRef<HTMLDivElement>(null);
+// Rend toutes les feuilles hors écran puis, une fois montées, les capture et les
+// envoie séquentiellement. `done` évite un second envoi si le composant re-rend
+// (nouvelle donnée, réabonnement Convex).
+function AutoSheets({
+  sheets,
+  title,
+  subtitle,
+  reference,
+  event,
+  filename,
+  embed,
+  path,
+  onDone,
+}: {
+  sheets: ReactNode[];
+  title: string;
+  subtitle: string;
+  reference: string;
+  event: string;
+  filename: string;
+  embed: DocEmbed;
+  path: string | undefined;
+  onDone: () => void;
+}) {
+  const refs = useRef<Array<HTMLDivElement | null>>([]);
   const postDocument = useAction(api.webhooks.postDocument);
   const done = useRef(false);
+  const count = sheets.length;
 
   useEffect(() => {
-    if (!ready || !embed || done.current || !nodeRef.current) return;
+    if (done.current) return;
+    const nodes = refs.current.slice(0, count);
+    // On attend que toutes les feuilles soient montées avant de capturer.
+    if (nodes.length < count || nodes.some((n) => !n)) return;
     done.current = true;
-    const node = nodeRef.current;
     void (async () => {
       try {
-        const dataUrl = await snapshotDoc(node);
-        await postDocument({ event, filename, base64: dataUrl.split(",")[1], embed, path });
+        for (let i = 0; i < count; i++) {
+          const node = nodes[i];
+          if (!node) continue;
+          const dataUrl = await snapshotDoc(node);
+          await postDocument({
+            event,
+            filename: sheetFilename(filename, i, count),
+            base64: dataUrl.split(",")[1],
+            embed: sheetEmbed(embed, i, count),
+            path: i === 0 ? path : undefined,
+          });
+        }
       } catch {
         // L'envoi Discord ne doit jamais bloquer le travail de l'agent.
       } finally {
         onDone();
       }
     })();
-  }, [ready, event, filename, embed, path, postDocument, onDone]);
+  }, [count, event, filename, embed, path, postDocument, onDone]);
 
-  return nodeRef;
+  return (
+    <>
+      {sheets.map((body, i) => (
+        <DocSheet
+          key={i}
+          title={title}
+          subtitle={subtitle}
+          reference={reference}
+          sheetIndex={i + 1}
+          sheetCount={count}
+          innerRef={(el) => { refs.current[i] = el; }}
+        >
+          {body}
+        </DocSheet>
+      ))}
+    </>
+  );
 }
+
+const SUBTITLE = "Document officiel · délivré par le département de police de Los Santos";
 
 function CitationSender({ id, onDone }: { id: Id<"citations">; onDone: () => void }) {
   const entry = useQuery(api.citations.getEntry, { citationId: id });
-  const meta = entry ? citationMeta(entry, id) : null;
-  const ref = useAutoSend(!!entry, "contravention.create", meta?.filename ?? "", meta?.embed ?? null, entry?.citizenId ? `/citoyen/${entry.citizenId}` : undefined, onDone);
-  if (!entry || !meta) return null;
+  if (!entry) return null;
+  const meta = citationMeta(entry, id);
   return (
-    <DocSheet
+    <AutoSheets
+      sheets={citationSheets(entry, meta.reference)}
       title="Avis de contravention"
-      subtitle="Document officiel · délivré par le département de police de Los Santos"
+      subtitle={SUBTITLE}
       reference={meta.reference}
-      innerRef={ref}
-    >
-      <CitationBody entry={entry} reference={meta.reference} />
-    </DocSheet>
+      event="contravention.create"
+      filename={meta.filename}
+      embed={meta.embed}
+      path={entry.citizenId ? `/citoyen/${entry.citizenId}` : undefined}
+      onDone={onDone}
+    />
   );
 }
 
 function CasierSender({ id, onDone }: { id: Id<"casierEntries">; onDone: () => void }) {
   const entry = useQuery(api.casier.getEntry, { entryId: id });
-  const meta = entry ? casierMeta(entry, id) : null;
-  const ref = useAutoSend(!!entry, "casier.create", meta?.filename ?? "", meta?.embed ?? null, entry ? `/citoyen/${entry.citizenId}` : undefined, onDone);
-  if (!entry || !meta) return null;
+  if (!entry) return null;
+  const meta = casierMeta(entry, id);
   const label = meta.isDossier ? "Dossier d'arrestation" : "Rapport au casier";
   return (
-    <DocSheet
+    <AutoSheets
+      sheets={casierSheets(entry, meta.reference)}
       title={label}
-      subtitle="Document officiel · délivré par le département de police de Los Santos"
+      subtitle={SUBTITLE}
       reference={meta.reference}
-      innerRef={ref}
-    >
-      <CasierBody entry={entry} reference={meta.reference} />
-    </DocSheet>
+      event="casier.create"
+      filename={meta.filename}
+      embed={meta.embed}
+      path={`/citoyen/${entry.citizenId}`}
+      onDone={onDone}
+    />
   );
 }

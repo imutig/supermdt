@@ -1,6 +1,7 @@
+import { type ReactNode } from "react";
 import { useQuery } from "convex/react";
 import { api, type Id } from "@/lib/api";
-import { OfficialDoc, DocBlock, Info, Stat, type DocEmbed } from "./OfficialDoc";
+import { OfficialDoc, DocBlock, Info, Stat, buildNarrativeSheets, type DocEmbed, type NarrativeSection } from "./OfficialDoc";
 import { richTextToPlain } from "@/components/common/RichTextEditor";
 
 type Entry = NonNullable<(typeof api.casier.getEntry)["_returnType"]>;
@@ -87,14 +88,6 @@ export function CasierBody({ entry, reference }: { entry: Entry; reference: stri
         </DocBlock>
       </div>
 
-      {entry.derouleFaits && (
-        <div className="mb-5">
-          <DocBlock title="Déroulé des faits">
-            <div className="whitespace-pre-wrap rounded-[8px] border p-4 text-[12.5px] leading-[1.6]" style={{ borderColor: "#e5e8ec" }}>{richTextToPlain(entry.derouleFaits)}</div>
-          </DocBlock>
-        </div>
-      )}
-
       {isDossier && (
         <div className="mb-5 rounded-[8px] border p-4" style={{ borderColor: "#e5e8ec" }}>
           <div className="mb-2 text-[10.5px] font-bold uppercase tracking-[0.1em]" style={{ color: "#2E6B2F" }}>Procédure d'arrestation</div>
@@ -146,6 +139,25 @@ export function CasierBody({ entry, reference }: { entry: Entry; reference: stri
   );
 }
 
+// Sections narratives du dossier : déroulé des faits + rapport d'arrestation
+// (les deux sont inclus s'ils existent), paginés sur leurs propres feuilles.
+export function casierNarrativeSections(entry: Entry): NarrativeSection[] {
+  const sections: NarrativeSection[] = [];
+  const deroule = richTextToPlain(entry.derouleFaits ?? "").trim();
+  if (deroule) sections.push({ heading: "Déroulé des faits", text: deroule });
+  const report = richTextToPlain(entry.reportBody ?? "").trim();
+  if (report) sections.push({ heading: "Rapport d'arrestation", text: report });
+  return sections;
+}
+
+// Feuilles complètes : corps principal + feuilles narratives (vides si aucun récit).
+export function casierSheets(entry: Entry, reference: string): ReactNode[] {
+  return [
+    <CasierBody entry={entry} reference={reference} />,
+    ...buildNarrativeSheets(casierNarrativeSections(entry)),
+  ];
+}
+
 // Dossier d'arrestation / rapport au casier : même charte que l'extrait de casier.
 export function CasierDoc({ entryId, onClose }: { entryId: Id<"casierEntries">; onClose: () => void }) {
   const entry = useQuery(api.casier.getEntry, { entryId });
@@ -162,9 +174,8 @@ export function CasierDoc({ entryId, onClose }: { entryId: Id<"casierEntries">; 
       discordEvent="casier.create"
       discordEmbed={meta.embed}
       discordPath={`/citoyen/${entry.citizenId}`}
+      sheets={casierSheets(entry, meta.reference)}
       onClose={onClose}
-    >
-      <CasierBody entry={entry} reference={meta.reference} />
-    </OfficialDoc>
+    />
   );
 }

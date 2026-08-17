@@ -7,6 +7,7 @@ import { getCurrentAgent, requireAgent, requirePermission, agentLabel } from "./
 import { nexusLogin, encryptSecret, decryptSecret } from "./lib/nexusAuth";
 import { mapCitizen } from "./migration";
 import { parisParts } from "./lib/paris";
+import { chargeDisplayName } from "./lib/charges";
 
 const pad2 = (n: number) => String(n).padStart(2, "0");
 // Date/heure Paris au format Nexus (JJ/MM/AAAA, HH:MM).
@@ -738,7 +739,15 @@ export const _casierForPush = internalQuery({
       dossierStatus: e.dossierStatus ?? "",
       totalFine: e.totalFine, totalJail: e.totalJailSeconds,
       agentMatricule: agent?.matricule ?? null, agentNom: agent ? `${agent.prenomRP} ${agent.nomRP}` : "",
-      charges: charges.map((c) => ({ name: c.snapshot.name, amende: c.computedFine, jailSeconds: c.computedJailSeconds })),
+      // quantite = param du picker (garde `|| 1`) ; tentative/complicité = drapeaux
+      // Nexus (le nom `charge` reste BRUT, jamais préfixé).
+      charges: charges.map((c) => ({
+        name: c.snapshot.name,
+        amende: c.computedFine,
+        jailSeconds: c.computedJailSeconds,
+        quantite: c.formulaParam || 1,
+        attemptType: c.attemptType ?? null,
+      })),
     };
   },
 });
@@ -790,13 +799,31 @@ export const createCasier = action({
       const payload: Record<string, unknown> = isDossier
         ? {
             entity: "lspd", citoyen, agents: [officer],
-            charges: info.charges.map((c) => ({ charge: c.name, amende: c.amende, tempsPrison: fmtHMS(c.jailSeconds) })),
+            // Objet Nexus complet : quantité + drapeaux tentative/complicité ;
+            // `charge` = nom BRUT (Nexus porte ses propres drapeaux). amende /
+            // tempsPrison sont les TOTAUX par ligne (déjà × quantité).
+            charges: info.charges.map((c) => ({
+              charge: c.name,
+              quantite: c.quantite || 1,
+              tentative: c.attemptType === "TENTATIVE",
+              complicite: c.attemptType === "COMPLICITE",
+              amende: c.amende,
+              tempsPrison: fmtHMS(c.jailSeconds),
+              aggravation: "",
+              aggravationActive: false,
+              amendeAggravation: 0,
+              tempsPrisonAggravation: "00:00:00",
+            })),
             statut: info.dossierStatus || "En cours", dateArrestation: nowArrest(),
             rapport: info.reportBody || a.derouleFaits || "",
           }
         : {
             entity: "lspd", citoyen, agentsImpliques: [officer],
-            charges: info.charges.map((c) => c.name),
+            // Rapport Nexus : charges = lignes de texte. On y embarque le label
+            // (Tentative de / Complicité de) et « (x N) » quand quantité > 1.
+            charges: info.charges.map(
+              (c) => chargeDisplayName(c.name, c.attemptType ?? undefined) + (c.quantite > 1 ? ` (x${c.quantite})` : ""),
+            ),
             rapport: info.reportBody || "", amende: info.totalFine, peine: fmtHMS(info.totalJail),
             date: nowArrest(),
           };

@@ -1,6 +1,7 @@
+import { type ReactNode } from "react";
 import { useQuery } from "convex/react";
 import { api, type Id } from "@/lib/api";
-import { OfficialDoc, DocBlock, Info, Stat, type DocEmbed } from "./OfficialDoc";
+import { OfficialDoc, DocBlock, Info, Stat, buildNarrativeSheets, type DocEmbed, type NarrativeSection } from "./OfficialDoc";
 
 type Entry = NonNullable<(typeof api.citations.getEntry)["_returnType"]>;
 
@@ -82,16 +83,22 @@ export function CitationBody({ entry, reference }: { entry: Entry; reference: st
           Contravention annulée{entry.annulReason ? ` : ${entry.annulReason}` : "."}
         </div>
       )}
-
-      {entry.notes && (
-        <div className="mb-2">
-          <DocBlock title="Observations">
-            <div className="whitespace-pre-wrap rounded-[8px] border p-3 text-[12.5px]" style={{ borderColor: "#e5e8ec" }}>{entry.notes}</div>
-          </DocBlock>
-        </div>
-      )}
     </>
   );
+}
+
+// Observations libres de la contravention : paginées si longues, sinon absentes
+// (le document reste alors mono-feuille).
+export function citationNarrativeSections(entry: Entry): NarrativeSection[] {
+  const notes = (entry.notes ?? "").trim();
+  return notes ? [{ heading: "Observations", text: notes }] : [];
+}
+
+export function citationSheets(entry: Entry, reference: string): ReactNode[] {
+  return [
+    <CitationBody entry={entry} reference={reference} />,
+    ...buildNarrativeSheets(citationNarrativeSections(entry)),
+  ];
 }
 
 // Avis de contravention officiel : même charte que l'extrait de casier.
@@ -110,9 +117,8 @@ export function ContraventionDoc({ citationId, onClose }: { citationId: Id<"cita
       discordEvent="contravention.create"
       discordEmbed={meta.embed}
       discordPath={entry.citizenId ? `/citoyen/${entry.citizenId}` : undefined}
+      sheets={citationSheets(entry, meta.reference)}
       onClose={onClose}
-    >
-      <CitationBody entry={entry} reference={meta.reference} />
-    </OfficialDoc>
+    />
   );
 }

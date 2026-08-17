@@ -2,7 +2,7 @@ import { mutation, query } from "./_generated/server";
 import { v, ConvexError } from "convex/values";
 import { internal } from "./_generated/api";
 import { inclusiveDaysParis } from "./lib/paris";
-import { chargeDisplayName } from "./lib/charges";
+import { chargeDisplayNameQty } from "./lib/charges";
 import type { QueryCtx, MutationCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 
@@ -869,7 +869,7 @@ export const trackingPending = query({
         citizenId: e.citizenId as string,
         citizenName: citizen ? `${citizen.prenom} ${citizen.nom}` : "-",
         label: e.arrestType === "DOSSIER" ? "Dossier d'arrestation" : "Rapport d'arrestation",
-        charges: charges.map((c) => chargeDisplayName(c.snapshot.name, c.attemptType)),
+        charges: charges.map((c) => chargeDisplayNameQty(c.snapshot.name, c.attemptType, c.formulaParam)),
         officer: await firstCasierOfficer(ctx, e),
         totalFine: e.totalFine,
         amendeStatut: amende?.statut ?? null,
@@ -902,7 +902,7 @@ export const trackingPending = query({
         citizenId: c.citizenId as string,
         citizenName: citizen ? `${citizen.prenom} ${citizen.nom}` : "-",
         label: "Contravention",
-        charges: charges.map((ch) => chargeDisplayName(ch.snapshot.name, ch.attemptType)),
+        charges: charges.map((ch) => chargeDisplayNameQty(ch.snapshot.name, ch.attemptType, ch.formulaParam)),
         officer,
         totalFine: c.totalFine,
         amendeStatut: amende?.statut ?? null,

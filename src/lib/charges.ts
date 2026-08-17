@@ -9,3 +9,10 @@ export function chargeDisplayName(name: string, attemptType?: AttemptType): stri
   if (attemptType === "COMPLICITE") return `Complicité de : ${name}`;
   return name;
 }
+
+// Idem, suffixé de « ×N » quand la quantité (occurrences / unités) est > 1.
+// Sert au suivi Discord et aux affichages de détail où la quantité est parlante.
+export function chargeDisplayNameQty(name: string, attemptType?: AttemptType, quantite?: number): string {
+  const base = chargeDisplayName(name, attemptType);
+  return quantite != null && quantite > 1 ? `${base} ×${quantite}` : base;
+}
