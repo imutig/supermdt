@@ -1,7 +1,7 @@
 import { v, ConvexError } from "convex/values";
 import { query, mutation, internalQuery, internalMutation, action } from "./_generated/server";
 import type { QueryCtx } from "./_generated/server";
-import type { Doc, Id } from "./_generated/dataModel";
+import type { Id } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
 import { requireAgent, requirePermission } from "./rbac";
 import { parisParts, parisWallToEpoch } from "./lib/paris";
