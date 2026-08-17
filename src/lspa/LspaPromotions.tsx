@@ -378,24 +378,35 @@ function AddCadetModal({ promotionId, onClose }: { promotionId: Id<"promotions">
 
 function GraduateModal({ memberId, name, onClose }: { memberId: Id<"promotionMembers">; name: string; onClose: () => void }) {
   const graduate = useMutation(api.promotions.graduate);
+  const grades = useQuery(api.promotions.gradeOptions);
   const toast = useToast();
   const [matricule, setMatricule] = useState("");
+  const [gradeId, setGradeId] = useState<string>("");
   const [busy, setBusy] = useState(false);
+
+  // Grade par défaut = grade d'entrée (le premier de la liste, plus bas opérationnel).
+  const effGradeId = gradeId || grades?.[0]?._id || "";
 
   return (
     <Modal title={`Diplômer ${name}`} icon={<GraduationCap className="h-[17px] w-[17px]" />} onClose={onClose} width={440}
       footer={<>
         <Button variant="ghost" onClick={onClose}>Annuler</Button>
-        <Button variant="primary" loading={busy} disabled={matricule.length !== 5} onClick={async () => {
+        <Button variant="primary" loading={busy} disabled={matricule.length !== 5 || !effGradeId} onClick={async () => {
           setBusy(true);
-          const r = await toast.guard(graduate({ memberId, matricule: Number(matricule) }), "Diplomation impossible");
+          const r = await toast.guard(graduate({ memberId, matricule: Number(matricule), gradeId: effGradeId as Id<"grades"> }), "Diplomation impossible");
           setBusy(false);
-          if (r !== undefined) { toast.success(`${name} passe Officier 1.`); onClose(); }
+          if (r !== undefined) { toast.success(`${name} est diplômé(e).`); onClose(); }
         }}>Diplômer</Button>
       </>}
     >
       <div className="flex flex-col gap-[12px]">
-        <div className="text-[13px] text-muted">Le cadet passe au grade d'entrée (Officier 1) et reçoit son numéro de badge. Il devient agent de la Station 13.</div>
+        <div className="text-[13px] text-muted">Le cadet reçoit le grade choisi et son numéro de badge. Il devient agent de la Station 13.</div>
+        <label className="flex flex-col gap-[6px]">
+          <span className="text-[11px] font-bold uppercase tracking-[0.07em] text-faint">Grade attribué</span>
+          <select value={effGradeId} onChange={(e) => setGradeId(e.target.value)} className="h-10 w-full rounded-sm border border-border bg-surface-2 px-3 text-[14px] outline-none focus:border-accent">
+            {(grades ?? []).map((g) => <option key={g._id} value={g._id}>{g.name}</option>)}
+          </select>
+        </label>
         <label className="flex flex-col gap-[6px]">
           <span className="text-[11px] font-bold uppercase tracking-[0.07em] text-faint">Numéro de badge</span>
           <input autoFocus value={matricule} onChange={(e) => setMatricule(e.target.value.replace(/[^0-9]/g, "").slice(0, 5))} placeholder="5 chiffres" className="h-10 w-[120px] rounded-sm border border-border bg-surface-2 px-3 text-center font-data text-[15px] outline-none focus:border-accent" />

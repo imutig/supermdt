@@ -24,6 +24,20 @@ async function entryGrade(ctx: QueryCtx | MutationCtx) {
   return grades[0] ?? null;
 }
 
+// Grades attribuables à la diplomation (opérationnels), du plus bas au plus haut.
+// Le premier de la liste est le grade d'entrée par défaut.
+export const gradeOptions = query({
+  args: {},
+  handler: async (ctx) => {
+    const actor = await requireAgent(ctx);
+    await requirePermission(ctx, actor, "effectif.validate");
+    return (await ctx.db.query("grades").collect())
+      .filter((g) => !g.academyOnly && !g.external)
+      .sort((a, b) => a.position - b.position)
+      .map((g) => ({ _id: g._id, name: g.name }));
+  },
+});
+
 export const list = query({
   args: {},
   handler: async (ctx) => {
@@ -260,8 +274,10 @@ export const setGroup = mutation({
 // Diplome un cadet : il passe au grade d'entrée (Officier 1) avec un numéro de
 // badge, et son appartenance passe GRADUATED.
 export const graduate = mutation({
-  args: { memberId: v.id("promotionMembers"), matricule: v.number() },
-  handler: async (ctx, { memberId, matricule }) => {
+  // gradeId : grade attribué à la diplomation. Absent = grade d'entrée par défaut
+  // (le plus bas opérationnel), pour rester rétro-compatible.
+  args: { memberId: v.id("promotionMembers"), matricule: v.number(), gradeId: v.optional(v.id("grades")) },
+  handler: async (ctx, { memberId, matricule, gradeId }) => {
     const actor = await requireAgent(ctx);
     await requirePermission(ctx, actor, "effectif.validate");
     const m = await ctx.db.get(memberId);
@@ -270,8 +286,8 @@ export const graduate = mutation({
     const target = await ctx.db.get(m.agentId);
     if (!target) throw new ConvexError("Cadet introuvable.");
 
-    const grade = await entryGrade(ctx);
-    if (!grade) throw new ConvexError("Aucun grade d'entrée (Officier 1) n'est configuré.");
+    const grade = gradeId ? await ctx.db.get(gradeId) : await entryGrade(ctx);
+    if (!grade) throw new ConvexError("Grade de diplomation introuvable (ou aucun grade d'entrée configuré).");
     if (!matricule || matricule < 1 || matricule > 99999) throw new ConvexError("Numéro de badge (5 chiffres) requis.");
     const dup = await ctx.db.query("agents").withIndex("by_matricule", (q) => q.eq("matricule", matricule)).first();
     if (dup) throw new ConvexError("Numéro de badge déjà attribué.");
