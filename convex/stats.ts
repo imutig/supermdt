@@ -198,14 +198,18 @@ export const rangeStats = query({
     };
 
     // ---- Top infractions sur la plage ----
-    // On charge les charges des SEULES entrées de la plage (via by_entry /
-    // by_citation), au lieu de scanner toute la table (ce qui frôlait la limite
-    // Convex de 16k docs et lisait des charges hors plage inutilement).
+    // Le décompte des charges est un N+1 (une sous-requête par fiche via by_entry /
+    // by_citation). Sur une grande plage cela multipliait l'I/O par le nombre de
+    // fiches. On PLAFONNE ce widget mineur aux 300 casiers + 300 contraventions les
+    // plus récents de la plage (le top infractions reste représentatif).
+    const CHARGE_CAP = 300;
+    const recentCasiers = casiers.length > CHARGE_CAP ? [...casiers].sort((a, b) => b.at - a.at).slice(0, CHARGE_CAP) : casiers;
+    const recentCitations = citations.length > CHARGE_CAP ? [...citations].sort((a, b) => b.at - a.at).slice(0, CHARGE_CAP) : citations;
     const chargeTally = new Map<string, number>();
-    for (const e of casiers) {
+    for (const e of recentCasiers) {
       for (const ch of await ctx.db.query("casierCharges").withIndex("by_entry", (q) => q.eq("entryId", e._id)).collect()) bump(chargeTally, ch.snapshot.name);
     }
-    for (const c of citations) {
+    for (const c of recentCitations) {
       for (const ch of await ctx.db.query("citationCharges").withIndex("by_citation", (q) => q.eq("citationId", c._id)).collect()) bump(chargeTally, ch.snapshot.name);
     }
     const topCharges = [...chargeTally.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([name, count]) => ({ name, count }));
@@ -255,22 +259,23 @@ export const myRangeStats = query({
     const hi = to ?? now;
     const lo = from ?? null;
 
-    const inRange = async (table: "casierEntries" | "citations") => {
-      const rows = lo == null
-        ? await ctx.db.query(table).withIndex("by_live_at", (q) => q.eq("deletedAt", undefined).lte("at", hi)).collect()
-        : await ctx.db.query(table).withIndex("by_live_at", (q) => q.eq("deletedAt", undefined).gte("at", lo).lte("at", hi)).collect();
-      return (rows as any[]).filter((r) => r.status !== "ANNULEE");
-    };
-    // Le compte owner sert de REPLI aux officiers d'import non reliés : on écarte
-    // donc les fiches qui ne lui reviennent que par ce repli (createdBy owner sans
-    // rôle d'officier réel ; contravention avec officerName = verbalisateur Nexus).
+    // Lecture PAR AGENT via index (au lieu de scanner TOUTE la plage puis filtrer) :
+    // on ne lit que SES casiers (by_creator) et SES contraventions (by_officer),
+    // puis on borne à la plage EN MÉMOIRE (les volumes par agent sont naturellement
+    // petits). Gain majeur : cette query réactive ne se ré-exécute plus sur les
+    // écritures des AUTRES agents, et ne lit plus les tables entières.
+    // « Mes arrestations » = casiers créés par l'agent (officier verbalisateur) :
+    // définition acceptée pour l'usage de by_creator.
     const isOwner = agent.isOwner;
-    const casiers = (await inRange("casierEntries")).filter(
-      (e: any) => (e.officerIds ?? []).includes(agent._id) || (!isOwner && e.createdBy === agent._id),
-    );
-    const citations = (await inRange("citations")).filter(
-      (c: any) => c.officerId === agent._id && (!isOwner || !c.officerName),
-    );
+    const inWindow = (r: any) => r.status !== "ANNULEE" && r.deletedAt == null && r.at <= hi && (lo == null || r.at >= lo);
+    const casiers = (
+      await ctx.db.query("casierEntries").withIndex("by_creator", (q) => q.eq("createdBy", agent._id)).collect()
+    ).filter((e: any) => inWindow(e));
+    // Contravention avec officerName = verbalisateur Nexus non relié : pour l'owner
+    // (compte de repli des imports), on l'écarte de ses stats personnelles.
+    const citations = (
+      await ctx.db.query("citations").withIndex("by_officer", (q) => q.eq("officerId", agent._id)).collect()
+    ).filter((c: any) => inWindow(c) && (!isOwner || !c.officerName));
 
     // Rapports d'intervention rédigés (lead) sur la plage.
     const myReports = (await ctx.db.query("reports").withIndex("by_lead", (q) => q.eq("leadId", agent._id)).collect())

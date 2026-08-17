@@ -122,10 +122,15 @@ const SOFT_KINDS = Object.keys(SOFT) as Exclude<Kind, "citizen" | "agent">[];
 
 async function deletedRows(ctx: QueryCtx, table: TableNames): Promise<Doc[]> {
   // Requête générique sur une table à `deletedAt` : typée librement (le type
-  // exact dépend de la table, garanti par la config SOFT). `.neq` n'existe pas
-  // sur un index range -> on parcourt l'index by_deleted et on filtre.
+  // exact dépend de la table, garanti par la config SOFT).
+  // On lit UNIQUEMENT les lignes archivées via une borne d'index : `deletedAt`
+  // est un timestamp (> 0) quand la ligne est supprimée, `undefined` sinon.
+  // `undefined` triant sous toute valeur numérique dans un index Convex, la
+  // borne `gt("deletedAt", 0)` saute d'emblée toutes les lignes VIVANTES au lieu
+  // de scanner la table entière puis de filtrer (l'ancien `.filter(neq undefined)`
+  // lisait TOUTE la table — c'était le poste d'I/O dominant d'`archive.*`).
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return await (ctx.db.query(table) as any).withIndex("by_deleted").filter((q: any) => q.neq(q.field("deletedAt"), undefined)).collect();
+  return await (ctx.db.query(table) as any).withIndex("by_deleted", (q: any) => q.gt("deletedAt", 0)).collect();
 }
 
 export const list = query({
@@ -146,11 +151,19 @@ export const list = query({
     }
 
     if (want("citizen")) {
-      const rows = (await ctx.db.query("citizens").collect()).filter((c) => c.status === "ARCHIVED" && !c.deletedAt);
+      // Pas d'index by_status sur `citizens` : on borne le scan aux 5000 premiers
+      // (comme les compteurs de stats.overview) pour ne pas relire indéfiniment une
+      // table qui grossit. Au-delà, les dossiers archivés surnuméraires ne seraient
+      // pas listés (cas non atteint aux volumes actuels).
+      const rows = (await ctx.db.query("citizens").take(5000)).filter((c) => c.status === "ARCHIVED" && !c.deletedAt);
       for (const c of rows) out.push({ _id: c._id, kind: "citizen", at: c._creationTime, label: `${c.prenom} ${c.nom}`, summary: "Dossier citoyen archivé", deletedBy: await agentLabel(ctx, c.createdBy) });
     }
     if (want("agent")) {
-      const disabled = (await ctx.db.query("agents").collect()).filter((a) => a.status === "INACTIVE" || a.status === "SUSPENDED");
+      // Lecture indexée par statut (au lieu de scanner toute la table agents).
+      const disabled = [
+        ...(await ctx.db.query("agents").withIndex("by_status", (q) => q.eq("status", "INACTIVE")).collect()),
+        ...(await ctx.db.query("agents").withIndex("by_status", (q) => q.eq("status", "SUSPENDED")).collect()),
+      ];
       for (const a of disabled) out.push({ _id: a._id, kind: "agent", at: a._creationTime, label: `${a.prenomRP} ${a.nomRP}`, summary: a.status === "SUSPENDED" ? "Compte suspendu" : "Compte désactivé (viré)", deletedBy: { matricule: a.matricule ?? null, name: `Matricule ${a.matricule ?? "-"}` } });
     }
 
@@ -164,9 +177,15 @@ export const counts = query({
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "archive.view");
     const res: Record<string, number> = {};
+    // deletedRows ne lit désormais QUE les lignes archivées (borne d'index), donc
+    // `.length` ne coûte plus un scan de table complet par type.
     for (const k of SOFT_KINDS) res[k] = (await deletedRows(ctx, SOFT[k].table)).length;
-    res.citizen = (await ctx.db.query("citizens").collect()).filter((c) => c.status === "ARCHIVED" && !c.deletedAt).length;
-    res.agent = (await ctx.db.query("agents").collect()).filter((a) => a.status === "INACTIVE" || a.status === "SUSPENDED").length;
+    // Citoyens : pas d'index by_status -> scan borné à 5000 (voir archive.list).
+    res.citizen = (await ctx.db.query("citizens").take(5000)).filter((c) => c.status === "ARCHIVED" && !c.deletedAt).length;
+    // Agents désactivés/suspendus : lecture indexée par statut.
+    res.agent =
+      (await ctx.db.query("agents").withIndex("by_status", (q) => q.eq("status", "INACTIVE")).collect()).length +
+      (await ctx.db.query("agents").withIndex("by_status", (q) => q.eq("status", "SUSPENDED")).collect()).length;
     return res;
   },
 });

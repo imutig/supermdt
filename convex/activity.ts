@@ -3,6 +3,11 @@ import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import { requireAgent, requirePermission, agentLabel, can } from "./rbac";
 
+// Ligne candidate faiblement typée : le type exact dépend de la table (casier /
+// contravention / rapport). On enrichit ensuite via les champs connus.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Doc = any;
+
 // Historique d'activité PERSONNEL de l'agent courant (page « Mon profil »).
 // S'appuie sur le journal d'audit (by_actor) : toute action tracée du MDT
 // (casiers, contraventions, rapports, citoyens, armes, véhicules, plaintes…).
@@ -82,70 +87,81 @@ export const casierAndCitations = query({
     // Tri par date d'arrestation (et non _creationTime : les casiers importés du
     // Nexus arrivent tous au même instant). L'index VIVANT `by_live_at` exclut
     // directement les casiers archivés de la lecture (moins d'I/O, pas de sur-lecture).
-    const entries = await ctx.db.query("casierEntries").withIndex("by_live_at", (q) => q.eq("deletedAt", undefined)).order("desc").take(cap);
-    for (const e of entries) {
-      const citizen = await ctx.db.get(e.citizenId);
-      const charges = await ctx.db
-        .query("casierCharges")
-        .withIndex("by_entry", (q) => q.eq("entryId", e._id))
-        .collect();
-      // Officier créateur : compte relié si possible, sinon nom + matricule
-      // relevés dans le Nexus (officier non détecté -> stylisé côté UI).
-      const snap = e.officers?.[0];
-      let officer: { matricule: number | null; name: string };
-      let officerDetected: boolean;
-      if (snap?.agentId) {
-        officer = await agentLabel(ctx, snap.agentId);
-        officerDetected = true;
-      } else if (snap && (snap.name || snap.matricule)) {
-        officer = { matricule: digits(snap.matricule), name: snap.name || "-" };
-        officerDetected = false;
-      } else {
-        officer = await agentLabel(ctx, e.officerIds[0]);
-        officerDetected = e.officerIds.length > 0;
-      }
-      out.push({
-        _id: e._id,
-        kind: "casier",
-        arrestType: e.arrestType ?? "DOSSIER",
-        citizenId: e.citizenId,
-        citizenName: citizen ? `${citizen.prenom} ${citizen.nom}` : "-",
-        motif: charges.map((c) => c.snapshot.name).join(", ") || "-",
-        totalFine: e.totalFine,
-        officer,
-        officerDetected,
-        status: e.status,
-        at: e.at,
-      });
-    }
+    // On lit d'abord les CANDIDATS (cap par table) SANS enrichissement, on fusionne
+    // puis on ne coupe qu'à `cap` : on n'enrichit ainsi (citoyen + charges + label
+    // officier) QUE les `cap` lignes réellement renvoyées, au lieu d'enrichir 2×cap
+    // lignes puis d'en jeter la moitié (≈2× moins de sous-requêtes N+1).
+    const casierCands = await ctx.db.query("casierEntries").withIndex("by_live_at", (q) => q.eq("deletedAt", undefined)).order("desc").take(cap);
+    const citationCands = await ctx.db.query("citations").withIndex("by_live_at", (q) => q.eq("deletedAt", undefined)).order("desc").take(cap);
+    const cands = [
+      ...casierCands.map((e) => ({ kind: "casier" as const, at: e.at, row: e as Doc })),
+      ...citationCands.map((c) => ({ kind: "citation" as const, at: c.at, row: c as Doc })),
+    ].sort((a, b) => b.at - a.at).slice(0, cap);
 
-    const citations = await ctx.db.query("citations").withIndex("by_live_at", (q) => q.eq("deletedAt", undefined)).order("desc").take(cap);
-    for (const c of citations) {
-      const citizen = await ctx.db.get(c.citizenId);
-      const charges = await ctx.db
-        .query("citationCharges")
-        .withIndex("by_citation", (q) => q.eq("citationId", c._id))
-        .collect();
-      // Verbalisateur non relié (import Nexus) : officerId retombe sur l'owner,
-      // on affiche alors le nom + matricule relevés dans le Nexus (non détecté).
-      let officer = await agentLabel(ctx, c.officerId);
-      let officerDetected = true;
-      if (c.officerName) {
-        const a = await ctx.db.get(c.officerId);
-        if (a?.isOwner) { officer = { matricule: c.officerMatricule ?? null, name: c.officerName }; officerDetected = false; }
+    for (const cand of cands) {
+      if (cand.kind === "casier") {
+        const e = cand.row;
+        const citizen = await ctx.db.get(e.citizenId as Id<"citizens">);
+        const charges = await ctx.db
+          .query("casierCharges")
+          .withIndex("by_entry", (q) => q.eq("entryId", e._id as Id<"casierEntries">))
+          .collect();
+        // Officier créateur : compte relié si possible, sinon nom + matricule
+        // relevés dans le Nexus (officier non détecté -> stylisé côté UI).
+        const snap = e.officers?.[0];
+        let officer: { matricule: number | null; name: string };
+        let officerDetected: boolean;
+        if (snap?.agentId) {
+          officer = await agentLabel(ctx, snap.agentId);
+          officerDetected = true;
+        } else if (snap && (snap.name || snap.matricule)) {
+          officer = { matricule: digits(snap.matricule), name: snap.name || "-" };
+          officerDetected = false;
+        } else {
+          officer = await agentLabel(ctx, e.officerIds[0]);
+          officerDetected = e.officerIds.length > 0;
+        }
+        out.push({
+          _id: e._id,
+          kind: "casier",
+          arrestType: e.arrestType ?? "DOSSIER",
+          citizenId: e.citizenId,
+          citizenName: citizen ? `${citizen.prenom} ${citizen.nom}` : "-",
+          motif: charges.map((c) => c.snapshot.name).join(", ") || "-",
+          totalFine: e.totalFine,
+          officer,
+          officerDetected,
+          status: e.status,
+          at: e.at,
+        });
+      } else {
+        const c = cand.row;
+        const citizen = await ctx.db.get(c.citizenId as Id<"citizens">);
+        const charges = await ctx.db
+          .query("citationCharges")
+          .withIndex("by_citation", (q) => q.eq("citationId", c._id as Id<"citations">))
+          .collect();
+        // Verbalisateur non relié (import Nexus) : officerId retombe sur l'owner,
+        // on affiche alors le nom + matricule relevés dans le Nexus (non détecté).
+        let officer = await agentLabel(ctx, c.officerId);
+        let officerDetected = true;
+        if (c.officerName) {
+          const a = await ctx.db.get(c.officerId as Id<"agents">);
+          if (a?.isOwner) { officer = { matricule: c.officerMatricule ?? null, name: c.officerName }; officerDetected = false; }
+        }
+        out.push({
+          _id: c._id,
+          kind: "citation",
+          citizenId: c.citizenId,
+          citizenName: citizen ? `${citizen.prenom} ${citizen.nom}` : "-",
+          motif: charges.map((x) => x.snapshot.name).join(", ") || "-",
+          totalFine: c.totalFine,
+          officer,
+          officerDetected,
+          status: c.status,
+          at: c.at,
+        });
       }
-      out.push({
-        _id: c._id,
-        kind: "citation",
-        citizenId: c.citizenId,
-        citizenName: citizen ? `${citizen.prenom} ${citizen.nom}` : "-",
-        motif: charges.map((x) => x.snapshot.name).join(", ") || "-",
-        totalFine: c.totalFine,
-        officer,
-        officerDetected,
-        status: c.status,
-        at: c.at,
-      });
     }
 
     return out.sort((a, b) => b.at - a.at).slice(0, cap);
@@ -172,14 +188,33 @@ export const home = query({
       at: number;
     }[] = [];
 
+    // On collecte d'abord les CANDIDATS (12 par source) SANS enrichissement, on
+    // fusionne/trie puis on ne garde que les 12 finaux — et on n'enrichit (citoyen
+    // + charges + type de rapport) QUE ces 12-là. L'ancienne version enrichissait
+    // jusqu'à 36 lignes (3×12) pour n'en afficher que 12 : ≈3× moins de sous-requêtes.
+    const cands: { kind: "casier" | "citation" | "report"; at: number; row: Doc }[] = [];
     if (canCasier) {
       // Tri par date d'arrestation (voir casierAndCitations) via l'index vivant.
       const entries = await ctx.db.query("casierEntries").withIndex("by_live_at", (q) => q.eq("deletedAt", undefined)).order("desc").take(12);
-      for (const e of entries) {
-        const citizen = await ctx.db.get(e.citizenId);
+      for (const e of entries) cands.push({ kind: "casier", at: e.at, row: e });
+    }
+    if (canContraventions) {
+      const cits = await ctx.db.query("citations").withIndex("by_live_at", (q) => q.eq("deletedAt", undefined)).order("desc").take(12);
+      for (const c of cits) cands.push({ kind: "citation", at: c.at, row: c });
+    }
+    if (canReports) {
+      const reports = await ctx.db.query("reports").order("desc").take(12);
+      for (const r of reports) { if (r.deletedAt) continue; cands.push({ kind: "report", at: r._creationTime, row: r }); }
+    }
+
+    const top = cands.sort((a, b) => b.at - a.at).slice(0, 12);
+    for (const cand of top) {
+      if (cand.kind === "casier") {
+        const e = cand.row;
+        const citizen = await ctx.db.get(e.citizenId as Id<"citizens">);
         const charges = await ctx.db
           .query("casierCharges")
-          .withIndex("by_entry", (q) => q.eq("entryId", e._id))
+          .withIndex("by_entry", (q) => q.eq("entryId", e._id as Id<"casierEntries">))
           .collect();
         out.push({
           _id: e._id,
@@ -191,15 +226,12 @@ export const home = query({
           reportId: null,
           at: e.at,
         });
-      }
-    }
-    if (canContraventions) {
-      const cits = await ctx.db.query("citations").withIndex("by_live_at", (q) => q.eq("deletedAt", undefined)).order("desc").take(12);
-      for (const c of cits) {
-        const citizen = await ctx.db.get(c.citizenId);
+      } else if (cand.kind === "citation") {
+        const c = cand.row;
+        const citizen = await ctx.db.get(c.citizenId as Id<"citizens">);
         const charges = await ctx.db
           .query("citationCharges")
-          .withIndex("by_citation", (q) => q.eq("citationId", c._id))
+          .withIndex("by_citation", (q) => q.eq("citationId", c._id as Id<"citations">))
           .collect();
         out.push({
           _id: c._id,
@@ -210,13 +242,9 @@ export const home = query({
           reportId: null,
           at: c.at,
         });
-      }
-    }
-    if (canReports) {
-      const reports = await ctx.db.query("reports").order("desc").take(12);
-      for (const r of reports) {
-        if (r.deletedAt) continue;
-        const type = await ctx.db.get(r.typeId);
+      } else {
+        const r = cand.row;
+        const type = await ctx.db.get(r.typeId as Id<"reportTypes">);
         out.push({
           _id: r._id,
           kind: "report",
