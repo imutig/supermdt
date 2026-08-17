@@ -1,5 +1,6 @@
 import { mutation, query } from "./_generated/server";
 import { v, ConvexError } from "convex/values";
+import { paginationOptsValidator } from "convex/server";
 import { requireAgent, requirePermission, can, agentLabel } from "./rbac";
 import { writeAudit } from "./lib/audit";
 import { releaseAgentFromPatrol } from "./dispatch";
@@ -43,17 +44,21 @@ export const mine = query({
   },
 });
 
-// Gestion globale des services (§10) - permission services.manage.
+// Gestion globale des services (§10) - permission services.manage. Paginé, avec
+// filtre serveur optionnel par agent (index by_agent) plutôt qu'un chargement
+// intégral filtré côté client.
 export const all = query({
-  args: {},
-  handler: async (ctx) => {
+  args: { paginationOpts: paginationOptsValidator, agentId: v.optional(v.id("agents")) },
+  handler: async (ctx, { paginationOpts, agentId }) => {
     const viewer = await requireAgent(ctx);
     await requirePermission(ctx, viewer, "services.manage");
     const now = Date.now();
-    const sessions = await ctx.db.query("serviceSessions").order("desc").take(150);
-    const out = [];
-    for (const s of sessions) {
-      out.push({
+    const res = agentId
+      ? await ctx.db.query("serviceSessions").withIndex("by_agent", (q) => q.eq("agentId", agentId)).order("desc").paginate(paginationOpts)
+      : await ctx.db.query("serviceSessions").order("desc").paginate(paginationOpts);
+    const page = [];
+    for (const s of res.page) {
+      page.push({
         _id: s._id,
         agent: await agentLabel(ctx, s.agentId),
         startedAt: s.startedAt,
@@ -63,7 +68,20 @@ export const all = query({
         open: s.endedAt == null,
       });
     }
-    return out;
+    return { ...res, page };
+  },
+});
+
+// Annuaire (borné) pour le filtre par agent de la gestion globale.
+export const manageableAgents = query({
+  args: {},
+  handler: async (ctx) => {
+    const viewer = await requireAgent(ctx);
+    await requirePermission(ctx, viewer, "services.manage");
+    const rows = await ctx.db.query("agents").withIndex("by_status", (q) => q.eq("status", "ACTIVE")).take(500);
+    return rows
+      .map((a) => ({ _id: a._id, matricule: a.matricule ?? (a.isOwner ? 0 : null), name: `${a.prenomRP} ${a.nomRP}` }))
+      .sort((a, b) => a.name.localeCompare(b.name));
   },
 });
 

@@ -1,12 +1,15 @@
 import { useState } from "react";
-import { Pencil, Trash2, Square, Check, X } from "lucide-react";
-import { useMutation, useQuery } from "convex/react";
+import { Pencil, Trash2, Square, Check, X, Search } from "lucide-react";
+import { useMutation, useQuery, usePaginatedQuery } from "convex/react";
 import { api, type Id } from "@/lib/api";
 import { useToast } from "@/providers/toast";
 import { useCan } from "@/hooks/useCan";
-import { AgentTag } from "@/components/common/AgentTag";
+import { AgentTag, fmtMatricule } from "@/components/common/AgentTag";
 import { EmptyState } from "@/components/common/EmptyState";
 import { SkeletonRows } from "@/components/common/Skeleton";
+import { LoadMore } from "@/components/common/Pagination";
+
+const norm = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
 function fmtDur(seconds: number) {
   const h = Math.floor(seconds / 3600);
@@ -115,16 +118,23 @@ export function Services() {
   const canManage = can("services.manage");
   const [tab, setTab] = useState<"mine" | "all">("mine");
   const mine = useQuery(api.services.mine);
-  const all = useQuery(api.services.all, tab === "all" && canManage ? {} : "skip");
+  const [agentId, setAgentId] = useState<Id<"agents"> | null>(null);
   const [q, setQ] = useState("");
+  const globalOn = tab === "all" && canManage;
+  const { results: all, status, loadMore } = usePaginatedQuery(
+    api.services.all,
+    globalOn ? { agentId: agentId ?? undefined } : "skip",
+    { initialNumItems: 40 },
+  );
+  const roster = useQuery(api.services.manageableAgents, globalOn ? {} : "skip");
 
   const update = useMutation(api.services.update);
   const remove = useMutation(api.services.remove);
   const cut = useMutation(api.services.cut);
 
-  const filteredAll = (all ?? []).filter((s) =>
-    !q.trim() ? true : `${s.agent.matricule ?? ""} ${s.agent.name}`.toLowerCase().includes(q.toLowerCase()),
-  );
+  const needle = norm(q.trim());
+  const matches = needle ? (roster ?? []).filter((a) => norm(a.name).includes(needle) || String(a.matricule ?? "").includes(needle)).slice(0, 8) : [];
+  const selectedAgent = agentId ? (roster ?? []).find((a) => a._id === agentId) ?? null : null;
 
   return (
     <div className="p-[22px_26px]" style={{ animation: "mdtFade .2s ease" }}>
@@ -172,26 +182,52 @@ export function Services() {
         </>
       ) : (
         <>
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Filtrer par agent (badge ou nom)…" className="mb-[14px] h-10 w-full max-w-[420px] rounded-sm border border-border bg-surface-2 px-3 text-[13px] outline-none focus:border-accent" />
+          {/* Filtre serveur par agent (annuaire borné, recherche nom / badge) */}
+          <div className="relative mb-[14px] max-w-[420px]">
+            {selectedAgent ? (
+              <div className="flex items-center gap-2 rounded-sm border border-accent bg-accent-soft px-[11px] py-[8px] text-[13px] font-semibold text-accent">
+                <span className="flex-1">{fmtMatricule(selectedAgent.matricule) ?? ""} {selectedAgent.name}</span>
+                <button onClick={() => { setAgentId(null); setQ(""); }} className="text-[11.5px] text-muted hover:text-danger">Tout afficher</button>
+              </div>
+            ) : (
+              <>
+                <Search className="pointer-events-none absolute left-[10px] top-1/2 h-[14px] w-[14px] -translate-y-1/2 text-faint" />
+                <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Filtrer par agent (badge ou nom)…" className="h-10 w-full rounded-sm border border-border bg-surface-2 pl-[32px] pr-3 text-[13px] outline-none focus:border-accent" />
+                {matches.length > 0 && (
+                  <div className="absolute z-10 mt-[4px] w-full overflow-hidden rounded-sm border border-border bg-surface shadow-[0_10px_30px_var(--shadow)]">
+                    {matches.map((a) => (
+                      <button key={a._id} onClick={() => { setAgentId(a._id as Id<"agents">); setQ(""); }} className="flex w-full items-center gap-2 border-b border-border px-[11px] py-[7px] text-left text-[13px] last:border-b-0 hover:bg-surface-2">
+                        {fmtMatricule(a.matricule) && <span className="font-data text-[11.5px] text-accent">{fmtMatricule(a.matricule)}</span>}
+                        <span className="truncate">{a.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
           <div className="overflow-hidden rounded-card border border-border bg-surface">
             <div className="grid grid-cols-[1.2fr_1.4fr_1.4fr_.7fr_auto] gap-3 border-b border-border px-4 py-[10px] text-[10px] font-bold uppercase tracking-[0.08em] text-faint">
               <span>Agent</span><span>Début</span><span>Fin</span><span>Durée</span><span></span>
             </div>
-            {all === undefined ? (
+            {status === "LoadingFirstPage" ? (
               <div className="p-4"><SkeletonRows rows={5} /></div>
-            ) : filteredAll.length === 0 ? (
-              <EmptyState title="Aucun service" message="Aucune session pour ce filtre." />
+            ) : all.length === 0 ? (
+              <EmptyState title="Aucun service" message={selectedAgent ? "Aucune session pour cet agent." : "Aucune session enregistrée."} />
             ) : (
-              filteredAll.map((s) => (
-                <SessionRow
-                  key={s._id}
-                  s={s}
-                  agentCol
-                  onEdit={(st, en) => update({ id: s._id as Id<"serviceSessions">, startedAt: st, endedAt: en })}
-                  onRemove={() => remove({ id: s._id as Id<"serviceSessions"> })}
-                  onCut={() => cut({ id: s._id as Id<"serviceSessions"> })}
-                />
-              ))
+              <>
+                {all.map((s) => (
+                  <SessionRow
+                    key={s._id}
+                    s={s}
+                    agentCol
+                    onEdit={(st, en) => update({ id: s._id as Id<"serviceSessions">, startedAt: st, endedAt: en })}
+                    onRemove={() => remove({ id: s._id as Id<"serviceSessions"> })}
+                    onCut={() => cut({ id: s._id as Id<"serviceSessions"> })}
+                  />
+                ))}
+                <LoadMore status={status} onLoadMore={() => loadMore(40)} count={all.length} label="services" />
+              </>
             )}
           </div>
         </>
