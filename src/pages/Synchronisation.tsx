@@ -1,6 +1,7 @@
-import { useQuery } from "convex/react";
+import { useQuery, usePaginatedQuery } from "convex/react";
 import { api } from "@/lib/api";
 import { SkeletonRows } from "@/components/common/Skeleton";
+import { LoadMore } from "@/components/common/Pagination";
 
 function Tile({ label, value, sub, color }: { label: string; value: string; sub?: string; color?: string }) {
   return (
@@ -16,6 +17,7 @@ const DIR_LABEL: Record<string, string> = { IMPORT: "Import", WRITE: "Écriture"
 
 export function Synchronisation() {
   const d = useQuery(api.nexusSync.dashboard);
+  const { results: journal, status: journalStatus, loadMore } = usePaginatedQuery(api.nexusSync.logPage, {}, { initialNumItems: 30 });
 
   if (d === undefined) {
     return <div className="p-[22px_26px]"><div className="rounded-card border border-border bg-surface p-4"><SkeletonRows rows={6} /></div></div>;
@@ -74,21 +76,24 @@ export function Synchronisation() {
           {/* Journal des appels */}
           <div className="overflow-hidden rounded-card border border-border bg-surface">
             <div className="border-b border-border px-4 py-[13px]"><h2 className="m-0 text-[13.5px] font-bold">Journal des appels</h2></div>
-            {d.recent.length === 0 ? (
+            {journalStatus !== "LoadingFirstPage" && journal.length === 0 ? (
               <div className="p-4 text-[13px] text-faint">Aucun appel.</div>
             ) : (
-              <div className="max-h-[420px] overflow-y-auto">
-                {d.recent.map((r) => (
-                  <div key={r._id} className="flex items-center gap-3 border-b border-border px-4 py-[9px] text-[12px]">
-                    <span className="h-[8px] w-[8px] flex-shrink-0 rounded-full" style={{ background: r.ok ? "var(--success)" : "var(--danger)" }} />
-                    <span className="w-[92px] flex-shrink-0 font-data text-[11px] text-faint">{new Date(r.at).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</span>
-                    <span className="w-[64px] flex-shrink-0 text-[11px] font-semibold text-muted">{DIR_LABEL[r.direction] ?? r.direction}</span>
-                    <span className="w-[92px] flex-shrink-0 font-semibold">{r.entity}</span>
-                    <span className="min-w-0 flex-1 truncate text-muted">{r.error ? <span style={{ color: "var(--danger)" }}>{r.error}</span> : (r.detail ?? r.op)}{r.agent ? ` · ${r.agent}` : ""}</span>
-                    <span className="w-[54px] flex-shrink-0 text-right font-data text-[11px] text-faint">{r.httpStatus ?? ""}{r.durationMs != null ? ` ${r.durationMs}ms` : ""}</span>
-                  </div>
-                ))}
-              </div>
+              <>
+                <div className="max-h-[420px] overflow-y-auto">
+                  {journal.map((r) => (
+                    <div key={r._id} className="flex items-center gap-3 border-b border-border px-4 py-[9px] text-[12px]">
+                      <span className="h-[8px] w-[8px] flex-shrink-0 rounded-full" style={{ background: r.ok ? "var(--success)" : "var(--danger)" }} />
+                      <span className="w-[92px] flex-shrink-0 font-data text-[11px] text-faint">{new Date(r.at).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</span>
+                      <span className="w-[64px] flex-shrink-0 text-[11px] font-semibold text-muted">{DIR_LABEL[r.direction] ?? r.direction}</span>
+                      <span className="w-[92px] flex-shrink-0 font-semibold">{r.entity}</span>
+                      <span className="min-w-0 flex-1 truncate text-muted">{r.error ? <span style={{ color: "var(--danger)" }}>{r.error}</span> : (r.detail ?? r.op)}{r.agent ? ` · ${r.agent}` : ""}</span>
+                      <span className="w-[54px] flex-shrink-0 text-right font-data text-[11px] text-faint">{r.httpStatus ?? ""}{r.durationMs != null ? ` ${r.durationMs}ms` : ""}</span>
+                    </div>
+                  ))}
+                </div>
+                <LoadMore status={journalStatus} onLoadMore={() => loadMore(30)} count={journal.length} label="appels" />
+              </>
             )}
           </div>
         </div>

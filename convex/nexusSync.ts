@@ -2,6 +2,7 @@ import { action, mutation, query, internalAction, internalMutation, internalQuer
 import type { ActionCtx } from "./_generated/server";
 import { internal, api } from "./_generated/api";
 import { v, ConvexError } from "convex/values";
+import { paginationOptsValidator } from "convex/server";
 import type { Id } from "./_generated/dataModel";
 import { getCurrentAgent, requireAgent, requirePermission, agentLabel } from "./rbac";
 import { nexusLogin, encryptSecret, decryptSecret } from "./lib/nexusAuth";
@@ -183,6 +184,27 @@ export const _alert = internalMutation({
 const DAY = 86_400_000;
 
 // Données de la page de monitoring de synchro (réservé rbac.manage).
+// Journal des appels paginé (curseur) : ne charge que les dernières lignes, puis
+// « charger plus » à la demande - au lieu de tout afficher d'un coup.
+export const logPage = query({
+  args: { paginationOpts: paginationOptsValidator },
+  handler: async (ctx, { paginationOpts }) => {
+    const agent = await requireAgent(ctx);
+    await requirePermission(ctx, agent, "rbac.manage");
+    const res = await ctx.db.query("nexusSyncLog").withIndex("by_at").order("desc").paginate(paginationOpts);
+    const page = [];
+    for (const r of res.page) {
+      const who = r.agentId ? await agentLabel(ctx, r.agentId) : null;
+      page.push({
+        _id: r._id, at: r.at, direction: r.direction, entity: r.entity, op: r.op,
+        ok: r.ok, httpStatus: r.httpStatus ?? null, durationMs: r.durationMs ?? null,
+        agent: who?.name ?? null, detail: r.detail ?? null, error: r.error ?? null,
+      });
+    }
+    return { ...res, page };
+  },
+});
+
 export const dashboard = query({
   args: {},
   handler: async (ctx) => {
@@ -190,8 +212,9 @@ export const dashboard = query({
     await requirePermission(ctx, agent, "rbac.manage");
     const now = Date.now();
 
-    // Journal récent (200 dernières opérations) + labels agents.
-    const rows = await ctx.db.query("nexusSyncLog").withIndex("by_at").order("desc").take(200);
+    // Journal récent (borné : le journal COMPLET est paginé via logPage). Ces
+    // lignes ne servent plus qu'au widget « Dernières synchronisations » (imports).
+    const rows = await ctx.db.query("nexusSyncLog").withIndex("by_at").order("desc").take(60);
     const recent = [];
     for (const r of rows) {
       const who = r.agentId ? await agentLabel(ctx, r.agentId) : null;
@@ -202,9 +225,10 @@ export const dashboard = query({
       });
     }
 
-    // Agrégats 30 jours (le journal complet, borné par by_at).
+    // Agrégats 30 jours. Plafonné à 5000 lignes : au-delà les totaux/graphique
+    // sont approximatifs, mais on ne scanne jamais un journal illimité.
     const since = now - 30 * DAY;
-    const win = await ctx.db.query("nexusSyncLog").withIndex("by_at", (q) => q.gte("at", since)).collect();
+    const win = await ctx.db.query("nexusSyncLog").withIndex("by_at", (q) => q.gte("at", since)).order("desc").take(5000);
     const total = win.length;
     const okCount = win.filter((r) => r.ok).length;
     const errCount = total - okCount;

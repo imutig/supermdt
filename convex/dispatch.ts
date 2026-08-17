@@ -1,10 +1,14 @@
-import { mutation, query } from "./_generated/server";
+import { mutation, internalMutation, query } from "./_generated/server";
 import { v, ConvexError } from "convex/values";
+import { paginationOptsValidator } from "convex/server";
 import type { QueryCtx, MutationCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { requireAgent, requirePermission, can, agentLabel } from "./rbac";
 import { notify, NOTIFY_COLOR } from "./lib/notify";
 import { openTrip, closeTrip, tripAddMember, tripRemoveMember, roofToNumber } from "./fleet";
+
+// Normalisation pour la recherche (sans accents, en minuscules), alignée sur la flotte.
+const norm = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
 async function myOpenMembership(ctx: QueryCtx, agentId: Id<"agents">) {
   const memberships = await ctx.db.query("patrolMembers").withIndex("by_agent", (q) => q.eq("agentId", agentId)).collect();
@@ -249,6 +253,21 @@ async function defaultStatusId(ctx: MutationCtx): Promise<Id<"dispatchStatuses">
   return (statuses.find((s) => s.isDefault) ?? statuses[0])?._id;
 }
 
+// Recalcule le texte de recherche d'une patrouille (indicatif + noms/matricules des
+// agents présents). Figé TANT QUE la patrouille vit : une fois terminée, on ne
+// touche plus au snapshot (ses membres ont pu être supprimés à la dissolution).
+async function updatePatrolSearch(ctx: MutationCtx, patrolId: Id<"patrols">) {
+  const p = await ctx.db.get(patrolId);
+  if (!p || p.endedAt) return;
+  const links = await ctx.db.query("patrolMembers").withIndex("by_patrol", (q) => q.eq("patrolId", patrolId)).collect();
+  const parts = [p.label];
+  for (const m of links) {
+    const a = await ctx.db.get(m.agentId);
+    if (a) parts.push(`${a.prenomRP} ${a.nomRP}`, a.matricule != null ? String(a.matricule) : "");
+  }
+  await ctx.db.patch(patrolId, { searchText: norm(parts.filter(Boolean).join(" ")) });
+}
+
 async function recomputeLabel(ctx: MutationCtx, patrolId: Id<"patrols">) {
   const p = await ctx.db.get(patrolId);
   if (!p) return;
@@ -261,6 +280,8 @@ async function recomputeLabel(ctx: MutationCtx, patrolId: Id<"patrols">) {
     indicator = indicatorForCount(count);
   }
   await ctx.db.patch(patrolId, { indicator, label: `13${indicator}${p.vehicleNumber}` });
+  // L'indicatif et l'effectif viennent de changer : rafraîchir le texte de recherche.
+  await updatePatrolSearch(ctx, patrolId);
 }
 
 async function detachAgent(ctx: MutationCtx, agentId: Id<"agents">) {
@@ -369,6 +390,7 @@ export const create = mutation({
       await detachAgent(ctx, members[i]);
       await ctx.db.insert("patrolMembers", { patrolId, agentId: members[i], at: now });
     }
+    await updatePatrolSearch(ctx, patrolId);
     // Une patrouille prenant un véhicule LSPD ouvre une sortie.
     if (fleetVehicleId) await openTrip(ctx, patrolId, fleetVehicleId, agent._id, members);
     await logPatrol(ctx, patrolId, agent._id, "created", `Patrouille créée (${members.length} agent${members.length > 1 ? "s" : ""})`);
@@ -416,6 +438,7 @@ export const createForAgent = mutation({
       statusId, fields: pickFields(status, fields), statusSince: now, startedAt: now, createdBy: agent._id,
     });
     await ctx.db.insert("patrolMembers", { patrolId, agentId, at: now });
+    await updatePatrolSearch(ctx, patrolId);
     await logPatrol(ctx, patrolId, agent._id, "created", `Patrouille créée avec ${await agentName(ctx, agentId)}`);
     await notify(ctx, "patrol.create", {
       title: `Patrouille créée · 13${indicator}${vehicleNumber}`,
@@ -757,29 +780,55 @@ export const statusRemove = mutation({
 });
 
 // ============ HISTORIQUE ============
-// Patrouilles terminées (les plus récentes d'abord).
+// Patrouilles terminées (les plus récentes d'abord), paginées. Avec `q`, recherche
+// par indicatif / nom d'agent / matricule via l'index de recherche (searchText figé
+// tant que la patrouille vivait, cf. updatePatrolSearch).
 export const history = query({
-  args: {},
-  handler: async (ctx) => {
+  args: { paginationOpts: paginationOptsValidator, q: v.optional(v.string()) },
+  handler: async (ctx, { paginationOpts, q }) => {
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "dispatch.view");
-    const all = await ctx.db.query("patrols").order("desc").take(300);
-    const ended = all.filter((p) => p.endedAt != null).slice(0, 60);
-    const out = [];
-    for (const p of ended) {
-      // Les membres sont supprimés à la dissolution : on repasse par le journal.
-      const events = await ctx.db.query("patrolEvents").withIndex("by_patrol", (q) => q.eq("patrolId", p._id)).collect();
-      out.push({
+    const needle = q?.trim() ? norm(q.trim()) : null;
+    const res = needle
+      ? await ctx.db.query("patrols").withSearchIndex("search", (s) => s.search("searchText", needle)).paginate(paginationOpts)
+      // by_open porte endedAt : gt(0) exclut les patrouilles ouvertes (endedAt indéfini trie sous 0).
+      : await ctx.db.query("patrols").withIndex("by_open", (x) => x.gt("endedAt", 0)).order("desc").paginate(paginationOpts);
+    const page = [];
+    for (const p of res.page) {
+      // La recherche ne peut pas filtrer endedAt en ligne : on écarte ici les patrouilles encore ouvertes.
+      if (p.endedAt == null) continue;
+      // Les membres sont supprimés à la dissolution : le compteur repasse par le journal.
+      const events = await ctx.db.query("patrolEvents").withIndex("by_patrol", (x) => x.eq("patrolId", p._id)).collect();
+      page.push({
         _id: p._id,
         label: p.label,
         color: p.color ?? null,
         startedAt: p.startedAt,
-        endedAt: p.endedAt!,
+        endedAt: p.endedAt,
         eventCount: events.length,
       });
     }
-    out.sort((a, b) => b.endedAt - a.endedAt);
-    return out;
+    return { ...res, page };
+  },
+});
+
+// Backfill idempotent : renseigne searchText des patrouilles existantes depuis leur
+// indicatif + les membres restants. À lancer une fois après le déploiement.
+export const backfillPatrolSearch = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    let updated = 0;
+    for (const p of await ctx.db.query("patrols").collect()) {
+      const links = await ctx.db.query("patrolMembers").withIndex("by_patrol", (x) => x.eq("patrolId", p._id)).collect();
+      const parts = [p.label];
+      for (const m of links) {
+        const a = await ctx.db.get(m.agentId);
+        if (a) parts.push(`${a.prenomRP} ${a.nomRP}`, a.matricule != null ? String(a.matricule) : "");
+      }
+      const next = norm(parts.filter(Boolean).join(" "));
+      if (p.searchText !== next) { await ctx.db.patch(p._id, { searchText: next }); updated++; }
+    }
+    return { updated };
   },
 });
 

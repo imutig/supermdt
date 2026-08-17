@@ -1,7 +1,8 @@
 import { useRef, useState } from "react";
 import { X, Plus, LogOut, Radio, Users, GripVertical, Flag, History, Maximize2, Minimize2 } from "lucide-react";
-import { useMutation, useQuery } from "convex/react";
+import { useMutation, useQuery, usePaginatedQuery } from "convex/react";
 import { api, type Id } from "@/lib/api";
+import { LoadMore } from "@/components/common/Pagination";
 import { useCan } from "@/hooks/useCan";
 import { useMe } from "@/hooks/useMe";
 import { useToast } from "@/providers/toast";
@@ -384,7 +385,8 @@ export function Dispatch() {
 
 // Historique des patrouilles terminées + journal de chacune.
 function HistoryModal({ onClose }: { onClose: () => void }) {
-  const rows = useQuery(api.dispatch.history);
+  const [q, setQ] = useState("");
+  const { results, status, loadMore } = usePaginatedQuery(api.dispatch.history, { q: q.trim() || undefined }, { initialNumItems: 30 });
   const [sel, setSel] = useState<string | null>(null);
   return (
     <div onClick={onClose} className="fixed inset-0 z-[85] flex items-center justify-center p-4" style={{ background: "var(--scrim)", backdropFilter: "blur(6px)" }}>
@@ -395,18 +397,28 @@ function HistoryModal({ onClose }: { onClose: () => void }) {
           <button onClick={onClose} className="flex h-[28px] w-[28px] items-center justify-center rounded-sm border border-border bg-surface-2 text-muted hover:border-border-strong"><X className="h-4 w-4" /></button>
         </div>
         <div className="grid min-h-0 flex-1 grid-cols-[260px_1fr]">
-          <div className="min-h-0 overflow-y-auto border-r border-border">
-            {rows === undefined ? (
-              <div className="p-4 text-[12.5px] text-faint">Chargement…</div>
-            ) : rows.length === 0 ? (
-              <div className="p-4 text-[12.5px] text-faint">Aucune patrouille terminée.</div>
-            ) : rows.map((r) => (
-              <button key={r._id} onClick={() => setSel(r._id)} className="flex w-full flex-col items-start gap-[2px] border-b border-border px-4 py-[10px] text-left hover:bg-surface-2" style={sel === r._id ? { background: "var(--accent-soft)" } : undefined}>
-                <span className="font-data text-[13px] font-bold" style={{ color: r.color ?? "var(--text)" }}>{r.label}</span>
-                <span className="text-[11px] text-faint">{new Date(r.startedAt).toLocaleString("fr-FR")}</span>
-                <span className="text-[10.5px] text-faint">{Math.max(1, Math.round((r.endedAt - r.startedAt) / 60000))} min · {r.eventCount} action{r.eventCount > 1 ? "s" : ""}</span>
-              </button>
-            ))}
+          <div className="flex min-h-0 flex-col border-r border-border">
+            <div className="flex-shrink-0 border-b border-border p-2">
+              <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Rechercher (agent, nom de patrouille)…" className="h-9 w-full rounded-sm border border-border bg-surface-2 px-3 text-[12.5px] outline-none focus:border-accent" />
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              {status === "LoadingFirstPage" ? (
+                <div className="p-4 text-[12.5px] text-faint">Chargement…</div>
+              ) : results.length === 0 ? (
+                <div className="p-4 text-[12.5px] text-faint">{q.trim() ? "Aucun résultat pour cette recherche." : "Aucune patrouille terminée."}</div>
+              ) : (
+                <>
+                  {results.map((r) => (
+                    <button key={r._id} onClick={() => setSel(r._id)} className="flex w-full flex-col items-start gap-[2px] border-b border-border px-4 py-[10px] text-left hover:bg-surface-2" style={sel === r._id ? { background: "var(--accent-soft)" } : undefined}>
+                      <span className="font-data text-[13px] font-bold" style={{ color: r.color ?? "var(--text)" }}>{r.label}</span>
+                      <span className="text-[11px] text-faint">{new Date(r.startedAt).toLocaleString("fr-FR")}</span>
+                      <span className="text-[10.5px] text-faint">{Math.max(1, Math.round((r.endedAt - r.startedAt) / 60000))} min · {r.eventCount} action{r.eventCount > 1 ? "s" : ""}</span>
+                    </button>
+                  ))}
+                  <LoadMore status={status} onLoadMore={() => loadMore(30)} count={results.length} label="patrouilles" />
+                </>
+              )}
+            </div>
           </div>
           <div className="min-h-0 overflow-y-auto p-4">
             {sel ? <PatrolJournal patrolId={sel} /> : <div className="flex h-full items-center justify-center text-[12.5px] text-faint">Sélectionnez une patrouille.</div>}

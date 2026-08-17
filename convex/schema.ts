@@ -959,7 +959,12 @@ export default defineSchema({
     startedAt: v.number(),
     endedAt: v.optional(v.number()),
     createdBy: v.id("agents"),
-  }).index("by_open", ["endedAt"]),
+    // Recherche de l'historique : indicatif + noms/matricules des agents présents,
+    // figé TANT QUE la patrouille vit (ses membres sont supprimés à la dissolution).
+    searchText: v.optional(v.string()),
+  })
+    .index("by_open", ["endedAt"])
+    .searchIndex("search", { searchField: "searchText" }),
 
   patrolMembers: defineTable({
     patrolId: v.id("patrols"),
