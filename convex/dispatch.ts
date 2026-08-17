@@ -220,7 +220,12 @@ export const statusOptions = query({
   handler: async (ctx) => {
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "dispatch.view");
-    const statuses = (await activeStatuses(ctx)).map((s) => ({ _id: s._id, name: s.name, color: s.color ?? null, icon: s.icon ?? null, group: s.group ?? null, requires: s.requires ?? [], isDefault: s.isDefault === true }));
+    // « Opération » n'est PAS un statut qu'on choisit : une patrouille rejoint une
+    // opération via le tableau (assignToOperation), pas en posant ce statut. La
+    // proposer ici la ferait tomber en « Sans statut ». On l'exclut donc des choix.
+    const statuses = (await activeStatuses(ctx))
+      .filter((s) => s.name !== "Opération")
+      .map((s) => ({ _id: s._id, name: s.name, color: s.color ?? null, icon: s.icon ?? null, group: s.group ?? null, requires: s.requires ?? [], isDefault: s.isDefault === true }));
     const sectors = (await ctx.db.query("dispatchSectors").withIndex("by_position").collect()).filter((s) => s.active).map((s) => s.name);
     return { statuses, sectors };
   },

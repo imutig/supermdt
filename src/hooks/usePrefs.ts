@@ -10,7 +10,7 @@ export type Prefs = {
 const DEFAULTS: Prefs = {
   sidebarCollapsible: false,
   sidebarHoverExpand: true,
-  dispatchCompact: false,
+  dispatchCompact: true, // dispatch compact par défaut (« développé » en option)
 };
 const KEY = "mdt.prefs";
 
