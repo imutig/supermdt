@@ -8,6 +8,28 @@
 \ProvidesPackage{rapport}[2026/08/17 Charte graphique - Rapport hebdomadaire LSPD]
 
 \RequirePackage{style/lspd}
+\RequirePackage{pgfplots}
+\pgfplotsset{compat=1.18}
+\usepgfplotslibrary{colorbrewer}
+
+% Style de graphique à barres aux couleurs de la charte.
+\pgfplotsset{
+  lspdbar/.style={
+    ybar, bar width=10pt,
+    width=\linewidth, height=44mm,
+    ymin=0, enlarge x limits=0.09,
+    axis x line=bottom, axis y line=left,
+    axis line style={lspdrule, line width=.4pt},
+    ymajorgrids, major grid style={lspdrule!55, line width=.3pt},
+    tick align=outside, tick style={lspdrule},
+    x tick label style={font=\lspdsans\fontsize{7.2}{9}\selectfont, text=lspdgrey},
+    y tick label style={font=\lspdsans\fontsize{7}{9}\selectfont, text=lspdgrey},
+    every axis plot/.style={fill=lspdblue, draw=lspdnavy, line width=.3pt},
+    nodes near coords,
+    every node near coord/.append style={
+      font=\lspdsansbk\fontsize{6.8}{8}\selectfont, text=lspdnavy, anchor=south,
+      /pgf/number format/precision=0, /pgf/number format/fixed},
+  }}
 
 % ---------------------------------------------------------------
 %  En-tête / pied : sous-titre « Rapport hebdomadaire »
