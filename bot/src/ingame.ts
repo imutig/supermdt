@@ -41,17 +41,14 @@ export function parseServiceLog(
   return { discordId: discord[1], startedAt: start, endedAt: end, ingameName: name?.[1]?.trim(), ingameId: uid?.[1] };
 }
 
-let lastIncremental = 0;
-
 // Synchronise les services in-game. Historique complet si resync demandé ou pas
-// de curseur ; sinon uniquement les messages postérieurs au curseur (throttle
-// 5 min pour l'incrémental, immédiat pour un resync). Idempotent (dédup Convex).
+// de curseur ; sinon uniquement les messages postérieurs au curseur. Idempotent
+// (dédup Convex). La CADENCE est pilotée par l'appelant (intervalle dédié 1 min
+// dans tasks.ts, avec verrou anti-chevauchement).
 export async function syncInGameServices(client: Client): Promise<void> {
   const state = await mdt.ingameSyncState().catch(() => null);
   if (!state?.channelId) return;
   const full = state.resync || !state.lastMsgId;
-  if (!full && Date.now() - lastIncremental < 5 * 60_000) return;
-  if (!full) lastIncremental = Date.now();
 
   const chan = await client.channels.fetch(state.channelId).catch(() => null);
   if (!chan || !chan.isTextBased()) return;

@@ -175,8 +175,8 @@ export function startTasks(client: Client) {
     await reconcilePromoCategories(client).catch(() => {});
     await reconcilePromoDeletions(client).catch(() => {});
 
-    // --- Services in-game (salon VIZU) : incrémental (throttlé) ou resync complet ---
-    await syncInGameServices(client).catch(() => {});
+    // Services in-game : découplés sur leur propre intervalle 1 min (voir plus bas),
+    // pas dans ce tick lourd (qui touche l'API membres, sensible aux rate limits).
 
     // --- Entretiens à T-15 min ---
     // Confirmé : rappel (MP candidat + ping instructeur). Non confirmé :
@@ -462,7 +462,19 @@ export function startTasks(client: Client) {
   // rappels, fermetures) qui tolère 5 min. La logique horaire est déjà « à
   // fenêtre » (pas d'égalité stricte à la minute), donc 5 min est sûr.
   setInterval(() => void tick(), 5 * 60_000);
-  console.log("[tasks] boucle active (poll de sécurité 5 min + push Convex).");
+
+  // Synchro des services in-game sur son PROPRE intervalle (1 min), découplée du
+  // tick lourd. Verrou anti-chevauchement : un resync complet peut durer > 1 min,
+  // on ne relance pas tant que la passe précédente n'est pas terminée.
+  let ingameSyncing = false;
+  const runIngameSync = () => {
+    if (ingameSyncing) return;
+    ingameSyncing = true;
+    void syncInGameServices(client).catch(() => {}).finally(() => { ingameSyncing = false; });
+  };
+  setTimeout(runIngameSync, 15_000); // première passe peu après le démarrage
+  setInterval(runIngameSync, 60_000);
+  console.log("[tasks] boucle active (poll de sécurité 5 min + services in-game 1 min + push Convex).");
   // Le serveur HTTP (index.ts) déclenche ce tick immédiatement quand Convex
   // « pousse » du travail (POST /push). On renvoie donc le déclencheur.
   return tick;
