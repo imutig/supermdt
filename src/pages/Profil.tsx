@@ -127,6 +127,7 @@ function StatsTab() {
   }, [rangeKind, customFrom, customTo]);
 
   const r = useQuery(api.stats.myRangeStats, args);
+  const sal = useQuery(api.payroll.mySalary, {});
   const refreshMine = useMutation(api.stats.refreshMyRangeStats);
   const [resyncing, setResyncing] = useState(false);
   // Cache par plage (par agent) : recalcul à l'ouverture si vide/périmé, ou bouton.
@@ -168,6 +169,24 @@ function StatsTab() {
           <RefreshCw className={`h-[13px] w-[13px] ${resyncing ? "animate-spin" : ""}`} /> Resynchro
         </button>
       </div>
+
+      {/* Salaire de la semaine en cours (indépendant de la période sélectionnée) */}
+      {sal && sal.hasScale && (
+        <div className="mb-[16px] flex flex-wrap items-center gap-x-6 gap-y-2 rounded-card border border-border bg-surface px-[16px] py-[13px]">
+          <div>
+            <div className="text-[10.5px] font-bold uppercase tracking-[0.09em] text-faint">Mon salaire · {sal.weekLabel}</div>
+            <div className="font-data text-[20px] font-bold" style={{ color: "var(--success)" }}>
+              {"$" + Math.round(sal.paid ? sal.paidAmount ?? sal.total : sal.total).toLocaleString("fr-FR")}
+              {sal.paid && <span className="ml-2 align-middle text-[11px] font-semibold" style={{ color: "var(--success)" }}>✓ payé</span>}
+              {!sal.paid && sal.maxed && <span className="ml-2 align-middle text-[11px] font-semibold" style={{ color: "var(--warning)" }}>plafond atteint</span>}
+            </div>
+          </div>
+          <div className="flex flex-col"><span className="text-[10.5px] text-faint">Temps de service (IG)</span><span className="font-data text-[13.5px] font-semibold">{Math.floor(sal.seconds / 3600)} h {String(Math.floor((sal.seconds % 3600) / 60)).padStart(2, "0")}</span></div>
+          <div className="flex flex-col"><span className="text-[10.5px] text-faint">Base horaire</span><span className="font-data text-[13.5px] font-semibold">{money(sal.base)}{sal.rate > 0 ? ` · $${sal.rate}/h` : ""}</span></div>
+          {sal.bonus > 0 && <div className="flex flex-col"><span className="text-[10.5px] text-faint">Primes</span><span className="font-data text-[13.5px] font-semibold" style={{ color: "var(--success)" }}>+{money(sal.bonus)}</span></div>}
+          {sal.maxSalary != null && <div className="flex flex-col"><span className="text-[10.5px] text-faint">Plafond</span><span className="font-data text-[13.5px] font-semibold">{money(sal.maxSalary)}</span></div>}
+        </div>
+      )}
 
       {/* Cartes de stats (période) */}
       <div className="mb-[16px] grid grid-cols-2 gap-px overflow-hidden rounded-card border border-border bg-border md:grid-cols-4">

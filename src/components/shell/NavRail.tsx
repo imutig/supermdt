@@ -23,6 +23,7 @@ import {
   ShieldAlert,
   BarChart3,
   FileSignature,
+  Wallet,
   Activity,
   Archive as ArchiveIcon,
   Shield,
@@ -118,6 +119,7 @@ const GROUPS: NavGroup[] = [
     items: [
       { key: "statistiques", label: "Statistiques", icon: BarChart3, to: "/statistiques", perm: "stats.view" },
       { key: "rapportgouv", label: "Rapport gouv.", icon: FileSignature, to: "/rapport-gouvernement", perm: "rapportgouv.manage" },
+      { key: "salaires", label: "Salaires", icon: Wallet, to: "/salaires", perm: "comptabilite.view" },
       { key: "analytics", label: "Analytics", icon: Activity, to: "/analytics", perm: "audit.view" },
       { key: "config", label: "Configuration", icon: SlidersHorizontal, to: "/config", perm: "rbac.manage" },
       { key: "synchronisation", label: "Synchronisation", icon: RefreshCw, to: "/synchronisation", perm: "rbac.manage" },

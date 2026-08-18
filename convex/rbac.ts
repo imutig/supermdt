@@ -91,6 +91,9 @@ export const PERMISSION_SLUGS: { slug: string; domain: string; description: stri
   { slug: "stats.view", domain: "stats", description: "Consulter les statistiques de la station" },
   // Rapport hebdomadaire gouvernemental
   { slug: "rapportgouv.manage", domain: "rapportgouv", description: "Rédiger et générer le rapport hebdomadaire d'activité" },
+  // Comptabilité / salaires
+  { slug: "comptabilite.view", domain: "comptabilite", description: "Consulter la page Salaires (paie hebdomadaire)" },
+  { slug: "comptabilite.manage", domain: "comptabilite", description: "Gérer les barèmes, primes et marquer les salaires payés" },
   // Dispatch
   { slug: "dispatch.view", domain: "dispatch", description: "Voir le dispatch (patrouilles en service)" },
   { slug: "dispatch.self", domain: "dispatch", description: "Créer/rejoindre une patrouille et changer son statut" },

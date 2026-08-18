@@ -39,6 +39,7 @@ export function Dashboard() {
   const me = useMe();
   const { can } = useCan();
   const countsQ = useQuery(api.stats.counts, {});
+  const salaryQ = useQuery(api.payroll.mySalary, {});
   const recentQ = useQuery(api.citizens.recent, can("citoyens.view") ? { limit: 6 } : "skip");
   const ensureSnapshot = useMutation(api.stats.ensureSnapshot);
   const presenceQ = useQuery(api.agents.presence, can("effectif.view") ? {} : "skip");
@@ -66,10 +67,23 @@ export function Dashboard() {
     : me?.grade
       ? (CORPS[me.grade.corps] ?? "")
       : "";
-  const cards: { label: string; value: string; sub: string; danger?: boolean; onClick?: () => void }[] = [
+  const fmtSvc = (sec: number) => `${Math.floor(sec / 3600)} h ${String(Math.floor((sec % 3600) / 60)).padStart(2, "0")}`;
+  const salaryValue = salaryQ ? (salaryQ.paid ? salaryQ.paidAmount ?? salaryQ.total : salaryQ.total) : null;
+  const salarySub = !salaryQ
+    ? "semaine en cours"
+    : !salaryQ.hasScale
+      ? "aucun barème défini"
+      : salaryQ.paid
+        ? "payé cette semaine"
+        : salaryQ.maxed
+          ? "plafond atteint — n'évolue plus"
+          : salaryQ.bonus > 0
+            ? `dont ${"$" + salaryQ.bonus.toLocaleString("fr-FR")} de primes`
+            : "semaine en cours";
+  const cards: { label: string; value: string; sub: string; danger?: boolean; color?: string; onClick?: () => void }[] = [
     { label: "Grade", value: gradeName, sub: corpsLabel },
-    { label: "Divisions", value: String(me?.divisions.length ?? 0), sub: divLabel },
-    { label: "Citoyens", value: countsQ ? countsQ.citizensCount.toLocaleString("fr-FR") : "-", sub: "fiches synchronisées", onClick: openSearch },
+    { label: "Mon temps de service (IG)", value: salaryQ ? fmtSvc(salaryQ.seconds) : "-", sub: salaryQ?.weekLabel ?? "semaine en cours" },
+    { label: "Mon salaire", value: salaryValue != null ? "$" + Math.round(salaryValue).toLocaleString("fr-FR") : "-", sub: salarySub, color: "var(--success)", onClick: can("comptabilite.view") ? () => navigate("/salaires") : undefined },
     { label: "Véhicules", value: countsQ ? countsQ.vehiclesCount.toLocaleString("fr-FR") : "-", sub: "immatriculés", onClick: can("vehicules.view") ? () => navigate("/vehicules") : undefined },
   ];
 
@@ -111,7 +125,7 @@ export function Dashboard() {
                 </div>
                 <div
                   className="font-data text-[19px] font-bold tracking-tight"
-                  style={{ color: c.danger ? "var(--danger)" : "var(--text)" }}
+                  style={{ color: c.color ?? (c.danger ? "var(--danger)" : "var(--text)") }}
                 >
                   {c.value}
                 </div>

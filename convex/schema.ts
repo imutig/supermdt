@@ -786,7 +786,46 @@ export default defineSchema({
   })
     .index("by_message", ["messageId"])
     .index("by_agent", ["agentId"])
-    .index("by_discord", ["discordId"]),
+    .index("by_discord", ["discordId"])
+    // Lecture bornée par période (paie hebdo) sans scanner toute la table.
+    .index("by_started", ["startedAt"]),
+
+  // ============ COMPTABILITÉ / SALAIRES ============
+  // Barèmes de paie DATÉS (timeline) : chaque barème s'applique À PARTIR de la
+  // semaine `effectiveFromWeek` (lundi 00:00, ms) et jusqu'au barème suivant.
+  // `effectiveFromWeek` absent = depuis toujours. Taux HORAIRE par grade + un
+  // salaire max global (facultatif) sur la base horaire.
+  payScales: defineTable({
+    effectiveFromWeek: v.optional(v.number()),
+    rates: v.array(v.object({ gradeId: v.id("grades"), hourlyRate: v.number() })),
+    maxSalary: v.optional(v.number()),
+    updatedBy: v.optional(v.id("agents")),
+    updatedAt: v.number(),
+  }),
+
+  // Paiement d'un salaire (agent, semaine). La présence de la ligne = payé ; le
+  // montant est FIGÉ au moment du paiement (base horaire plafonnée + primes).
+  salaryPayments: defineTable({
+    agentId: v.id("agents"),
+    weekStart: v.number(),
+    amount: v.number(),
+    paidAt: v.number(),
+    paidBy: v.optional(v.id("agents")),
+  })
+    .index("by_week", ["weekStart"])
+    .index("by_agent_week", ["agentId", "weekStart"]),
+
+  // Primes d'une semaine : individuelle (agentId défini) ou globale (agentId
+  // absent = s'applique à tous). Motif obligatoire. S'ajoutent au salaire, au-delà
+  // du plafond horaire.
+  salaryBonuses: defineTable({
+    weekStart: v.number(),
+    agentId: v.optional(v.id("agents")),
+    amount: v.number(),
+    motif: v.string(),
+    createdBy: v.optional(v.id("agents")),
+    createdAt: v.number(),
+  }).index("by_week", ["weekStart"]),
 
   // Rapport hebdomadaire d'activité (à l'attention du Gouvernement RP) : sections
   // rédigées à la main + agents à l'honneur curatés + référence du dernier PDF.
