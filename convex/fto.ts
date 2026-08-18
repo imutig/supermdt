@@ -65,7 +65,7 @@ async function hasFieldTraining(ctx: QueryCtx | MutationCtx, viewer: Doc<"agents
 // Tuteur FTO éligible (indépendamment de l'attribution) : membre de l'académie,
 // ou porteur d'un grade figurant dans tutorGradeIds. Sert à ouvrir l'édition des
 // fiches à N'IMPORTE QUEL FTO, pas seulement au tuteur référent attribué.
-async function isEligibleTutor(ctx: QueryCtx | MutationCtx, viewer: Doc<"agents">): Promise<boolean> {
+export async function isEligibleTutor(ctx: QueryCtx | MutationCtx, viewer: Doc<"agents">): Promise<boolean> {
   if (isAcademy(viewer)) return true;
   if (!viewer.gradeId) return false;
   const cfg = await ctx.db.query("ftoConfig").first();

@@ -3,7 +3,7 @@ import { mutation, query } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { requireAgent, can } from "./rbac";
-import { traineeGrade } from "./fto";
+import { traineeGrade, isEligibleTutor } from "./fto";
 
 // First Lincoln : évaluation de la première patrouille encadrée d'un rookie
 // (Officier 1 Probatoire) qui prend le lead de la patrouille sous supervision.
@@ -40,13 +40,15 @@ function evalScorePct(scores: Doc<"flScores">[], criteria: Doc<"flCriteria">[]):
   return denom === 0 ? null : Math.round((sum / denom) * 100);
 }
 
-// Accéder à la section / consulter les évaluations.
+// Accéder à la section / consulter les évaluations. Les FTO éligibles (académie
+// OU grade « tuteur » configuré dans la Formation Terrain) y accèdent aussi :
+// ce sont eux qui encadrent les First Lincoln.
 async function canView(ctx: QueryCtx | MutationCtx, viewer: Doc<"agents">): Promise<boolean> {
-  return viewer.isOwner || isAcademy(viewer) || (await can(ctx, viewer, "firstlincoln.view"));
+  return viewer.isOwner || isAcademy(viewer) || (await can(ctx, viewer, "firstlincoln.view")) || (await isEligibleTutor(ctx, viewer));
 }
 // Créer / remplir une évaluation.
 async function canEvaluate(ctx: QueryCtx | MutationCtx, viewer: Doc<"agents">): Promise<boolean> {
-  return viewer.isOwner || isAcademy(viewer) || (await can(ctx, viewer, "firstlincoln.evaluate"));
+  return viewer.isOwner || isAcademy(viewer) || (await can(ctx, viewer, "firstlincoln.evaluate")) || (await isEligibleTutor(ctx, viewer));
 }
 // Configurer la grille de critères.
 async function canManage(ctx: QueryCtx | MutationCtx, viewer: Doc<"agents">): Promise<boolean> {

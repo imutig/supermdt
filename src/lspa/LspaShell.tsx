@@ -2,6 +2,8 @@ import { Suspense, useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { Home, Users, GraduationCap, ClipboardList, History, ShieldCheck, Compass, ArrowLeftRight, Sun, Moon, Archive, ClipboardCheck, Car } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { useQuery } from "convex/react";
+import { api } from "@/lib/api";
 import { useApp } from "@/providers/app-state";
 import { useCan } from "@/hooks/useCan";
 import { useMe } from "@/hooks/useMe";
@@ -47,7 +49,10 @@ export function LspaShell() {
   useEffect(() => { exitFocus(); }, [routeKey, exitFocus]);
 
   const entretiensAccess = !!me?.agent.isOwner || !!me?.academyRank || can("lspa.entretiens");
-  const firstLincolnAccess = !!me?.agent.isOwner || academyMember || can("firstlincoln.view");
+  // Accès First Lincoln : owner/académie/permission (immédiat) OU FTO éligible
+  // (grade tuteur configuré) via la query d'accès du backend, source de vérité.
+  const flAccess = useQuery(api.firstLincoln.access);
+  const firstLincolnAccess = !!me?.agent.isOwner || academyMember || can("firstlincoln.view") || !!flAccess?.view;
   const items = ITEMS.filter((i) =>
     (!i.perm || !ready || can(i.perm))
     && !(i.hideForCadet && academyOnly)
