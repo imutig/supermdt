@@ -1649,11 +1649,14 @@ export async function handleTicketInteraction(interaction: Interaction) {
       if (id === "tk|icancel") { await handleCancelInterview(interaction); return; }
       if (id === "tk|iyes") { await handlePresenceButton(interaction, "CONFIRMED"); return; }
       if (id === "tk|ino") { await handlePresenceButton(interaction, "DECLINED"); return; }
-      // Gestion des templates + constructeur d'embed : réservé à l'encadrement
-      // (les menus sont désormais ouvrables via !template, donc publics). L'envoi
-      // (tk|tpl|send) reste ouvert aux recruteurs : géré dans son propre bloc.
-      if (((id.startsWith("tk|tpl|") && !id.startsWith("tk|tpl|send|")) || id.startsWith("tk|b|") || id.startsWith("tk|bf|")) && !isStaff(interaction)) {
-        await interaction.reply({ content: "Réservé à l'encadrement.", flags: EPH }); return;
+      // Gestion des templates + constructeur d'embed : recruteurs OU encadrement
+      // (les menus sont ouvrables via !template, donc publics — sans ce garde
+      // n'importe quel membre pourrait cliquer « Nouveau template »/« Supprimer »).
+      if ((id.startsWith("tk|tpl|") && !id.startsWith("tk|tpl|send|")) || id.startsWith("tk|b|") || id.startsWith("tk|bf|")) {
+        const gcfg = await mdt.ticketConfigGet();
+        if (!isStaff(interaction) && !isRecruiter(interaction.member as GuildMember | null, gcfg)) {
+          await interaction.reply({ content: "Réservé aux recruteurs et à l'encadrement.", flags: EPH }); return;
+        }
       }
       if (id.startsWith("tk|tpl|send|")) {
         const cfg = await mdt.ticketConfigGet();

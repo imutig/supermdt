@@ -1,5 +1,5 @@
 import {
-  REST, Routes, SlashCommandBuilder, PermissionFlagsBits,
+  REST, Routes, SlashCommandBuilder,
   type ChatInputCommandInteraction, type Client,
 } from "discord.js";
 import { env } from "./env.js";
@@ -36,18 +36,18 @@ export const commands = [
   // habilité y accède même sans « Gérer le serveur ») mais l'accès réel est
   // filtré dans openHub (administrateur OU rôle CANDIDATURES_ADMIN_ROLE).
   new SlashCommandBuilder().setName("candidatures").setDescription("Configurer le système de candidatures de l'académie"),
+  // Pas de setDefaultMemberPermissions : sinon Discord MASQUE la commande aux
+  // membres sans « Gérer les messages » (dont les recruteurs). Visibles de tous,
+  // l'accès réel est filtré au runtime (commandAllowed + gardes internes
+  // isRecruiter/isStaff), comme /candidatures.
   new SlashCommandBuilder().setName("template").setDescription("Templates de message des tickets")
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
     .addSubcommand((s) => s.setName("send").setDescription("Envoyer un template dans ce ticket")
       .addStringOption((o) => o.setName("nom").setDescription("Nom du template").setRequired(true).setAutocomplete(true)))
     .addSubcommand((s) => s.setName("create").setDescription("Créer un template (avec aperçu)"))
     .addSubcommand((s) => s.setName("list").setDescription("Lister les templates")),
-  new SlashCommandBuilder().setName("integrer").setDescription("Intégrer le candidat de ce ticket à la Police Academy")
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages),
-  new SlashCommandBuilder().setName("statut").setDescription("Changer le statut de la candidature de ce ticket")
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages),
-  new SlashCommandBuilder().setName("validation").setDescription("Valider le candidat de ce ticket : lui attribuer le rôle Cadet")
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages),
+  new SlashCommandBuilder().setName("integrer").setDescription("Intégrer le candidat de ce ticket à la Police Academy"),
+  new SlashCommandBuilder().setName("statut").setDescription("Changer le statut de la candidature de ce ticket"),
+  new SlashCommandBuilder().setName("validation").setDescription("Valider le candidat de ce ticket : lui attribuer le rôle Cadet"),
 ].map((c) => c.toJSON());
 
 // « JJ/MM/AAAA » -> {y,mo,d} validé, ou null.
