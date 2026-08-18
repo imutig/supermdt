@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "convex/react";
-import { MessagesSquare, Search, X } from "lucide-react";
+import { MessagesSquare, Search, X, Crosshair } from "lucide-react";
 import { api, type Id } from "@/lib/api";
 import { AgentModal } from "@/components/effectif/AgentModal";
 import { DiscordAccounts } from "@/components/effectif/DiscordAccounts";
@@ -10,7 +10,7 @@ import { EmptyState } from "@/components/common/EmptyState";
 import { SkeletonRows } from "@/components/common/Skeleton";
 import { useCan } from "@/hooks/useCan";
 
-type StatusFilter = "all" | "onduty" | "offduty" | "absent";
+type StatusFilter = "all" | "onduty" | "offduty" | "absent" | "noweapon";
 
 export function Effectif() {
   const roster = useQuery(api.agents.roster);
@@ -38,6 +38,7 @@ export function Effectif() {
       if (status === "onduty" && !(a.onDuty && !a.absent)) return false;
       if (status === "offduty" && (a.onDuty || a.absent)) return false;
       if (status === "absent" && !a.absent) return false;
+      if (status === "noweapon" && !(a.weaponRequired && !a.hasWeapon)) return false;
       return true;
     });
   }, [roster, q, gradeF, status]);
@@ -49,6 +50,7 @@ export function Effectif() {
     { key: "onduty", label: "En service" },
     { key: "offduty", label: "Hors service" },
     { key: "absent", label: "Absents" },
+    { key: "noweapon", label: "Sans arme" },
   ];
 
   return (
@@ -142,6 +144,19 @@ export function Effectif() {
               <span className="text-[13px] font-semibold">
                 {a.prenomRP} {a.nomRP}
               </span>
+              {a.weaponRequired && !a.hasWeapon ? (
+                <span
+                  title="Aucune arme de service enregistrée"
+                  className="inline-flex items-center gap-[4px] rounded-[5px] px-[7px] py-[2px] text-[10px] font-bold"
+                  style={{ background: "color-mix(in srgb, var(--warning) 16%, transparent)", color: "var(--warning)" }}
+                >
+                  <Crosshair className="h-[11px] w-[11px]" /> Sans arme
+                </span>
+              ) : a.weaponRequired && a.hasWeapon ? (
+                <span title="Arme de service enregistrée" className="inline-flex" style={{ color: "var(--success)" }}>
+                  <Crosshair className="h-[13px] w-[13px]" />
+                </span>
+              ) : null}
             </div>
             <span className="font-data text-[13px] text-accent">{fmtMatricule(a.matricule) ?? "-"}</span>
             <span className="text-[13px]">{a.grade ?? "-"}</span>

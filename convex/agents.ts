@@ -353,6 +353,11 @@ export const roster = query({
         .map((ab) => ab.agentId as string),
     );
 
+    // Agents ayant au moins une arme de service enregistrée (non archivée).
+    const weaponAgentIds = new Set(
+      (await ctx.db.query("serviceWeapons").collect()).filter((w) => !w.deletedAt).map((w) => w.agentId as string),
+    );
+
     const out = [];
     for (const a of agents) {
       if (a.isOwner) continue; // owner hors effectif RP
@@ -372,6 +377,9 @@ export const roster = query({
         suspended: a.status === "SUSPENDED",
         suspendedUntil: a.suspendedUntil ?? null,
         dateEntree: a.dateEntree ?? null,
+        // Arme de service enregistrée ? Les cadets (grade académie) n'en ont pas besoin.
+        hasWeapon: weaponAgentIds.has(a._id as string),
+        weaponRequired: !grade?.academyOnly,
       });
     }
     return out.sort((a, b) => b.gradePosition - a.gradePosition);
