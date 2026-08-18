@@ -13,6 +13,15 @@ export const DISCORD_COMMANDS: { command: string; label: string }[] = [
   { command: "template", label: "/template - modèles de message" },
   { command: "integrer", label: "/integrer - intégrer un candidat" },
   { command: "validation", label: "/validation - valider un candidat" },
+  // Commandes préfixe « ! » (dans les salons de tickets). L'accès configuré ici
+  // s'ajoute aux gardes internes (recruteurs/encadrement) : il restreint, ne
+  // desserre pas. Vide = comportement par défaut (gardes internes seules).
+  { command: "!template", label: "!template - menu des modèles" },
+  { command: "!statut", label: "!statut - panneau de statut" },
+  { command: "!r", label: "!r - réponse au candidat (nominatif)" },
+  { command: "!a", label: "!a - réponse au candidat (anonyme)" },
+  { command: "!close", label: "!close - fermeture (auto) du ticket" },
+  { command: "!ping", label: "!ping / !alwaysping / !unping - abonnement" },
 ];
 
 const KNOWN = new Set(DISCORD_COMMANDS.map((c) => c.command));

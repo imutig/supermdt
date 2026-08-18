@@ -9,7 +9,7 @@ import {
 } from "discord.js";
 import { mdt, type TicketConfig, type TicketTemplate, type IntegStatus, type RichEmbed, type EmbedField, type ArchiveMessage } from "./convex.js";
 import { baseEmbed, BRAND } from "./theme.js";
-import { fetchMembersCached } from "./rollcall.js";
+import { fetchMembersCached, LSPD_ROLE } from "./rollcall.js";
 
 // Rôle « Police Academy » : tuteurs habilités à voter sur les candidatures et
 // dénominateur des seuils d'acceptation/refus automatiques.
@@ -853,15 +853,29 @@ export async function openStatusMenuMsg(msg: Message) {
   await msg.channel.send({ ...statusPanel(ticket.integrationStatus) }).catch(() => {});
 }
 
+// Accès configuré (site → Administration → Commandes Discord) d'une commande « ! »,
+// EN PLUS des gardes internes (recruteurs/encadrement) : il restreint, ne desserre
+// pas. Vide côté config = autorisé (échoue ouvert si le MDT est injoignable).
+async function msgCommandAllowed(msg: Message, command: string): Promise<boolean> {
+  const roleIds = msg.member ? [...msg.member.roles.cache.keys()] : [];
+  const isLspd = roleIds.includes(LSPD_ROLE);
+  return await mdt.commandAllowed(command, msg.author.id, roleIds, isLspd).catch(() => true);
+}
+
 export async function handleTicketChannelMessage(msg: Message) {
   const content = msg.content ?? "";
-  if (/^!template\b/i.test(content)) { await openTemplateMenuMsg(msg); return; }
-  if (/^!statut\b/i.test(content)) { await openStatusMenuMsg(msg); return; }
+  const isTemplate = /^!template\b/i.test(content);
+  const isStatut = /^!statut\b/i.test(content);
   const closeM = /^!close\b\s*(.*)$/i.exec(content);
   // !ping (prochaine réponse), !alwaysping (chaque réponse), !unping (se désabonner).
   const pingM = /^!(alwaysping|unping|ping)\b/i.exec(content);
   const relayM = /^!([ra])\b\s*([\s\S]*)$/i.exec(content);
-  if (!closeM && !pingM && !relayM) return;
+  const command = isTemplate ? "!template" : isStatut ? "!statut" : closeM ? "!close" : pingM ? "!ping" : relayM ? `!${relayM[1].toLowerCase()}` : null;
+  if (!command) return;
+  // Contrôle d'accès configuré sur le site (par grade / rôles), additif aux gardes internes.
+  if (!(await msgCommandAllowed(msg, command))) { await msg.react("⛔").catch(() => {}); return; }
+  if (isTemplate) { await openTemplateMenuMsg(msg); return; }
+  if (isStatut) { await openStatusMenuMsg(msg); return; }
   const ticket = await mdt.ticketByChannel(msg.channel.id);
   if (!ticket) return;
   const cfg = await mdt.ticketConfigGet();
