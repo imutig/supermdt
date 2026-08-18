@@ -64,6 +64,8 @@ export function Dispatch() {
   const [prompt, setPrompt] = useState<Prompt | null>(null);
   const [newOp, setNewOp] = useState<string | null>(null);
   const [histOpen, setHistOpen] = useState(false);
+  const [view, setView] = useState<"board" | "trombi">("board");
+  const [previewMember, setPreviewMember] = useState<Member | null>(null);
 
   // Le hook doit être appelé à chaque rendu, y compris pendant le chargement :
   // il est donc déclaré avant le retour anticipé, et délègue à une référence
@@ -194,6 +196,13 @@ export function Dispatch() {
         </div>
         <span className="rounded-[6px] bg-surface-2 px-[9px] py-[3px] text-[12px] font-semibold text-muted">{board.patrols.length} patrouille{board.patrols.length > 1 ? "s" : ""}</span>
         {board.operations.length > 0 && <span className="rounded-[6px] px-[9px] py-[3px] text-[12px] font-semibold" style={{ background: "color-mix(in srgb, #3b82f6 14%, transparent)", color: "#3b82f6" }}>{board.operations.length} opération{board.operations.length > 1 ? "s" : ""}</span>}
+        <div className="flex gap-[2px] rounded-[8px] bg-surface-2 p-[3px]">
+          {(["board", "trombi"] as const).map((v) => (
+            <button key={v} onClick={() => setView(v)} className="rounded-[6px] px-[10px] py-[5px] text-[12px] font-semibold" style={view === v ? { background: "var(--accent)", color: "var(--accent-contrast)" } : { color: "var(--muted)" }}>
+              {v === "board" ? "Zones" : "Trombinoscope"}
+            </button>
+          ))}
+        </div>
         <div className="flex-1" />
         {myPatrol && (
           <div className="flex items-center gap-2">
@@ -215,6 +224,9 @@ export function Dispatch() {
         {canSelf && <button onClick={() => setCreate(true)} className="mdt-press flex items-center gap-[7px] rounded-[9px] bg-accent px-[14px] py-[8px] text-[13px] font-semibold text-accent-contrast hover:brightness-[1.06]"><Plus className="h-[16px] w-[16px]" /> Créer une patrouille</button>}
       </div>
 
+      {view === "trombi" ? (
+        <TrombinoView patrols={board.patrols} onMember={setPreviewMember} />
+      ) : (
       <div className="flex min-h-0 flex-1 gap-[12px] overflow-x-auto pb-1">
         {/* Colonne "En service" */}
         <div className="flex w-[210px] flex-shrink-0 flex-col rounded-card border border-border bg-surface">
@@ -300,6 +312,8 @@ export function Dispatch() {
           </div>
         )}
       </div>
+      )}
+      {previewMember && <AgentPreview member={previewMember} onClose={() => setPreviewMember(null)} />}
 
 
       {/* Fantôme : une copie de l'élément saisi, centrée sur le curseur. Le
@@ -552,6 +566,54 @@ function PatrolCard({ patrol, drag, isMine, agentDragging, compact, over, dimmed
     </div>
     {preview && <AgentPreview member={preview} onClose={() => setPreview(null)} />}
     </>
+  );
+}
+
+// Trombinoscope live : tous les agents en patrouille, en grille de photos, avec
+// grade, matricule, téléphone et statut courant (couleur du statut de sa patrouille).
+function TrombinoView({ patrols, onMember }: { patrols: Patrol[]; onMember: (m: Member) => void }) {
+  const seen = new Set<string>();
+  const roster: (Member & { patrolLabel: string; statusName: string | null; statusColor: string | null })[] = [];
+  for (const p of patrols) {
+    for (const m of p.members) {
+      if (seen.has(m.agentId)) continue;
+      seen.add(m.agentId);
+      roster.push({ ...m, patrolLabel: p.label, statusName: p.status?.name ?? null, statusColor: p.status?.color ?? p.color ?? null });
+    }
+  }
+  roster.sort((a, b) => (a.matricule ?? 9999) - (b.matricule ?? 9999));
+  if (roster.length === 0) return <div className="flex min-h-0 flex-1 items-center justify-center text-[13px] text-faint">Aucun agent en patrouille.</div>;
+  return (
+    <div className="min-h-0 flex-1 overflow-y-auto pb-2">
+      <div className="grid grid-cols-2 gap-[10px] sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+        {roster.map((m) => {
+          const initials = m.name.split(/\s+/).map((s) => s[0]).filter(Boolean).slice(0, 2).join("").toUpperCase() || "?";
+          return (
+            <button key={m.agentId} onClick={() => onMember(m)} className="flex flex-col overflow-hidden rounded-card border border-border bg-surface text-left transition-shadow hover:shadow-[0_2px_10px_var(--shadow)]">
+              <div className="flex items-center justify-center bg-surface-2 p-[12px]">
+                {m.avatarUrl ? (
+                  <img src={m.avatarUrl} alt="" className="h-[120px] w-[120px] rounded-[12px] border border-border object-cover" />
+                ) : (
+                  <div className="flex h-[120px] w-[120px] items-center justify-center rounded-[12px] border border-border bg-surface text-[34px] font-bold text-muted">{initials}</div>
+                )}
+              </div>
+              <div className="flex flex-col gap-[3px] p-[10px]">
+                <div className="flex items-center gap-[6px]">
+                  {m.gradeAbbrev && <span className="rounded-[3px] border px-[5px] py-px text-[9px] font-bold uppercase" style={m.gradeColor ? { borderColor: m.gradeColor, color: m.gradeColor } : { borderColor: "var(--border)", color: "var(--muted)" }}>{m.gradeAbbrev}</span>}
+                  <span className="min-w-0 flex-1 truncate text-[13px] font-semibold">{m.name}</span>
+                </div>
+                <div className="font-data text-[11px] font-semibold text-accent">{fmtMatricule(m.matricule) ?? "-"}</div>
+                <div className="font-data text-[11px] text-muted">{m.phone ? `📞 ${m.phone}` : <span className="text-faint">☎ non renseigné</span>}</div>
+                <div className="mt-[2px] flex items-center gap-[6px] text-[11px]">
+                  <span className="truncate rounded-[4px] px-[6px] py-[2px] font-semibold" style={{ background: `color-mix(in srgb, ${m.statusColor ?? "var(--accent)"} 16%, transparent)`, color: m.statusColor ?? "var(--accent)" }}>{m.statusName ?? "En patrouille"}</span>
+                  <span className="truncate font-data text-faint">{m.patrolLabel}</span>
+                </div>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
