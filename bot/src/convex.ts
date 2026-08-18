@@ -265,6 +265,7 @@ export type TicketConfig = {
   importantInfo: string; conditionsRP: string;
   announceEmbed: RichEmbed;
   statusCategories: { status: string; categoryId: string }[];
+  autoTplAccuse: string | null; autoTplRefus: string | null; autoTplAccept: string | null;
 };
 export type TicketTemplate = { _id: string; name: string; pingOwner: boolean; embed: RichEmbed };
 export type TicketOwner = { ownerId: string; ownerName: string; prenom: string; nom: string; status: string; integrationStatus: IntegStatus | null; interviewAt: number | null; interviewById: string | null; interviewPresence: "CONFIRMED" | "DECLINED" | null; interviewMsgId: string | null; voteMsgId: string | null };

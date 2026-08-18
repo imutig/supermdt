@@ -2435,6 +2435,11 @@ export default defineSchema({
     // Catégorie Discord par statut (déplacement du salon). Sans entrée pour un
     // statut : le ticket reste dans la catégorie d'arrivée (categoryId).
     statusCategories: v.optional(v.array(v.object({ status: v.string(), categoryId: v.string() }))),
+    // Templates automatiques du flux de candidature (id de ticketTemplates) :
+    // accusé de réception (à la soumission), refus et acceptation (résultat du vote).
+    autoTplAccuse: v.optional(v.string()),
+    autoTplRefus: v.optional(v.string()),
+    autoTplAccept: v.optional(v.string()),
     updatedAt: v.number(),
   }),
 

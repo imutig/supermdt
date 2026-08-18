@@ -9,6 +9,11 @@ import {
 } from "discord.js";
 import { mdt, type TicketConfig, type TicketTemplate, type IntegStatus, type RichEmbed, type EmbedField, type ArchiveMessage } from "./convex.js";
 import { baseEmbed, BRAND } from "./theme.js";
+import { fetchMembersCached } from "./rollcall.js";
+
+// Rôle « Police Academy » : tuteurs habilités à voter sur les candidatures et
+// dénominateur des seuils d'acceptation/refus automatiques.
+const POLICE_ACADEMY_ROLE = "1511056490478178395";
 
 // Statuts d'une candidature (cycle de vie). Le nom du salon est préfixé de
 // l'emoji pour lire le statut d'un coup d'œil dans la liste des salons.
@@ -122,6 +127,7 @@ function hubComponents(cfg: TicketConfig) {
     new ButtonBuilder().setCustomId("tk|hub|conditions").setLabel("Conditions & infos").setEmoji("📋").setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId("tk|hub|statcats").setLabel("Catégories par statut").setEmoji("🗂️").setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId("tk|hub|annoncetxt").setLabel("Texte de l'annonce").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId("tk|hub|autotpl").setLabel("Automatisation").setEmoji("🤖").setStyle(ButtonStyle.Secondary),
   );
   return [category, row1, row2, row3];
 }
@@ -183,6 +189,37 @@ async function setStatusCategory(status: string, categoryId: string | null) {
   const arr = cfg.statusCategories.filter((s) => s.status !== status);
   if (categoryId) arr.push({ status, categoryId });
   await mdt.ticketConfigSet({ statusCategories: arr });
+}
+
+// Automatisation des candidatures : choix des 3 templates (accusé / refus /
+// acceptation) qui pilotent le flux automatique soumission -> vote -> décision.
+async function renderAutoTemplates(interaction: ButtonInteraction | AnySelectMenuInteraction) {
+  const [cfg, templates] = await Promise.all([mdt.ticketConfigGet(), mdt.ticketTemplateList()]);
+  const nameOf = (id: string | null) => (id ? templates.find((t) => t._id === id)?.name ?? "*supprimé*" : null);
+  const embed = baseEmbed(BRAND.info).setTitle("🤖 Automatisation des candidatures")
+    .setDescription("À la **soumission** d'une candidature : envoi de l'**accusé de réception**, passage automatique en **Vote** (tuteurs Police Academy) et ping du rôle.\nÀ l'**issue du vote** : **≥ 50 %** de tuteurs *pour* → **acceptée** ; **> 50 %** *contre* → **refusée** (+ fermeture 6 h).")
+    .addFields(
+      { name: "Accusé de réception", value: nameOf(cfg.autoTplAccuse) ? `**${nameOf(cfg.autoTplAccuse)}**` : "*non défini*", inline: true },
+      { name: "Refus", value: nameOf(cfg.autoTplRefus) ? `**${nameOf(cfg.autoTplRefus)}**` : "*non défini*", inline: true },
+      { name: "Acceptation", value: nameOf(cfg.autoTplAccept) ? `**${nameOf(cfg.autoTplAccept)}**` : "*non défini*", inline: true },
+    );
+  const back = new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId("tk|hub|back").setLabel("Retour").setStyle(ButtonStyle.Secondary));
+  if (templates.length === 0) {
+    await interaction.update({ embeds: [embed.setFooter({ text: "Crée d'abord des templates (bouton Templates)." })], components: [back] });
+    return;
+  }
+  const sel = (id: string, current: string | null, ph: string) =>
+    new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+      new StringSelectMenuBuilder().setCustomId(id).setPlaceholder(ph).addOptions(
+        { label: "— Aucun —", value: "none", default: !current },
+        ...templates.slice(0, 24).map((t) => ({ label: t.name.slice(0, 100), value: t._id, default: current === t._id })),
+      ));
+  await interaction.update({ embeds: [embed], components: [
+    sel("tk|autotpl|accuse", cfg.autoTplAccuse, "Template — accusé de réception"),
+    sel("tk|autotpl|refus", cfg.autoTplRefus, "Template — refus de candidature"),
+    sel("tk|autotpl|accept", cfg.autoTplAccept, "Template — candidature acceptée"),
+    back,
+  ] });
 }
 
 function hubEmbed(cfg: TicketConfig, templateCount: number): EmbedBuilder {
@@ -584,6 +621,8 @@ async function handleDossierModal(interaction: ModalSubmitInteraction) {
   candidatures.delete(interaction.user.id);
   await interaction.editReply({ embeds: [baseEmbed(BRAND.green).setTitle("✅ Candidature envoyée")
     .setDescription("Ton dossier est transmis aux recruteurs. Tu peux continuer à m'écrire ici : je relaie tes messages, et les recruteurs te répondront de la même façon.")] });
+  // Automatisation : accusé de réception -> passage en Vote -> ping Police Academy.
+  try { await startCandidatureVote(interaction.client, channelId); } catch (e) { console.error("[auto] candidature -> vote :", e); }
 }
 
 // ---------- Relais MP <-> ticket ----------
@@ -1433,40 +1472,113 @@ async function handleInterviewModal(interaction: ModalSubmitInteraction) {
 
 // ---------- Vote pour / contre (statut « Vote en cours ») ----------
 
-function voteEmbed(state: { for: string[]; against: string[] }): EmbedBuilder {
+// Nombre de tuteurs = détenteurs du rôle Police Academy (dénominateur des seuils).
+async function academyTutorCount(guild: Guild): Promise<number> {
+  const members = await fetchMembersCached(guild);
+  return members.filter((m) => m.roles.cache.has(POLICE_ACADEMY_ROLE)).size;
+}
+function voteEmbed(state: { for: string[]; against: string[] }, tutors: number): EmbedBuilder {
   const li = (a: string[]) => (a.length ? a.map((n) => `• ${n}`).join("\n") : "*-*");
+  const acceptAt = Math.max(1, Math.ceil(tutors / 2));     // ≥ 50 %
+  const refuseAt = Math.floor(tutors / 2) + 1;             // > 50 %
   return baseEmbed(hexToInt(STATUS_HEX.VOTE)).setTitle("🗳️ Vote d'intégration")
-    .setDescription("Recruteurs : votez pour ou contre cette candidature. Un vote par personne, modifiable.")
+    .setDescription(`Tuteurs **Police Academy** : votez pour ou contre. Un vote par personne, modifiable.\n**${tutors} tuteur(s)** · acceptée dès **${acceptAt}** pour · refusée dès **${refuseAt}** contre.`)
     .addFields(
       { name: `✅ Pour - ${state.for.length}`, value: li(state.for), inline: true },
       { name: `❌ Contre - ${state.against.length}`, value: li(state.against), inline: true },
     );
 }
-function voteButtons() {
+function voteButtons(disabled = false) {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId("tk|vote|FOR").setLabel("Pour").setEmoji("✅").setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId("tk|vote|AGAINST").setLabel("Contre").setEmoji("❌").setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId("tk|vote|FOR").setLabel("Pour").setEmoji("✅").setStyle(ButtonStyle.Success).setDisabled(disabled),
+    new ButtonBuilder().setCustomId("tk|vote|AGAINST").setLabel("Contre").setEmoji("❌").setStyle(ButtonStyle.Danger).setDisabled(disabled),
   );
 }
 async function openVote(client: Client, channel: TextChannel) {
   const t = await mdt.ticketByChannel(channel.id);
   const existing = t?.voteMsgId ? await channel.messages.fetch(t.voteMsgId).catch(() => null) : null;
   const state = (await mdt.ticketVoteState(channel.id)) ?? { for: [], against: [] };
-  if (existing) { await existing.edit({ embeds: [voteEmbed(state)], components: [voteButtons()] }); return; }
-  const sent = await channel.send({ embeds: [voteEmbed(state)], components: [voteButtons()] });
+  const tutors = await academyTutorCount(channel.guild);
+  if (existing) { await existing.edit({ embeds: [voteEmbed(state, tutors)], components: [voteButtons()] }); return; }
+  const sent = await channel.send({ embeds: [voteEmbed(state, tutors)], components: [voteButtons()] });
   await mdt.ticketSetVoteMsg(channel.id, sent.id);
 }
 async function handleVoteButton(interaction: ButtonInteraction) {
-  if (!interaction.channel || interaction.channel.type !== ChannelType.GuildText) return;
-  // Le salon est réservé aux recruteurs ; on interdit seulement au candidat de
-  // voter pour lui-même.
+  if (!interaction.channel || interaction.channel.type !== ChannelType.GuildText || !interaction.inCachedGuild()) return;
   const t = await mdt.ticketByChannel(interaction.channel.id);
   if (t && t.ownerId === interaction.user.id) { await interaction.reply({ content: "Vous ne pouvez pas voter sur votre propre candidature.", flags: EPH }); return; }
+  // Réservé aux tuteurs de la Police Academy (dénominateur des seuils).
+  if (!interaction.member.roles.cache.has(POLICE_ACADEMY_ROLE)) { await interaction.reply({ content: "Seuls les tuteurs de la Police Academy peuvent voter.", flags: EPH }); return; }
+  if (t && (t.integrationStatus === "ACCEPTED" || t.integrationStatus === "REJECTED")) { await interaction.reply({ content: "Le vote est clôturé.", flags: EPH }); return; }
   const choice = interaction.customId.split("|")[2] as "FOR" | "AGAINST";
-  const name = (interaction.member && "displayName" in interaction.member ? interaction.member.displayName : null) ?? interaction.user.username;
+  const name = interaction.member.displayName ?? interaction.user.username;
   await mdt.ticketVote(interaction.channel.id, interaction.user.id, name, choice);
   const state = (await mdt.ticketVoteState(interaction.channel.id)) ?? { for: [], against: [] };
-  if (interaction.message) await interaction.update({ embeds: [voteEmbed(state)], components: [voteButtons()] });
+  const tutors = await academyTutorCount(interaction.guild);
+  if (interaction.message) await interaction.update({ embeds: [voteEmbed(state, tutors)], components: [voteButtons()] });
+  // Décision automatique dès qu'un seuil est franchi (≥50% pour, >50% contre).
+  if (tutors > 0 && state.for.length * 2 >= tutors) await finalizeVote(interaction.client, interaction.channel, "ACCEPTED").catch((e) => console.error("[vote] finalize accept :", e));
+  else if (tutors > 0 && state.against.length * 2 > tutors) await finalizeVote(interaction.client, interaction.channel, "REJECTED").catch((e) => console.error("[vote] finalize refuse :", e));
+}
+
+// Envoie un template automatique (par id) au candidat en MP + miroir dans le salon.
+async function sendAutoTemplate(client: Client, ownerId: string, tplId: string | null, channel: TextChannel | null): Promise<void> {
+  if (!tplId) return;
+  const tpl = (await mdt.ticketTemplateList()).find((t) => t._id === tplId);
+  if (!tpl) return;
+  let delivered = true;
+  try { const u = await client.users.fetch(ownerId); await u.send({ embeds: [buildEmbed(tpl.embed)] }); } catch { delivered = false; }
+  if (channel) {
+    const note = baseEmbed(BRAND.green).setDescription(`Template « ${tpl.name} » envoyée au candidat${delivered ? "" : " *(MP fermés — non reçu)*"}.`);
+    await channel.send({ embeds: [buildEmbed(tpl.embed), note] }).catch(() => {});
+  }
+}
+
+// À la soumission d'une candidature : accusé de réception -> passage auto en Vote
+// -> ping de la Police Academy. Best-effort (n'interrompt pas la soumission).
+async function startCandidatureVote(client: Client, channelId: string): Promise<void> {
+  const chan = await client.channels.fetch(channelId).catch(() => null);
+  if (!chan || chan.type !== ChannelType.GuildText) return;
+  const channel = chan as TextChannel;
+  const ticket = await mdt.ticketByChannel(channelId);
+  if (!ticket) return;
+  const cfg = await mdt.ticketConfigGet();
+  await sendAutoTemplate(client, ticket.ownerId, cfg.autoTplAccuse, channel);
+  await mdt.ticketSetStatus(channelId, "VOTE", "Automatique");
+  try {
+    await renameStatus(client, channelId, "VOTE");
+    await moveToStatusCategory(client, channelId, "VOTE", cfg);
+    await openVote(client, channel);
+  } catch (e) { console.error("[auto] ouverture du vote :", e); }
+  await channel.send({
+    content: `<@&${POLICE_ACADEMY_ROLE}>`,
+    embeds: [baseEmbed(hexToInt(STATUS_HEX.VOTE)).setTitle("🗳️ Vote ouvert").setDescription("Une nouvelle candidature est prête. **Tuteurs Police Academy**, votez pour ou contre ci-dessus.")],
+    allowedMentions: { roles: [POLICE_ACADEMY_ROLE] },
+  }).catch(() => {});
+}
+
+// Clôture automatique du vote : statut final, boutons désactivés, template envoyée,
+// + fermeture 6 h si refus. Idempotent (ne rejoue pas si déjà tranché).
+async function finalizeVote(client: Client, channel: TextChannel, decision: "ACCEPTED" | "REJECTED"): Promise<void> {
+  const ticket = await mdt.ticketByChannel(channel.id);
+  if (!ticket || ticket.integrationStatus === "ACCEPTED" || ticket.integrationStatus === "REJECTED") return;
+  const cfg = await mdt.ticketConfigGet();
+  await mdt.ticketSetStatus(channel.id, decision, "Vote automatique");
+  try { await renameStatus(client, channel.id, decision); await moveToStatusCategory(client, channel.id, decision, cfg); } catch (e) { console.error("[vote] finalisation salon :", e); }
+  const state = (await mdt.ticketVoteState(channel.id)) ?? { for: [], against: [] };
+  const tutors = await academyTutorCount(channel.guild);
+  if (ticket.voteMsgId) {
+    const vm = await channel.messages.fetch(ticket.voteMsgId).catch(() => null);
+    if (vm) await vm.edit({ embeds: [voteEmbed(state, tutors).setFooter({ text: decision === "ACCEPTED" ? "Vote clôturé — candidature ACCEPTÉE" : "Vote clôturé — candidature REFUSÉE" })], components: [voteButtons(true)] }).catch(() => {});
+  }
+  if (decision === "ACCEPTED") {
+    await sendAutoTemplate(client, ticket.ownerId, cfg.autoTplAccept, channel);
+    await channel.send({ embeds: [baseEmbed(BRAND.green).setTitle("✅ Candidature acceptée").setDescription(`Seuil atteint (**${state.for.length}/${tutors}** tuteurs pour). Candidature **acceptée** automatiquement.`)] }).catch(() => {});
+  } else {
+    await sendAutoTemplate(client, ticket.ownerId, cfg.autoTplRefus, channel);
+    await channel.send({ embeds: [baseEmbed(BRAND.danger).setTitle("❌ Candidature refusée").setDescription(`Seuil atteint (**${state.against.length}/${tutors}** tuteurs contre). Candidature **refusée** automatiquement. Fermeture du ticket dans **6 h**.`)] }).catch(() => {});
+    await mdt.ticketScheduleClose(channel.id, Date.now() + 6 * 3600_000, "Vote automatique").catch(() => {});
+  }
 }
 
 // Réconciliation : crée les catégories manquantes (promos créées sur le site).
@@ -1524,7 +1636,7 @@ export function isTicketInteraction(id: string): boolean {
 
 // Rôle habilité à configurer les candidatures, en plus des administrateurs.
 const CANDIDATURES_ADMIN_ROLE = "1434397651465539636";
-function canConfigCandidatures(interaction: ChatInputCommandInteraction): boolean {
+function canConfigCandidatures(interaction: ChatInputCommandInteraction | ButtonInteraction | AnySelectMenuInteraction | ModalSubmitInteraction): boolean {
   if (interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) return true;
   const roles = interaction.member && "roles" in interaction.member ? interaction.member.roles : null;
   if (roles && "cache" in roles) return roles.cache.has(CANDIDATURES_ADMIN_ROLE);
@@ -1563,6 +1675,12 @@ export async function handleTicketInteraction(interaction: Interaction) {
     // Boutons
     if (interaction.isButton()) {
       const id = interaction.customId;
+      // Actions de configuration du hub : réservées aux admins / rôle habilité. Le
+      // hub est éphémère, mais le menu Templates (ouvrable publiquement via
+      // !template) contient un « Retour » vers le hub -> on protège la config ici.
+      if (((id.startsWith("tk|hub|") && id !== "tk|hub|templates") || id.startsWith("tk|cfg|") || id.startsWith("tk|statcat|")) && !canConfigCandidatures(interaction)) {
+        await interaction.reply({ content: "Réservé aux administrateurs et au rôle habilité.", flags: EPH }); return;
+      }
       // --- Candidature par MP ---
       if (id === "tk|cand|panel") {
         const cfg = await mdt.ticketConfigGet();
@@ -1634,6 +1752,7 @@ export async function handleTicketInteraction(interaction: Interaction) {
       if (id === "tk|hub|conditions") { await interaction.showModal(conditionsModal(await mdt.ticketConfigGet())); return; }
       if (id === "tk|hub|roles") { await renderRoles(interaction); return; }
       if (id === "tk|hub|statcats") { await renderStatusCategories(interaction); return; }
+      if (id === "tk|hub|autotpl") { await renderAutoTemplates(interaction); return; }
       if (id.startsWith("tk|statcat|clear|")) { const st = id.split("|")[3]; await setStatusCategory(st, null); await renderStatusCategories(interaction, st); return; }
       if (id === "tk|hub|annoncetxt") {
         const cfg = await mdt.ticketConfigGet();
@@ -1725,6 +1844,15 @@ export async function handleTicketInteraction(interaction: Interaction) {
     if (interaction.isStringSelectMenu()) {
       if (interaction.customId === "tk|stsel") { await applyStatusFromSelect(interaction); return; }
       if (interaction.customId === "tk|statcat|pick") { await renderStatusCategories(interaction, interaction.values[0]); return; }
+      if (interaction.customId.startsWith("tk|autotpl|")) {
+        if (!canConfigCandidatures(interaction)) { await interaction.reply({ content: "Réservé aux administrateurs et au rôle habilité.", flags: EPH }); return; }
+        const kind = interaction.customId.split("|")[2];
+        const val = interaction.values[0] === "none" ? null : interaction.values[0];
+        const field = kind === "accuse" ? "autoTplAccuse" : kind === "refus" ? "autoTplRefus" : "autoTplAccept";
+        await mdt.ticketConfigSet({ [field]: val });
+        await renderAutoTemplates(interaction);
+        return;
+      }
       if (interaction.customId === "tk|b|color") { const d = drafts.get(interaction.user.id); if (d) { d.embed.color = interaction.values[0]; await renderBuilder(interaction, d); } return; }
       if (interaction.customId === "tk|bf|pick") {
         const d = drafts.get(interaction.user.id);

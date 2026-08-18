@@ -823,6 +823,9 @@ function ticketDefaults(cfg: Doc<"ticketConfig"> | null) {
     conditionsRP: cfg?.conditionsRP ?? DEFAULT_CONDITIONS,
     announceEmbed: cfg?.announceEmbed ?? defaultAnnounceEmbed(cfg),
     statusCategories: cfg?.statusCategories ?? [],
+    autoTplAccuse: cfg?.autoTplAccuse ?? null,
+    autoTplRefus: cfg?.autoTplRefus ?? null,
+    autoTplAccept: cfg?.autoTplAccept ?? null,
   };
 }
 
@@ -860,6 +863,9 @@ export const ticketConfigSet = mutation({
       announceText: v.optional(v.string()),
       announceItems: v.optional(v.string()),
       statusCategories: v.optional(v.array(v.object({ status: v.string(), categoryId: v.string() }))),
+      autoTplAccuse: v.optional(v.union(v.string(), v.null())),
+      autoTplRefus: v.optional(v.union(v.string(), v.null())),
+      autoTplAccept: v.optional(v.union(v.string(), v.null())),
     }),
   },
   handler: async (ctx, { secret, patch }) => {

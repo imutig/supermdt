@@ -20,7 +20,7 @@ export const ROLLCALL_ROLE = "1538912557153390694";
 // rate-limité. On mutualise le résultat pendant 2 min et, en cas d'échec, on
 // retombe sur le dernier cache connu plutôt que d'abandonner.
 let membersCache: { at: number; members: Collection<string, GuildMember> } | null = null;
-async function fetchMembersCached(guild: Guild): Promise<Collection<string, GuildMember>> {
+export async function fetchMembersCached(guild: Guild): Promise<Collection<string, GuildMember>> {
   if (membersCache && Date.now() - membersCache.at < 120_000) return membersCache.members;
   try {
     const m = await guild.members.fetch();
