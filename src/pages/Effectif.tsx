@@ -4,7 +4,7 @@ import { MessagesSquare, Search, X, Crosshair } from "lucide-react";
 import { api, type Id } from "@/lib/api";
 import { AgentModal } from "@/components/effectif/AgentModal";
 import { DiscordAccounts } from "@/components/effectif/DiscordAccounts";
-import { fmtMatricule } from "@/components/common/AgentTag";
+import { fmtMatricule, AgentAvatar } from "@/components/common/AgentTag";
 import { fmtAnciennete } from "@/lib/anciennete";
 import { EmptyState } from "@/components/common/EmptyState";
 import { SkeletonRows } from "@/components/common/Skeleton";
@@ -138,9 +138,7 @@ export function Effectif() {
             style={a.suspended ? { background: "color-mix(in srgb, var(--danger) 9%, transparent)" } : a.absent ? { background: "color-mix(in srgb, var(--warning) 7%, transparent)" } : undefined}
           >
             <div className="flex items-center gap-[10px]">
-              <div className="flex h-[30px] w-[30px] items-center justify-center rounded-[7px] border border-border bg-surface-2 text-[11px] font-bold text-muted">
-                {`${a.prenomRP.charAt(0)}${a.nomRP.charAt(0)}`.toUpperCase()}
-              </div>
+              <AgentAvatar url={a.avatarUrl} name={`${a.prenomRP} ${a.nomRP}`} size={32} />
               <span className="text-[13px] font-semibold">
                 {a.prenomRP} {a.nomRP}
               </span>

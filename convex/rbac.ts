@@ -242,13 +242,14 @@ export async function requirePermission(ctx: QueryCtx, agent: Doc<"agents">, slu
 export async function agentLabel(
   ctx: QueryCtx,
   agentId: import("./_generated/dataModel").Id<"agents"> | undefined | null,
-): Promise<{ matricule: number | null; name: string }> {
-  if (!agentId) return { matricule: null, name: "-" };
+): Promise<{ matricule: number | null; name: string; avatarUrl: string | null }> {
+  if (!agentId) return { matricule: null, name: "-", avatarUrl: null };
   const a = await ctx.db.get(agentId);
-  if (!a) return { matricule: null, name: "-" };
+  if (!a) return { matricule: null, name: "-", avatarUrl: null };
   return {
     matricule: a.matricule ?? (a.isOwner ? 0 : null),
     name: `${a.prenomRP} ${a.nomRP}`,
+    avatarUrl: a.avatarUrl ?? null,
   };
 }
 

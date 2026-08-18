@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { RefreshCw } from "lucide-react";
 import { api } from "@/lib/api";
-import { fmtMatricule } from "@/components/common/AgentTag";
+import { fmtMatricule, AgentAvatar } from "@/components/common/AgentTag";
 import { SkeletonRows } from "@/components/common/Skeleton";
 import { parisDayStart, parisDayEnd } from "@/lib/paris";
 
@@ -270,6 +270,7 @@ export function Statistiques() {
                   list.map((a, i) => (
                     <div key={i} className="flex items-center gap-[10px] border-b border-border px-4 py-[10px]">
                       <span className="w-[16px] text-center font-data text-[12px] font-bold text-faint">{i + 1}</span>
+                      <AgentAvatar url={a.avatarUrl} name={a.name} size={26} />
                       <div className="min-w-0 flex-1 text-[12.5px] font-semibold">
                         {fmtMatricule(a.matricule) && <span className="font-data text-accent">{fmtMatricule(a.matricule)} </span>}
                         {a.name}

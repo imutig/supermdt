@@ -37,7 +37,7 @@ async function writeRangeCache(ctx: MutationCtx, key: string, force: boolean, co
 // contrat au client, qui perdrait sinon tout typage. L'instantané ne porte que
 // les indicateurs indépendants de la période (compteurs, DEFCON) ; tout ce qui
 // dépend d'une plage de dates est calculé à la volée par `rangeStats`.
-type TopAgent = { matricule: number | null; name: string; count: number };
+type TopAgent = { matricule: number | null; name: string; avatarUrl: string | null; count: number };
 export type StatsData = {
   counts: { agentsActive: number; citizensCount: number; vehiclesCount: number; weaponsCount: number; mandatsActive: number };
   defcon: { name: string; color: string | null } | null;

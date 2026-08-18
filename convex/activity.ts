@@ -150,7 +150,7 @@ export const casierAndCitations = query({
         let officerDetected = true;
         if (c.officerName) {
           const a = await ctx.db.get(c.officerId as Id<"agents">);
-          if (a?.isOwner) { officer = { matricule: c.officerMatricule ?? null, name: c.officerName }; officerDetected = false; }
+          if (a?.isOwner) { officer = { matricule: c.officerMatricule ?? null, name: c.officerName, avatarUrl: null }; officerDetected = false; }
         }
         out.push({
           _id: c._id,

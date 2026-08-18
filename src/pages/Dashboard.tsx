@@ -8,7 +8,7 @@ import { useMe } from "@/hooks/useMe";
 import { useService } from "@/hooks/useService";
 import { FEATURES } from "@/lib/features";
 import { quickActions } from "@/data/demo";
-import { fmtMatricule } from "@/components/common/AgentTag";
+import { fmtMatricule, AgentAvatar } from "@/components/common/AgentTag";
 import { ServiceToggle } from "@/components/common/ServiceToggle";
 import { EmptyState } from "@/components/common/EmptyState";
 import { Clover } from "@/components/common/Clover";
@@ -294,9 +294,7 @@ export function Dashboard() {
             )}
             {presenceList.map((p) => (
               <div key={p._id} className="flex items-center gap-[10px] border-b border-border px-4 py-[9px]">
-                <div className="flex h-[26px] w-[26px] items-center justify-center rounded-[7px] border border-border bg-surface-2 text-[11px] font-bold text-muted">
-                  {p.initials}
-                </div>
+                <AgentAvatar url={p.avatarUrl} name={p.fullName} size={28} />
                 <div className="min-w-0 flex-1">
                   <div className="overflow-hidden text-ellipsis whitespace-nowrap text-[12.5px] font-semibold">
                     {fmtMatricule(p.matricule) && (

@@ -8,18 +8,42 @@ export function fmtBadge(m: number | null | undefined) {
 // Alias conservé pour compatibilité (ancien nom).
 export const fmtMatricule = fmtBadge;
 
+// Photo pro de l'agent (ronde), repli sur les initiales si aucune photo.
+// Réutilisable partout (effectif, dispatch, présence, classements…).
+export function AgentAvatar({ url, name, size = 24, className = "" }: { url?: string | null; name?: string | null; size?: number; className?: string }) {
+  const initials = (name ?? "").split(/\s+/).map((s) => s[0]).filter(Boolean).slice(0, 2).join("").toUpperCase() || "?";
+  const common = `shrink-0 rounded-full border border-border object-cover ${className}`;
+  return url ? (
+    <img src={url} alt="" className={common} style={{ width: size, height: size }} />
+  ) : (
+    <span className={`inline-flex shrink-0 items-center justify-center rounded-full border border-border bg-surface-2 font-semibold text-muted ${className}`} style={{ width: size, height: size, fontSize: Math.round(size * 0.38) }}>{initials}</span>
+  );
+}
+
 export function AgentTag({
   agent,
   className = "",
   muted = false,
+  avatar = false,
 }: {
   // `linked === false` : nom écrit dans un rapport importé, non rattaché à un
   // compte du MDT (agent parti / jamais créé). Affiché sans badge, en discret.
-  agent: { matricule: number | null; name: string; linked?: boolean } | null | undefined;
+  agent: { matricule: number | null; name: string; linked?: boolean; avatarUrl?: string | null } | null | undefined;
   className?: string;
   muted?: boolean;
+  avatar?: boolean;
 }) {
   if (!agent) return <span className={className}>-</span>;
+  if (avatar && agent.linked !== false) {
+    const mat = fmtMatricule(agent.matricule);
+    return (
+      <span className={`inline-flex items-center gap-[6px] ${className}`}>
+        <AgentAvatar url={agent.avatarUrl} name={agent.name} size={20} />
+        {mat && <span className="font-data font-semibold text-accent" style={muted ? { opacity: 0.85 } : undefined}>{mat}</span>}
+        <span>{agent.name}</span>
+      </span>
+    );
+  }
   if (agent.linked === false) {
     const name = (agent.name || "").trim();
     // Aucun officier réel (placeholder) : on n'affiche pas le badge « non relié ».
