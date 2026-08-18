@@ -155,7 +155,7 @@ function ConvocationsTable({ canManage }: { canManage: boolean }) {
       <div className="overflow-x-auto">
       <div className="min-w-[760px]">
       <div className="grid grid-cols-[.6fr_1.2fr_1.8fr_1.1fr_.9fr_auto] gap-3 border-b border-border px-4 py-[11px] text-[10px] font-bold uppercase tracking-[0.08em] text-faint">
-        <span>Réf.</span><span>Convoqué</span><span>Motif</span><span>Convocation</span><span>Par</span><span></span>
+        <span>Réf.</span><span>Convoqué</span><span>Infos supp.</span><span>Convocation</span><span>Par</span><span></span>
       </div>
       {list === undefined && <div className="p-4"><SkeletonRows rows={3} /></div>}
       {list && list.length === 0 && <EmptyState title="Aucune convocation" message="Aucune convocation enregistrée." />}

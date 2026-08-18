@@ -318,7 +318,7 @@ export function convocationEmbed(c: import("./convex.js").ConvocationAnnounce): 
   ];
   if (c.convokedAt) lines.push(`__Date de convocation :__ **${new Date(c.convokedAt).toLocaleString("fr-FR", { timeZone: "Europe/Paris", dateStyle: "short", timeStyle: "short" })}**`);
   if (c.lieu) lines.push(`__Lieu :__ **${c.lieu}**`);
-  lines.push(`__Motif de la convocation :__ **${c.motif}**`);
+  lines.push(`__Infos supplémentaires :__ **${c.motif}**`);
   lines.push("");
   lines.push("*Vous êtes prié(e) de vous présenter à la date indiquée. Toute absence non justifiée pourra faire l'objet de poursuites disciplinaires.*");
   return baseEmbed(BRAND.warning)

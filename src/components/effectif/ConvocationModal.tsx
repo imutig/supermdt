@@ -71,7 +71,7 @@ export function ConvocationModal({ initialAgentId, onClose }: { initialAgentId?:
             </div>
           </div>
           <div>
-            <div className="mb-[6px] text-[10.5px] font-bold uppercase tracking-[0.09em] text-faint">Motif</div>
+            <div className="mb-[6px] text-[10.5px] font-bold uppercase tracking-[0.09em] text-faint">Infos supplémentaires</div>
             <textarea value={motif} onChange={(e) => setMotif(e.target.value)} rows={4} className="w-full resize-y rounded-sm border border-border bg-surface-2 px-3 py-2 text-[13px] outline-none focus:border-accent" />
           </div>
         </div>
