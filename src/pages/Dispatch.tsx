@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { X, Plus, LogOut, Radio, Users, GripVertical, Flag, History, Maximize2, Minimize2, Phone } from "lucide-react";
+import { X, Plus, LogOut, Radio, Users, GripVertical, Flag, History, Maximize2, Minimize2 } from "lucide-react";
 import { useMutation, useQuery, usePaginatedQuery } from "convex/react";
 import { api, type Id } from "@/lib/api";
 import { LoadMore } from "@/components/common/Pagination";
@@ -14,6 +14,7 @@ import { PatrolDetailModal, PatrolJournal } from "@/components/dispatch/PatrolDe
 import { StatusFieldsModal, fieldsSummary, type PatrolFields } from "@/components/dispatch/statusFields";
 import { patrolBg, patrolBorder } from "@/lib/patrolColors";
 import { AgentAvatar, fmtMatricule } from "@/components/common/AgentTag";
+import { useAgentCard } from "@/components/common/AgentCard";
 
 type Status = { _id: string; name: string; color: string | null; icon: string | null; group: string | null; requires: string[] };
 type Member = { matricule: number | null; name: string; agentId: string; gradeAbbrev: string | null; gradeColor: string | null; avatarUrl: string | null; phone: string | null };
@@ -65,7 +66,6 @@ export function Dispatch() {
   const [newOp, setNewOp] = useState<string | null>(null);
   const [histOpen, setHistOpen] = useState(false);
   const [view, setView] = useState<"board" | "trombi">("board");
-  const [previewMember, setPreviewMember] = useState<Member | null>(null);
 
   // Le hook doit être appelé à chaque rendu, y compris pendant le chargement :
   // il est donc déclaré avant le retour anticipé, et délègue à une référence
@@ -225,7 +225,7 @@ export function Dispatch() {
       </div>
 
       {view === "trombi" ? (
-        <TrombinoView patrols={board.patrols} onMember={setPreviewMember} />
+        <TrombinoView patrols={board.patrols} />
       ) : (
       <div className="flex min-h-0 flex-1 gap-[12px] overflow-x-auto pb-1">
         {/* Colonne "En service" */}
@@ -313,8 +313,6 @@ export function Dispatch() {
         )}
       </div>
       )}
-      {previewMember && <AgentPreview member={previewMember} onClose={() => setPreviewMember(null)} />}
-
 
       {/* Fantôme : une copie de l'élément saisi, centrée sur le curseur. Le
           glisser-déposer natif fournissait cet aperçu, les événements pointeur
@@ -471,23 +469,15 @@ function PatrolCard({ patrol, drag, isMine, agentDragging, compact, over, dimmed
   dimmed?: boolean;
   onOpen: () => void;
 }) {
-  const [preview, setPreview] = useState<Member | null>(null);
   const names = patrol.members.map((m) => m.name.split(" ").slice(-1)[0]).join(", ");
   const grades = patrol.members.filter((m) => m.gradeAbbrev);
   const av = compact ? 20 : 24;
   const avatarStack = patrol.members.length > 0 ? (
     <div className="flex flex-shrink-0 items-center">
       {patrol.members.slice(0, 6).map((m, i) => (
-        <button
-          key={m.agentId + i}
-          onClick={(e) => { e.stopPropagation(); setPreview(m); }}
-          onPointerDown={(e) => e.stopPropagation()}
-          title={m.name}
-          className="-ml-[7px] rounded-full transition-transform first:ml-0 hover:z-10 hover:scale-110"
-          style={{ zIndex: 10 - i }}
-        >
-          <AgentAvatar url={m.avatarUrl} name={m.name} size={av} className="ring-2 ring-[var(--surface)]" />
-        </button>
+        <span key={m.agentId + i} className="-ml-[7px] first:ml-0" style={{ zIndex: 10 - i }}>
+          <AgentAvatar url={m.avatarUrl} name={m.name} agentId={m.agentId} size={av} className="ring-2 ring-[var(--surface)]" />
+        </span>
       ))}
       {patrol.members.length > 6 && (
         <span className="-ml-[7px] inline-flex items-center justify-center rounded-full border border-border bg-surface-2 text-[9px] font-bold text-muted ring-2 ring-[var(--surface)]" style={{ width: av, height: av }}>+{patrol.members.length - 6}</span>
@@ -511,7 +501,6 @@ function PatrolCard({ patrol, drag, isMine, agentDragging, compact, over, dimmed
   ));
 
   return (
-    <>
     <div
       {...(drag ?? {})}
       {...dropZone("patrol", patrol._id)}
@@ -564,14 +553,14 @@ function PatrolCard({ patrol, drag, isMine, agentDragging, compact, over, dimmed
         </>
       )}
     </div>
-    {preview && <AgentPreview member={preview} onClose={() => setPreview(null)} />}
-    </>
   );
 }
 
-// Trombinoscope live : tous les agents en patrouille, en grille de photos, avec
-// grade, matricule, téléphone et statut courant (couleur du statut de sa patrouille).
-function TrombinoView({ patrols, onMember }: { patrols: Patrol[]; onMember: (m: Member) => void }) {
+// Trombinoscope live : tous les agents en patrouille, en cartes verticales dont
+// tout le haut est la photo (mise en valeur), le bas donne grade, matricule,
+// téléphone et statut courant. Clic → carte profil contextuelle (hovercard).
+function TrombinoView({ patrols }: { patrols: Patrol[] }) {
+  const openCard = useAgentCard();
   const seen = new Set<string>();
   const roster: (Member & { patrolLabel: string; statusName: string | null; statusColor: string | null })[] = [];
   for (const p of patrols) {
@@ -585,17 +574,29 @@ function TrombinoView({ patrols, onMember }: { patrols: Patrol[]; onMember: (m: 
   if (roster.length === 0) return <div className="flex min-h-0 flex-1 items-center justify-center text-[13px] text-faint">Aucun agent en patrouille.</div>;
   return (
     <div className="min-h-0 flex-1 overflow-y-auto pb-2">
-      <div className="grid grid-cols-2 gap-[10px] sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+      <div className="grid grid-cols-2 gap-[12px] sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
         {roster.map((m) => {
           const initials = m.name.split(/\s+/).map((s) => s[0]).filter(Boolean).slice(0, 2).join("").toUpperCase() || "?";
           return (
-            <button key={m.agentId} onClick={() => onMember(m)} className="flex flex-col overflow-hidden rounded-card border border-border bg-surface text-left transition-shadow hover:shadow-[0_2px_10px_var(--shadow)]">
-              <div className="flex items-center justify-center bg-surface-2 p-[12px]">
+            <button
+              key={m.agentId}
+              onClick={(e) => openCard?.(m.agentId, e.currentTarget.getBoundingClientRect())}
+              className="group flex flex-col overflow-hidden rounded-card border border-border bg-surface text-left transition-shadow hover:shadow-[0_4px_16px_var(--shadow)]"
+            >
+              {/* Photo : occupe tout le haut de la carte */}
+              <div className="relative aspect-[3/4] w-full overflow-hidden bg-surface-2">
                 {m.avatarUrl ? (
-                  <img src={m.avatarUrl} alt="" className="h-[120px] w-[120px] rounded-[12px] border border-border object-cover" />
+                  <img src={m.avatarUrl} alt="" className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.03]" />
                 ) : (
-                  <div className="flex h-[120px] w-[120px] items-center justify-center rounded-[12px] border border-border bg-surface text-[34px] font-bold text-muted">{initials}</div>
+                  <div className="flex h-full w-full items-center justify-center text-[48px] font-bold text-muted">{initials}</div>
                 )}
+                {/* Statut en pastille sur la photo */}
+                <span
+                  className="absolute left-[8px] top-[8px] max-w-[calc(100%-16px)] truncate rounded-[5px] px-[7px] py-[3px] text-[10.5px] font-bold shadow"
+                  style={{ background: m.statusColor ? `color-mix(in srgb, ${m.statusColor} 92%, #000)` : "rgba(0,0,0,.6)", color: "#fff" }}
+                >
+                  {m.statusName ?? "En patrouille"}
+                </span>
               </div>
               <div className="flex flex-col gap-[3px] p-[10px]">
                 <div className="flex items-center gap-[6px]">
@@ -604,51 +605,11 @@ function TrombinoView({ patrols, onMember }: { patrols: Patrol[]; onMember: (m: 
                 </div>
                 <div className="font-data text-[11px] font-semibold text-accent">{fmtMatricule(m.matricule) ?? "-"}</div>
                 <div className="font-data text-[11px] text-muted">{m.phone ? `📞 ${m.phone}` : <span className="text-faint">☎ non renseigné</span>}</div>
-                <div className="mt-[2px] flex items-center gap-[6px] text-[11px]">
-                  <span className="truncate rounded-[4px] px-[6px] py-[2px] font-semibold" style={{ background: `color-mix(in srgb, ${m.statusColor ?? "var(--accent)"} 16%, transparent)`, color: m.statusColor ?? "var(--accent)" }}>{m.statusName ?? "En patrouille"}</span>
-                  <span className="truncate font-data text-faint">{m.patrolLabel}</span>
-                </div>
+                <div className="mt-[1px] truncate font-data text-[10.5px] text-faint">{m.patrolLabel}</div>
               </div>
             </button>
           );
         })}
-      </div>
-    </div>
-  );
-}
-
-// Aperçu d'un agent (clic sur sa photo dans le dispatch) : photo mise en valeur,
-// nom, matricule, téléphone, grade.
-function AgentPreview({ member, onClose }: { member: Member; onClose: () => void }) {
-  const initials = member.name.split(/\s+/).map((s) => s[0]).filter(Boolean).slice(0, 2).join("").toUpperCase() || "?";
-  return (
-    <div
-      onClick={(e) => { e.stopPropagation(); onClose(); }}
-      onPointerDown={(e) => e.stopPropagation()}
-      className="fixed inset-0 z-[80] flex items-center justify-center p-6"
-      style={{ background: "var(--scrim)", backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)", animation: "mdtFade .12s ease" }}
-    >
-      <div onClick={(e) => e.stopPropagation()} className="w-[290px] max-w-[92vw] overflow-hidden rounded-card border border-border-strong bg-elev shadow-[0_24px_70px_rgba(0,0,0,.35)]" style={{ animation: "mdtFade .16s ease" }}>
-        <div className="flex items-center justify-center bg-surface-2 p-[18px]">
-          {member.avatarUrl ? (
-            <img src={member.avatarUrl} alt="" className="h-[180px] w-[180px] rounded-[14px] border border-border object-cover" />
-          ) : (
-            <div className="flex h-[180px] w-[180px] items-center justify-center rounded-[14px] border border-border bg-surface text-[46px] font-bold text-muted">{initials}</div>
-          )}
-        </div>
-        <div className="p-[16px]">
-          <div className="flex items-center gap-2">
-            {member.gradeAbbrev && (
-              <span className="rounded-[4px] border px-[6px] py-[2px] text-[10px] font-bold uppercase tracking-[0.05em]" style={member.gradeColor ? { borderColor: member.gradeColor, color: member.gradeColor } : { borderColor: "var(--border)", color: "var(--muted)" }}>{member.gradeAbbrev}</span>
-            )}
-            <h3 className="m-0 min-w-0 flex-1 truncate text-[16px] font-bold">{member.name}</h3>
-          </div>
-          {fmtMatricule(member.matricule) && <div className="mt-[3px] font-data text-[13px] font-semibold text-accent">{fmtMatricule(member.matricule)}</div>}
-          <div className="mt-[12px] flex items-center gap-[8px] rounded-sm border border-border bg-surface-2 px-[10px] py-[8px] text-[13px]">
-            <Phone className="h-[15px] w-[15px] text-faint" />
-            <span className="font-data">{member.phone ?? <span className="text-faint">Non renseigné</span>}</span>
-          </div>
-        </div>
       </div>
     </div>
   );

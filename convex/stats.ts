@@ -37,7 +37,7 @@ async function writeRangeCache(ctx: MutationCtx, key: string, force: boolean, co
 // contrat au client, qui perdrait sinon tout typage. L'instantané ne porte que
 // les indicateurs indépendants de la période (compteurs, DEFCON) ; tout ce qui
 // dépend d'une plage de dates est calculé à la volée par `rangeStats`.
-type TopAgent = { matricule: number | null; name: string; avatarUrl: string | null; count: number };
+type TopAgent = { id: string | null; matricule: number | null; name: string; avatarUrl: string | null; count: number };
 export type StatsData = {
   counts: { agentsActive: number; citizensCount: number; vehiclesCount: number; weaponsCount: number; mandatsActive: number };
   defcon: { name: string; color: string | null } | null;
@@ -209,7 +209,7 @@ async function computeRange(ctx: QueryCtx | MutationCtx, from: number | undefine
       const list: TopAgent[] = [];
       for (const [id, count] of raw) {
         const label = await agentLabel(ctx, id as import("./_generated/dataModel").Id<"agents">);
-        list.push({ ...label, count });
+        list.push({ id, ...label, count });
       }
       return list;
     };

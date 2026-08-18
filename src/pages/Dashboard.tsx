@@ -294,7 +294,7 @@ export function Dashboard() {
             )}
             {presenceList.map((p) => (
               <div key={p._id} className="flex items-center gap-[10px] border-b border-border px-4 py-[9px]">
-                <AgentAvatar url={p.avatarUrl} name={p.fullName} size={28} />
+                <AgentAvatar url={p.avatarUrl} name={p.fullName} agentId={p._id} size={28} />
                 <div className="min-w-0 flex-1">
                   <div className="overflow-hidden text-ellipsis whitespace-nowrap text-[12.5px] font-semibold">
                     {fmtMatricule(p.matricule) && (

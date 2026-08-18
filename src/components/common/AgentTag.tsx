@@ -1,3 +1,5 @@
+import { useAgentCard } from "./AgentCard";
+
 // Affichage standardisé d'un agent : « #NuméroDeBadge Prénom Nom ».
 // Le numéro de badge est un identifiant à 5 chiffres (owner = 00000).
 
@@ -9,15 +11,31 @@ export function fmtBadge(m: number | null | undefined) {
 export const fmtMatricule = fmtBadge;
 
 // Photo pro de l'agent (ronde), repli sur les initiales si aucune photo.
-// Réutilisable partout (effectif, dispatch, présence, classements…).
-export function AgentAvatar({ url, name, size = 24, className = "" }: { url?: string | null; name?: string | null; size?: number; className?: string }) {
+// Réutilisable partout (effectif, dispatch, présence, classements…). Avec `agentId`,
+// un clic ouvre la carte profil contextuelle (hovercard) ancrée à la photo.
+export function AgentAvatar({ url, name, size = 24, className = "", agentId }: { url?: string | null; name?: string | null; size?: number; className?: string; agentId?: string | null }) {
+  const openCard = useAgentCard();
   const initials = (name ?? "").split(/\s+/).map((s) => s[0]).filter(Boolean).slice(0, 2).join("").toUpperCase() || "?";
-  const common = `shrink-0 rounded-full border border-border object-cover ${className}`;
-  return url ? (
-    <img src={url} alt="" className={common} style={{ width: size, height: size }} />
+  const inner = url ? (
+    <img src={url} alt="" className={`block h-full w-full rounded-full border border-border object-cover ${className}`} />
   ) : (
-    <span className={`inline-flex shrink-0 items-center justify-center rounded-full border border-border bg-surface-2 font-semibold text-muted ${className}`} style={{ width: size, height: size, fontSize: Math.round(size * 0.38) }}>{initials}</span>
+    <span className={`inline-flex h-full w-full items-center justify-center rounded-full border border-border bg-surface-2 font-semibold text-muted ${className}`} style={{ fontSize: Math.round(size * 0.38) }}>{initials}</span>
   );
+  if (agentId && openCard) {
+    return (
+      <button
+        type="button"
+        title={name ?? undefined}
+        onClick={(e) => { e.stopPropagation(); openCard(agentId, e.currentTarget.getBoundingClientRect()); }}
+        onPointerDown={(e) => e.stopPropagation()}
+        className="block shrink-0 cursor-pointer rounded-full outline-none transition-transform hover:brightness-110 focus-visible:ring-2 focus-visible:ring-accent"
+        style={{ width: size, height: size, lineHeight: 0 }}
+      >
+        {inner}
+      </button>
+    );
+  }
+  return <span className="inline-block shrink-0" style={{ width: size, height: size, lineHeight: 0 }}>{inner}</span>;
 }
 
 export function AgentTag({

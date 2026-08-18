@@ -70,6 +70,36 @@ export const me = query({
   },
 });
 
+// Carte profil compacte (hovercard ouvert au clic sur une photo). Visible par
+// tout agent authentifié : infos de base d'un collègue.
+export const card = query({
+  args: { agentId: v.id("agents") },
+  handler: async (ctx, { agentId }) => {
+    await requireAgent(ctx);
+    const a = await ctx.db.get(agentId);
+    if (!a) return null;
+    const grade = a.gradeId ? await ctx.db.get(a.gradeId) : null;
+    const divisions: string[] = [];
+    for (const l of await ctx.db.query("agentDivisions").withIndex("by_agent", (q) => q.eq("agentId", agentId)).collect()) {
+      const d = await ctx.db.get(l.divisionId);
+      if (d) divisions.push(d.name);
+    }
+    const open = await ctx.db.query("serviceSessions").withIndex("by_agent", (q) => q.eq("agentId", agentId)).filter((q) => q.eq(q.field("endedAt"), undefined)).first();
+    return {
+      _id: a._id,
+      name: `${a.prenomRP} ${a.nomRP}`,
+      matricule: a.matricule ?? (a.isOwner ? 0 : null),
+      avatarUrl: a.avatarUrl ?? null,
+      phone: a.phone ?? null,
+      grade: grade ? { name: grade.name, color: grade.color ?? null } : (a.isOwner ? { name: "Owner", color: null } : null),
+      divisions,
+      onDuty: !!open,
+      dateEntree: a.dateEntree ?? null,
+      suspended: a.status === "SUSPENDED",
+    };
+  },
+});
+
 // IBAN in-game : 1 à 6 chiffres, ou vide pour effacer. Renvoie undefined si vide.
 function normalizeIban(raw: string): string | undefined {
   const s = raw.trim();

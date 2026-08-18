@@ -7,6 +7,7 @@ import { EntryTransition } from "@/auth/EntryTransition";
 import { fmtMatricule } from "@/components/common/AgentTag";
 import { AppShell } from "@/components/shell/AppShell";
 import { RequirePerm } from "@/components/shell/RequirePerm";
+import { AgentCardProvider } from "@/components/common/AgentCard";
 import { Dashboard } from "@/pages/Dashboard";
 import { Dossier } from "@/pages/Dossier";
 import { Effectif } from "@/pages/Effectif";
@@ -106,7 +107,9 @@ function Root() {
         <LoginPage />
       </Unauthenticated>
       <Authenticated>
-        <Gated />
+        <AgentCardProvider>
+          <Gated />
+        </AgentCardProvider>
       </Authenticated>
     </>
   );
