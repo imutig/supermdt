@@ -34,8 +34,13 @@ function FloatingCard({ agentId, anchor, onClose }: { agentId: string; anchor: D
   }, [onClose]);
 
   const left = Math.min(Math.max(anchor.left, 8), window.innerWidth - W - 8);
-  // Sous l'ancre si la place le permet, sinon au-dessus (ancré par le bas).
-  const below = anchor.bottom < window.innerHeight - 360;
+  // La photo pro est un portrait : la carte peut être haute. On l'ouvre du côté
+  // (dessous / dessus) qui offre le plus de place, et on borne sa hauteur à
+  // l'espace disponible (défilement interne si besoin) pour ne jamais déborder.
+  const spaceBelow = window.innerHeight - anchor.bottom - 12;
+  const spaceAbove = anchor.top - 12;
+  const below = spaceBelow >= spaceAbove;
+  const maxHeight = Math.max(220, Math.floor(below ? spaceBelow : spaceAbove));
   const vpos: React.CSSProperties = below ? { top: anchor.bottom + 6 } : { bottom: window.innerHeight - anchor.top + 6 };
   const initials = (card?.name ?? "").split(/\s+/).map((s) => s[0]).filter(Boolean).slice(0, 2).join("").toUpperCase() || "?";
   const grade = card?.grade;
@@ -45,8 +50,8 @@ function FloatingCard({ agentId, anchor, onClose }: { agentId: string; anchor: D
       {/* Voile invisible : ferme au clic extérieur sans assombrir (feel « hovercard »). */}
       <div className="fixed inset-0 z-[95]" onClick={onClose} onPointerDown={onClose} />
       <div
-        className="fixed z-[96] overflow-hidden rounded-card border border-border-strong bg-elev shadow-[0_20px_60px_rgba(0,0,0,.42)]"
-        style={{ left, ...vpos, width: W, animation: "mdtFade .12s ease" }}
+        className="fixed z-[96] overflow-y-auto overflow-x-hidden rounded-card border border-border-strong bg-elev shadow-[0_20px_60px_rgba(0,0,0,.42)]"
+        style={{ left, ...vpos, width: W, maxHeight, animation: "mdtFade .12s ease" }}
         onClick={(e) => e.stopPropagation()}
         onPointerDown={(e) => e.stopPropagation()}
       >
@@ -56,12 +61,12 @@ function FloatingCard({ agentId, anchor, onClose }: { agentId: string; anchor: D
           <div className="p-4 text-[13px] text-muted">Agent introuvable.</div>
         ) : (
           <>
-            {/* Photo mise en valeur en tête */}
+            {/* Photo mise en valeur en tête : affichée en entier (aspect naturel). */}
             <div className="relative">
               {card.avatarUrl ? (
-                <img src={card.avatarUrl} alt="" className="h-[150px] w-full object-cover" />
+                <img src={card.avatarUrl} alt="" className="block h-auto w-full object-contain" />
               ) : (
-                <div className="flex h-[150px] w-full items-center justify-center bg-surface-2 text-[54px] font-bold text-muted">{initials}</div>
+                <div className="flex aspect-[3/4] w-full items-center justify-center bg-surface-2 text-[54px] font-bold text-muted">{initials}</div>
               )}
               <div className="absolute inset-x-0 bottom-0 h-[60px]" style={{ background: "linear-gradient(to top, rgba(0,0,0,.55), transparent)" }} />
               <span

@@ -106,12 +106,22 @@ function makeLookup(ctx: QueryCtx, preloadedStatuses?: Doc<"dispatchStatuses">[]
   };
 }
 
-// Abréviation et couleur de grade, dérivées d'un agent déjà chargé.
+// Abréviation, couleur et rang de grade, dérivés d'un agent déjà chargé.
+// `gradePos` sert au tri du dispatch (rang décroissant) : owner au sommet,
+// agent sans grade tout en bas.
 async function gradeTag(lk: Lookup, agent: Doc<"agents">) {
-  if (agent.isOwner) return { gradeAbbrev: "OWN", gradeColor: null as string | null };
+  if (agent.isOwner) return { gradeAbbrev: "OWN", gradeColor: null as string | null, gradePos: Number.MAX_SAFE_INTEGER };
   const g = await lk.grade(agent);
-  if (!g) return { gradeAbbrev: null as string | null, gradeColor: null as string | null };
-  return { gradeAbbrev: g.abbrev?.trim() || g.name.slice(0, 3).toUpperCase(), gradeColor: g.color ?? null };
+  if (!g) return { gradeAbbrev: null as string | null, gradeColor: null as string | null, gradePos: -1 };
+  return { gradeAbbrev: g.abbrev?.trim() || g.name.slice(0, 3).toUpperCase(), gradeColor: g.color ?? null, gradePos: g.position };
+}
+
+// Tri d'affichage du dispatch : par grade décroissant, puis matricule croissant.
+function byGradeThenBadge(
+  a: { gradePos?: number; matricule: number | null },
+  b: { gradePos?: number; matricule: number | null },
+) {
+  return (b.gradePos ?? -1) - (a.gradePos ?? -1) || (a.matricule ?? 99999) - (b.matricule ?? 99999);
 }
 
 async function patrolView(ctx: QueryCtx, patrol: Doc<"patrols">, lk: Lookup = makeLookup(ctx)) {
@@ -119,7 +129,7 @@ async function patrolView(ctx: QueryCtx, patrol: Doc<"patrols">, lk: Lookup = ma
   const members = [];
   for (const m of memberLinks) {
     const a = await lk.agent(m.agentId);
-    const tag = a ? await gradeTag(lk, a) : { gradeAbbrev: null, gradeColor: null };
+    const tag = a ? await gradeTag(lk, a) : { gradeAbbrev: null, gradeColor: null, gradePos: -1 };
     members.push({
       matricule: a ? (a.matricule ?? (a.isOwner ? 0 : null)) : null,
       name: a ? `${a.prenomRP} ${a.nomRP}` : "-",
@@ -129,6 +139,7 @@ async function patrolView(ctx: QueryCtx, patrol: Doc<"patrols">, lk: Lookup = ma
       ...tag,
     });
   }
+  members.sort(byGradeThenBadge);
   const fleetVeh = patrol.fleetVehicleId ? await ctx.db.get(patrol.fleetVehicleId) : null;
   return {
     _id: patrol._id,
@@ -194,7 +205,7 @@ export const board = query({
         ...(await gradeTag(lk, a)),
       });
     }
-    onDuty.sort((a, b) => a.name.localeCompare(b.name));
+    onDuty.sort(byGradeThenBadge);
 
     const sectors = (await ctx.db.query("dispatchSectors").withIndex("by_position").collect()).filter((s) => s.active).map((s) => s.name);
     // Opérations en cours (la colonne Opération n'apparaît que s'il y en a).

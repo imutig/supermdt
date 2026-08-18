@@ -17,7 +17,7 @@ import { AgentAvatar, fmtMatricule } from "@/components/common/AgentTag";
 import { useAgentCard } from "@/components/common/AgentCard";
 
 type Status = { _id: string; name: string; color: string | null; icon: string | null; group: string | null; requires: string[] };
-type Member = { matricule: number | null; name: string; agentId: string; gradeAbbrev: string | null; gradeColor: string | null; avatarUrl: string | null; phone: string | null };
+type Member = { matricule: number | null; name: string; agentId: string; gradeAbbrev: string | null; gradeColor: string | null; gradePos: number; avatarUrl: string | null; phone: string | null };
 type Operation = { _id: string; name: string; createdBy: string; startedAt: number; creator: string };
 type Patrol = {
   _id: string; label: string; indicator: string; vehicleNumber: string; color: string | null; callsignTypeId: string | null;
@@ -570,7 +570,7 @@ function TrombinoView({ patrols }: { patrols: Patrol[] }) {
       roster.push({ ...m, patrolLabel: p.label, statusName: p.status?.name ?? null, statusColor: p.status?.color ?? p.color ?? null });
     }
   }
-  roster.sort((a, b) => (a.matricule ?? 9999) - (b.matricule ?? 9999));
+  roster.sort((a, b) => (b.gradePos ?? -1) - (a.gradePos ?? -1) || (a.matricule ?? 99999) - (b.matricule ?? 99999));
   if (roster.length === 0) return <div className="flex min-h-0 flex-1 items-center justify-center text-[13px] text-faint">Aucun agent en patrouille.</div>;
   return (
     <div className="min-h-0 flex-1 overflow-y-auto pb-2">

@@ -821,22 +821,13 @@ async function handlePingSubscribe(msg: Message, cmd: string) {
   await msg.delete().catch(() => {});
 }
 
-// Message dans un salon serveur : commandes recruteur !r / !a / !close / !ping.
-// Membre disposant des droits d'encadrement (équivalent message de isStaff).
-function memberIsStaff(member: GuildMember | null): boolean {
-  return !!member?.permissions.has(PermissionFlagsBits.ManageMessages);
-}
-async function msgMember(msg: Message): Promise<GuildMember | null> {
-  return msg.member ?? (msg.guild ? await msg.guild.members.fetch(msg.author.id).catch(() => null) : null);
-}
-
 // !template : ouvre le menu Templates (créer / modifier / envoyer) dans le salon.
 // Comme /template, mais en un seul menu (contournement des slash non visibles).
+// L'accès est décidé UNIQUEMENT par la config du site (Administration → Commandes
+// Discord), appliquée en amont dans handleTicketChannelMessage : ici, aucune garde
+// interne supplémentaire (sinon « ouvert à tous » sur le site resterait bloqué).
 export async function openTemplateMenuMsg(msg: Message) {
   if (msg.channel.type !== ChannelType.GuildText) return;
-  const cfg = await mdt.ticketConfigGet();
-  const member = await msgMember(msg);
-  if (!memberIsStaff(member) && !isRecruiter(member, cfg)) { await msg.react("⛔").catch(() => {}); return; }
   const templates = await mdt.ticketTemplateList();
   const embed = baseEmbed(BRAND.info).setTitle("🗂️ Templates de message")
     .setDescription(templates.length === 0 ? "Aucun template. Crée-en un avec **Nouveau template**." : templates.map((t) => `• **${t.name}** - ${t.pingOwner ? "🔔 ping" : "silencieux"}`).join("\n"));
@@ -846,8 +837,7 @@ export async function openTemplateMenuMsg(msg: Message) {
 // !statut : ouvre le panneau de statut de la candidature (dans un ticket).
 export async function openStatusMenuMsg(msg: Message) {
   if (msg.channel.type !== ChannelType.GuildText) return;
-  const member = await msgMember(msg);
-  if (!memberIsStaff(member)) { await msg.react("⛔").catch(() => {}); return; }
+  // Accès décidé uniquement par la config du site (appliquée en amont).
   const ticket = await mdt.ticketByChannel(msg.channel.id);
   if (!ticket) { await msg.react("❓").catch(() => {}); return; }
   await msg.channel.send({ ...statusPanel(ticket.integrationStatus) }).catch(() => {});
