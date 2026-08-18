@@ -8,6 +8,7 @@ import { Button } from "@/components/common/Button";
 import { EmptyState } from "@/components/common/EmptyState";
 import { SkeletonRows } from "@/components/common/Skeleton";
 import { fmtMatricule } from "@/components/common/AgentTag";
+import { ImageGallery } from "@/components/common/ImageGallery";
 import { X, Plus, Trash2, Search, Shield, ScrollText, Clock } from "lucide-react";
 
 const STATUS: Record<string, { label: string; color: string }> = {
@@ -212,6 +213,7 @@ function InvestigationDetail({ id, onClose }: { id: Id<"internalInvestigations">
   const remove = useMutation(api.investigations.remove);
   const toast = useToast();
   const [note, setNote] = useState("");
+  const [noteImages, setNoteImages] = useState<string[]>([]);
   const [closing, setClosing] = useState(false);
   const [confirmDel, setConfirmDel] = useState(false);
   const [addingTarget, setAddingTarget] = useState(false);
@@ -271,9 +273,13 @@ function InvestigationDetail({ id, onClose }: { id: Id<"internalInvestigations">
               <div>
                 <div className="mb-[6px] flex items-center gap-[6px] text-[10.5px] font-bold uppercase tracking-[0.09em] text-faint"><ScrollText className="h-[13px] w-[13px]" /> Journal d'enquête</div>
                 {canManage && inv.status !== "CLOSED" && (
-                  <div className="mb-[10px] flex flex-col gap-[6px]">
-                    <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder="Ajouter une note d'enquête…" className={INP + " py-2"} />
-                    <Button variant="primary" disabled={!note.trim()} onClick={async () => { const r = await toast.guard(addNote({ id, body: note }), "Impossible"); if (r !== undefined) setNote(""); }} className="self-end">Ajouter la note</Button>
+                  <div className="mb-[10px] flex flex-col gap-[8px] rounded-sm border border-border bg-surface-2 p-[10px]">
+                    <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder="Ajouter une note d'enquête (compte-rendu, décision…)" className="w-full rounded-sm border border-border bg-surface px-3 py-2 text-[13px] outline-none focus:border-accent" />
+                    <div>
+                      <div className="mb-[5px] text-[10px] font-bold uppercase tracking-[0.07em] text-faint">Pièces jointes (photos)</div>
+                      <ImageGallery urls={noteImages} onChange={setNoteImages} emptyLabel="" />
+                    </div>
+                    <Button variant="primary" disabled={!note.trim() && noteImages.length === 0} onClick={async () => { const r = await toast.guard(addNote({ id, body: note, imageUrls: noteImages }), "Impossible"); if (r !== undefined) { setNote(""); setNoteImages([]); } }} className="self-end">Ajouter la note</Button>
                   </div>
                 )}
                 <div className="flex flex-col gap-[7px]">
