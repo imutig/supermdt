@@ -99,6 +99,33 @@ export const setIban = mutation({
   },
 });
 
+// Numéro de téléphone in-game : « 555- » suivi de chiffres, ou vide pour effacer.
+function normalizePhone(raw: string): string | undefined {
+  const s = raw.trim();
+  if (!s || s === "555-") return undefined;
+  if (!/^555-\d{1,10}$/.test(s)) throw new ConvexError("Numéro invalide : 555- suivi de chiffres (ex. 555-1234).");
+  return s;
+}
+
+export const setMyPhone = mutation({
+  args: { phone: v.string() },
+  handler: async (ctx, { phone }) => {
+    const agent = await requireAgent(ctx);
+    await ctx.db.patch(agent._id, { phone: normalizePhone(phone) });
+  },
+});
+
+export const setPhone = mutation({
+  args: { agentId: v.id("agents"), phone: v.string() },
+  handler: async (ctx, { agentId, phone }) => {
+    const actor = await requireAgent(ctx);
+    await requirePermission(ctx, actor, "effectif.edit");
+    const target = await ctx.db.get(agentId);
+    if (!target) throw new ConvexError("Agent introuvable.");
+    await ctx.db.patch(agentId, { phone: normalizePhone(phone) });
+  },
+});
+
 // Ensemble des slugs de permission effectifs de l'agent courant (owner = tout).
 // Sert au feedback UI (griser/désactiver les actions non autorisées).
 export const myPermissions = query({
@@ -631,6 +658,7 @@ export const getAgent = query({
       avatarUrl: a.avatarUrl ?? null,
       dateEntree: a.dateEntree ?? null,
       iban: a.iban ?? null,
+      phone: a.phone ?? null,
       lockedUntil: a.lockedUntil ?? null,
       discordId: a.discordId ?? null,
       grade: grade ? { _id: grade._id, name: grade.name, position: grade.position, discordRoleId: grade.discordRoleId ?? null } : null,

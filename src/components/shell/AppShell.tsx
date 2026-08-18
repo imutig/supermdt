@@ -6,6 +6,7 @@ import { TopBar } from "./TopBar";
 import { FicheBanner } from "./FicheBanner";
 import { ServiceWeaponBanner } from "@/components/armes/ServiceWeaponBanner";
 import { IbanBanner } from "./IbanBanner";
+import { PhoneBanner } from "./PhoneBanner";
 import { NavRail } from "./NavRail";
 import { PermPreviewBar } from "./PermPreviewBar";
 import { PrefsBridge } from "./PrefsBridge";
@@ -30,6 +31,7 @@ export function AppShell() {
         {!focus && <TopBar />}
         {!focus && <ServiceWeaponBanner />}
         {!focus && <IbanBanner />}
+        {!focus && <PhoneBanner />}
         {!focus && FEATURES.ficheRenseignement && <FicheBanner />}
         <div className="flex min-h-0 flex-1">
           {!focus && <NavRail />}

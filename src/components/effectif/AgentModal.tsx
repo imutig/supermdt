@@ -37,6 +37,7 @@ export function AgentModal({ agentId, onClose }: { agentId: Id<"agents">; onClos
   const setStatus = useMutation(api.agents.setStatus);
   const setDateEntree = useMutation(api.agents.setDateEntree);
   const setIban = useMutation(api.agents.setIban);
+  const setPhone = useMutation(api.agents.setPhone);
   const resetPassword = useAction(api.accounts.resetPassword);
   const setLock = useMutation(api.agents.setLock);
   const cutService = useMutation(api.services.cut);
@@ -48,6 +49,7 @@ export function AgentModal({ agentId, onClose }: { agentId: Id<"agents">; onClos
   const [nameEdit, setNameEdit] = useState<{ prenom: string; nom: string } | null>(null);
   const [loginEdit, setLoginEdit] = useState("");
   const [ibanEdit, setIbanEdit] = useState<string | null>(null);
+  const [phoneEdit, setPhoneEdit] = useState<string | null>(null);
   const [sanctionModal, setSanctionModal] = useState(false);
   const [convocationModal, setConvocationModal] = useState(false);
   const [absOpen, setAbsOpen] = useState(false);
@@ -365,6 +367,30 @@ export function AgentModal({ agentId, onClose }: { agentId: Id<"agents">; onClos
                     />
                   ) : (
                     <div className="font-data text-[13px]">{a.iban ?? "-"}</div>
+                  )}
+                </div>
+                <div>
+                  <div className="mb-[6px] text-[10.5px] font-bold uppercase tracking-[0.09em] text-faint">Téléphone</div>
+                  {canEditAgent ? (
+                    <div className="flex h-9 items-center rounded-sm border border-border bg-surface-2 pl-2 font-data text-[13px]">
+                      <span className="text-faint">555-</span>
+                      <input
+                        inputMode="numeric"
+                        value={phoneEdit === null ? ((a.phone ?? "").startsWith("555-") ? a.phone!.slice(4) : "") : phoneEdit}
+                        onChange={(e) => setPhoneEdit(e.target.value.replace(/[^0-9]/g, "").slice(0, 10))}
+                        onBlur={async () => {
+                          const cur = (a.phone ?? "").startsWith("555-") ? a.phone!.slice(4) : "";
+                          if (phoneEdit === null || phoneEdit === cur) { setPhoneEdit(null); return; }
+                          const r = await toast.guard(setPhone({ agentId, phone: phoneEdit ? `555-${phoneEdit}` : "" }), "Modification impossible");
+                          setPhoneEdit(null);
+                          if (r !== undefined) toast.success("Téléphone mis à jour.");
+                        }}
+                        placeholder="1234"
+                        className="h-full min-w-0 flex-1 bg-transparent px-1 outline-none"
+                      />
+                    </div>
+                  ) : (
+                    <div className="font-data text-[13px]">{a.phone ?? "-"}</div>
                   )}
                 </div>
               </div>

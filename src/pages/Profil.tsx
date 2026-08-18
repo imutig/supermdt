@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery } from "convex/react";
-import { Moon, Sun, RefreshCw, Landmark } from "lucide-react";
+import { Moon, Sun, RefreshCw, Landmark, Phone } from "lucide-react";
 import { useMe } from "@/hooks/useMe";
 import { Button } from "@/components/common/Button";
 import { useToast } from "@/providers/toast";
@@ -71,6 +71,48 @@ function IbanCard() {
   );
 }
 
+// Carte Téléphone in-game : préfixe « 555- » imposé, l'agent saisit la suite.
+function PhoneCard() {
+  const me = useMe();
+  const save = useMutation(api.agents.setMyPhone);
+  const toast = useToast();
+  const [editing, setEditing] = useState(false);
+  const [digits, setDigits] = useState("");
+  if (!me || me.agent.isOwner) return null;
+  const current = me.agent.phone ?? "";
+  const missing = !current;
+  const submit = async () => {
+    const phone = digits.trim() ? `555-${digits.trim()}` : "";
+    const r = await toast.guard(save({ phone }), "Enregistrement impossible");
+    if (r !== undefined) { toast.success("Téléphone enregistré."); setEditing(false); }
+  };
+  return (
+    <div className="mb-[16px] flex flex-wrap items-center gap-3 rounded-card border px-[16px] py-[12px]"
+      style={missing ? { borderColor: "color-mix(in srgb, var(--warning) 40%, var(--border))", background: "color-mix(in srgb, var(--warning) 7%, var(--surface))" } : { borderColor: "var(--border)", background: "var(--surface)" }}>
+      <Phone className="h-[18px] w-[18px] flex-shrink-0" style={{ color: missing ? "var(--warning)" : "var(--accent)" }} />
+      <div className="min-w-0">
+        <div className="text-[10.5px] font-bold uppercase tracking-[0.09em] text-faint">Téléphone in-game</div>
+        {!editing && <div className="font-data text-[15px] font-bold">{current || <span style={{ color: "var(--warning)" }}>Non renseigné</span>}</div>}
+      </div>
+      {editing ? (
+        <div className="flex flex-1 flex-wrap items-center gap-2">
+          <div className="flex items-center rounded-sm border border-border bg-surface-2 pl-3 font-data text-[13px]">
+            <span className="text-faint">555-</span>
+            <input autoFocus value={digits} onChange={(e) => setDigits(e.target.value.replace(/[^0-9]/g, "").slice(0, 10))} inputMode="numeric" placeholder="1234" className="h-9 w-[110px] bg-transparent px-1 outline-none" />
+          </div>
+          <Button variant="primary" onClick={submit}>Enregistrer</Button>
+          <Button variant="ghost" onClick={() => setEditing(false)}>Annuler</Button>
+        </div>
+      ) : (
+        <>
+          <div className="flex-1" />
+          <button onClick={() => { setDigits(current.startsWith("555-") ? current.slice(4) : ""); setEditing(true); }} className="rounded-[7px] border border-border bg-surface-2 px-[12px] py-[7px] text-[12.5px] font-semibold hover:border-accent">{current ? "Modifier" : "Renseigner"}</button>
+        </>
+      )}
+    </div>
+  );
+}
+
 export function Profil() {
   const p = useQuery(api.profile.me);
   const refreshMe = useMutation(api.profile.refreshMe);
@@ -121,6 +163,7 @@ export function Profil() {
       </div>
 
       <IbanCard />
+      <PhoneCard />
 
       {/* Onglets */}
       <div className="mb-[16px] flex gap-[2px] rounded-card border border-border bg-surface p-[5px]">
