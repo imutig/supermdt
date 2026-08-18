@@ -62,16 +62,49 @@ async function hasFieldTraining(ctx: QueryCtx | MutationCtx, viewer: Doc<"agents
   return viewer.isOwner || isAcademy(viewer) || (await can(ctx, viewer, "fto.view")) || (await isOffi2Plus(ctx, viewer));
 }
 
-// Modifier la FICHE (critères, briefing, connaissances) : le tuteur référent, un
-// membre de l'académie, un détenteur de fto.edit, ou l'owner.
+// Tuteur FTO éligible (indépendamment de l'attribution) : membre de l'académie,
+// ou porteur d'un grade figurant dans tutorGradeIds. Sert à ouvrir l'édition des
+// fiches à N'IMPORTE QUEL FTO, pas seulement au tuteur référent attribué.
+async function isEligibleTutor(ctx: QueryCtx | MutationCtx, viewer: Doc<"agents">): Promise<boolean> {
+  if (isAcademy(viewer)) return true;
+  if (!viewer.gradeId) return false;
+  const cfg = await ctx.db.query("ftoConfig").first();
+  return (cfg?.tutorGradeIds ?? []).some((g) => (g as string) === (viewer.gradeId as string));
+}
+
+// Modifier la FICHE (critères, briefing, connaissances) : tout FTO éligible (grade
+// tuteur ou académie), le tuteur référent attribué, un détenteur de fto.edit, ou
+// l'owner. L'ouverture à tous les FTO est régulée par le journal (ftoHistory).
 async function canEditSheet(ctx: QueryCtx | MutationCtx, viewer: Doc<"agents">, agentId: Id<"agents">): Promise<boolean> {
-  if (viewer.isOwner || isAcademy(viewer)) return true;
+  if (viewer.isOwner) return true;
+  if (await isEligibleTutor(ctx, viewer)) return true;
   const sheet = await sheetDoc(ctx, agentId);
   if (sheet?.tutorId && sheet.tutorId === viewer._id) return true;
   return await can(ctx, viewer, "fto.edit");
 }
 async function assertEdit(ctx: MutationCtx, viewer: Doc<"agents">, agentId: Id<"agents">) {
-  if (!(await canEditSheet(ctx, viewer, agentId))) throw new ConvexError("Seul le tuteur FTO ou l'académie peut modifier cette fiche.");
+  if (!(await canEditSheet(ctx, viewer, agentId))) throw new ConvexError("Réservé aux FTO (grade tuteur ou académie).");
+}
+
+// Libellé d'un niveau SCALE (aligné sur l'UI : 0 Exécrable … 4 Très Bien).
+const LEVEL_LABELS = ["Exécrable", "À revoir", "Moyen", "Bien", "Très Bien"];
+function levelLabel(n: number | null | undefined): string {
+  return typeof n === "number" && LEVEL_LABELS[n] ? LEVEL_LABELS[n] : "Non noté";
+}
+
+// Journalise une modification de fiche (qui, quoi, quand). Best-effort : ne bloque
+// jamais l'écriture principale.
+async function logHistory(
+  ctx: MutationCtx, by: Doc<"agents">, agentId: Id<"agents">,
+  e: { itemId?: Id<"ftoItems">; itemLabel?: string; section?: string; action: string; detail: string },
+) {
+  await ctx.db.insert("ftoHistory", {
+    agentId,
+    itemId: e.itemId, itemLabel: e.itemLabel, section: e.section,
+    action: e.action, detail: e.detail,
+    byId: by._id, byName: `${by.prenomRP} ${by.nomRP}`,
+    at: Date.now(),
+  });
 }
 
 // Ajouter un RAPPORT DE PATROUILLE : permission dédiée `fto.patrol` (attribuée à
@@ -455,12 +488,17 @@ export const sheet = query({
     const agentGrade = agent.gradeId ? await ctx.db.get(agent.gradeId) : null;
     const graduated = !!trainee && agent.gradeId !== trainee._id;
 
+    // Journal des modifications (60 plus récentes) : qui a changé quoi et quand.
+    const history = (await ctx.db.query("ftoHistory").withIndex("by_agent", (q) => q.eq("agentId", agentId)).order("desc").take(60))
+      .map((h) => ({ _id: h._id, action: h.action, detail: h.detail, section: h.section ?? null, byName: h.byName, at: h.at }));
+
     return {
       agent: { _id: agent._id, prenomRP: agent.prenomRP, nomRP: agent.nomRP, matricule: agent.matricule ?? null, avatarUrl: agent.avatarUrl ?? null },
       tutor: tutor ? { _id: tutor._id, name: `${tutor.prenomRP} ${tutor.nomRP}`, matricule: tutor.matricule ?? null } : null,
       startAt: doc?.startAt ?? null,
       items: scored,
       patrols,
+      history,
       graduated,
       traineeGradeName: trainee?.name ?? "Officier 1 Probatoire",
       currentGradeName: agentGrade?.name ?? null,
@@ -493,6 +531,16 @@ export const setEntry = mutation({
     };
     if (existing) await ctx.db.patch(existing._id, patch);
     else await ctx.db.insert("ftoEntries", { agentId: a.agentId, itemId: a.itemId, ...patch });
+
+    // Journal : le champ modifié (l'UI n'en change qu'un à la fois) et sa valeur.
+    const item = await ctx.db.get(a.itemId);
+    const label = item?.label ?? "Critère";
+    let action = "CHECK", detail = label;
+    if (a.level !== undefined) { action = "SCALE"; detail = `${label} → ${a.level === null ? "note retirée" : levelLabel(a.level)}`; }
+    else if (a.theorie !== undefined) { action = "CHECK_TP"; detail = `${label} · Théorie ${a.theorie ? "cochée" : "décochée"}`; }
+    else if (a.pratique !== undefined) { action = "CHECK_TP"; detail = `${label} · Pratique ${a.pratique ? "cochée" : "décochée"}`; }
+    else if (a.checked !== undefined) { action = "CHECK"; detail = `${label} ${a.checked ? "validé" : "dévalidé"}`; }
+    await logHistory(ctx, viewer, a.agentId, { itemId: a.itemId, itemLabel: item?.label, section: item?.section, action, detail });
   },
 });
 
@@ -509,6 +557,14 @@ export const setHeader = mutation({
     };
     if (doc) await ctx.db.patch(doc._id, patch);
     else await ctx.db.insert("ftoSheets", { agentId, ...patch });
+
+    if (tutorId !== undefined) {
+      const t = tutorId ? await ctx.db.get(tutorId) : null;
+      await logHistory(ctx, viewer, agentId, { action: "TUTOR", detail: t ? `Tuteur référent : ${t.prenomRP} ${t.nomRP}` : "Tuteur référent retiré" });
+    }
+    if (startAt !== undefined) {
+      await logHistory(ctx, viewer, agentId, { action: "START", detail: startAt ? `Début de formation : ${new Date(startAt).toLocaleDateString("fr-FR", { timeZone: "Europe/Paris" })}` : "Date de début retirée" });
+    }
   },
 });
 
@@ -530,6 +586,7 @@ export const addPatrol = mutation({
       authorName: `${viewer.prenomRP} ${viewer.nomRP}`,
       at: Date.now(),
     });
+    await logHistory(ctx, viewer, a.agentId, { action: "PATROL_ADD", detail: `Rapport de patrouille ajouté (${new Date(a.startAt).toLocaleDateString("fr-FR", { timeZone: "Europe/Paris" })})` });
   },
 });
 
@@ -541,6 +598,7 @@ export const removePatrol = mutation({
     if (!p) return;
     if (p.authorId !== viewer._id) await assertManage(ctx, viewer);
     await ctx.db.delete(patrolId);
+    await logHistory(ctx, viewer, p.agentId, { action: "PATROL_REMOVE", detail: `Rapport de patrouille retiré (${new Date(p.startAt).toLocaleDateString("fr-FR", { timeZone: "Europe/Paris" })})` });
   },
 });
 

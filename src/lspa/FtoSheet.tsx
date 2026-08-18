@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, Plus, Trash2, CheckSquare, Square, Clock, Radio, Search } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, CheckSquare, Square, Clock, Radio, Search, History, ChevronDown } from "lucide-react";
 import { api } from "@/lib/api";
 import type { Id } from "convex/_generated/dataModel";
 import { LoadingScreen } from "@/components/common/Loader";
@@ -117,7 +117,43 @@ export function FtoSheet() {
           </section>
         </div>
       </div>
+
+      <HistorySection history={data.history} />
     </div>
+  );
+}
+
+// Journal des modifications de la fiche : qui a changé quoi et quand.
+function HistorySection({ history }: { history: { _id: string; action: string; detail: string; section: string | null; byName: string; at: number }[] }) {
+  const [open, setOpen] = useState(false);
+  const shown = open ? history : history.slice(0, 6);
+  return (
+    <section className="mt-[16px] overflow-hidden rounded-card border border-border bg-surface">
+      <div className="flex items-center gap-2 border-b border-border px-[15px] py-[10px]" style={{ background: "color-mix(in srgb, var(--accent) 8%, var(--surface))" }}>
+        <History className="h-[14px] w-[14px] text-accent" />
+        <span className="flex-1 text-[12px] font-bold uppercase tracking-[0.09em]">Historique des modifications</span>
+        <span className="text-[11px] text-faint">{history.length}</span>
+      </div>
+      {history.length === 0 ? (
+        <div className="px-[15px] py-[16px] text-center text-[12px] text-faint">Aucune modification enregistrée.</div>
+      ) : (
+        <>
+          {shown.map((h) => (
+            <div key={h._id} className="flex items-center gap-[10px] border-b border-border px-[15px] py-[8px] text-[12.5px] last:border-b-0">
+              <span className="min-w-0 flex-1"><span className="text-text">{h.detail}</span>{h.section && <span className="ml-[6px] text-[11px] text-faint">· {h.section}</span>}</span>
+              <span className="flex-shrink-0 font-semibold text-muted">{h.byName}</span>
+              <span className="w-[112px] flex-shrink-0 text-right font-data text-[11px] text-faint">{new Date(h.at).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</span>
+            </div>
+          ))}
+          {history.length > 6 && (
+            <button onClick={() => setOpen((o) => !o)} className="flex w-full items-center justify-center gap-[6px] py-[9px] text-[12px] font-semibold text-accent hover:bg-surface-2">
+              <ChevronDown className="h-[14px] w-[14px] transition-transform" style={{ transform: open ? "rotate(180deg)" : "none" }} />
+              {open ? "Réduire" : `Voir tout (${history.length})`}
+            </button>
+          )}
+        </>
+      )}
+    </section>
   );
 }
 

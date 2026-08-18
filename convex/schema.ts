@@ -734,6 +734,21 @@ export default defineSchema({
     at: v.number(),
   }).index("by_agent", ["agentId"]),
 
+  // Journal des modifications d'une fiche FTO : qui a coché/noté quel critère,
+  // attribué un tuteur, ajouté/retiré une patrouille. Comme n'importe quel FTO
+  // éligible peut éditer une fiche, ce journal trace la responsabilité.
+  ftoHistory: defineTable({
+    agentId: v.id("agents"),          // fiche concernée (le tutoré)
+    itemId: v.optional(v.id("ftoItems")),
+    itemLabel: v.optional(v.string()), // snapshot pour rester lisible même si critère supprimé
+    section: v.optional(v.string()),
+    action: v.string(),                // SCALE | CHECK_TP | CHECK | TUTOR | START | PATROL_ADD | PATROL_REMOVE
+    detail: v.string(),                // description lisible (ex. « Conduite voiture → Très Bien »)
+    byId: v.id("agents"),
+    byName: v.string(),
+    at: v.number(),
+  }).index("by_agent", ["agentId"]),
+
   // Configuration de la Formation Terrain (singleton). `traineeGradeId` = grade
   // « en formation » (Officier 1 Probatoire) dont les agents apparaissent dans la
   // liste ; à défaut, le plus bas grade opérationnel. Un agent promu au-dessus de
