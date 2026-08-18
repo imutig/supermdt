@@ -20,8 +20,12 @@ const FILTERS = [
 // Historique judiciaire combiné : entrées de casier + contraventions (§4).
 export function Contraventions() {
   const { can } = useCan();
-  const listQ = useQuery(api.activity.casierAndCitations, can("casier.view") ? {} : "skip");
+  // Chargement progressif : 80 entrées au départ, étendu à la demande (moins d'I/O
+  // Convex que l'ancien fetch de 250 lignes systématique).
+  const [fetchLimit, setFetchLimit] = useState(80);
+  const listQ = useQuery(api.activity.casierAndCitations, can("casier.view") ? { limit: fetchLimit } : "skip");
   const list = listQ ?? [];
+  const maybeMore = listQ !== undefined && list.length >= fetchLimit;
   const [filter, setFilter] = useState<"all" | "dossier" | "rapport" | "citation">("all");
   const [page, setPage] = useState(1);
   // Ouvre directement le détail de l'élément cliqué plutôt que le dossier entier.
@@ -99,6 +103,13 @@ export function Contraventions() {
         </div>
         </div>
         <Pagination page={safePage} pages={pages} total={rows.length} onPage={setPage} label="entrées" />
+        {maybeMore && (
+          <div className="flex justify-center border-t border-border p-3">
+            <button onClick={() => setFetchLimit((l) => Math.min(l + 120, 1000))} className="rounded-[7px] border border-border bg-surface-2 px-4 py-[8px] text-[12.5px] font-semibold text-muted hover:border-border-strong">
+              Charger plus d'historique
+            </button>
+          </div>
+        )}
       </div>
 
       {open?.kind === "casier" && (

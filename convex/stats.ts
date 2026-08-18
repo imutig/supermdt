@@ -1,5 +1,6 @@
 import { internalMutation, mutation, query } from "./_generated/server";
-import type { MutationCtx } from "./_generated/server";
+import type { MutationCtx, QueryCtx } from "./_generated/server";
+import type { Doc } from "./_generated/dataModel";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { requireAgent, requirePermission, agentLabel } from "./rbac";
@@ -12,6 +13,25 @@ const DAY = 86_400_000;
 // plusieurs milliers de documents, le rejouer à chaque écriture le rendait
 // proportionnel au trafic ET au nombre de clients abonnés.
 const STALE_MS = 5 * 60 * 1000;
+// Fraîcheur du cache des stats PAR PLAGE (rangeStats / myRangeStats). Au-delà, un
+// affichage de page déclenche un recalcul ; en deçà on sert le cache tel quel.
+const RANGE_TTL = 30 * 60 * 1000;
+
+// Lecture d'un cache de plage : renvoie les données typées + fraîcheur, ou null.
+async function readRangeCache<T>(ctx: QueryCtx, key: string): Promise<(T & { computedAt: number; stale: boolean }) | null> {
+  const row = await ctx.db.query("statsRangeCache").withIndex("by_key", (q) => q.eq("key", key)).unique();
+  if (!row) return null;
+  return { ...(JSON.parse(row.data) as T), computedAt: row.computedAt, stale: Date.now() - row.computedAt > RANGE_TTL };
+}
+// Écriture d'un cache de plage : recalcule seulement si périmé/absent, ou si force.
+async function writeRangeCache(ctx: MutationCtx, key: string, force: boolean, compute: () => Promise<unknown>) {
+  const row = await ctx.db.query("statsRangeCache").withIndex("by_key", (q) => q.eq("key", key)).unique();
+  if (row && !force && Date.now() - row.computedAt < RANGE_TTL) return { cached: true as const };
+  const data = JSON.stringify(await compute());
+  if (row) await ctx.db.patch(row._id, { data, computedAt: Date.now() });
+  else await ctx.db.insert("statsRangeCache", { key, data, computedAt: Date.now() });
+  return { cached: false as const };
+}
 
 // Forme de l'instantané : la table le stocke en v.any(), ce type restitue le
 // contrat au client, qui perdrait sinon tout typage. L'instantané ne porte que
@@ -150,11 +170,8 @@ function gridKeys(effLo: number, hi: number, unit: Unit): Set<string> {
   return keys;
 }
 
-export const rangeStats = query({
-  args: { from: v.optional(v.number()), to: v.optional(v.number()) },
-  handler: async (ctx, { from, to }) => {
-    const agent = await requireAgent(ctx);
-    await requirePermission(ctx, agent, "stats.view");
+// Calcul brut des stats de la station sur une plage (utilisé par le cache).
+async function computeRange(ctx: QueryCtx | MutationCtx, from: number | undefined, to: number | undefined) {
     const now = Date.now();
     const hi = to ?? now;
     const lo = from ?? null;
@@ -242,6 +259,27 @@ export const rangeStats = query({
       topAgentsContraventions: await buildTop(citationTally),
       topCharges,
     };
+}
+
+// Lecture (page Statistiques) : sert le cache de la plage. `null` = pas encore
+// calculé (le client déclenche alors un refresh).
+export const rangeStats = query({
+  args: { from: v.optional(v.number()), to: v.optional(v.number()), cacheKey: v.string() },
+  handler: async (ctx, { cacheKey }) => {
+    const agent = await requireAgent(ctx);
+    await requirePermission(ctx, agent, "stats.view");
+    return await readRangeCache<Awaited<ReturnType<typeof computeRange>>>(ctx, `g:${cacheKey}`);
+  },
+});
+
+// Recalcul (à l'ouverture si périmé, ou bouton « Resynchro »). Ne recalcule pas si
+// le cache a moins de 30 min, sauf `force`.
+export const refreshRangeStats = mutation({
+  args: { from: v.optional(v.number()), to: v.optional(v.number()), cacheKey: v.string(), force: v.optional(v.boolean()) },
+  handler: async (ctx, { from, to, cacheKey, force }) => {
+    const agent = await requireAgent(ctx);
+    await requirePermission(ctx, agent, "stats.view");
+    return await writeRangeCache(ctx, `g:${cacheKey}`, force === true, () => computeRange(ctx, from, to));
   },
 });
 
@@ -251,10 +289,7 @@ export const rangeStats = query({
 // l'officier/créateur. Aucune permission stats.view requise : ce sont ses
 // propres chiffres. On n'inclut PAS les heures de service (fonction off).
 // ===========================================================================
-export const myRangeStats = query({
-  args: { from: v.optional(v.number()), to: v.optional(v.number()) },
-  handler: async (ctx, { from, to }) => {
-    const agent = await requireAgent(ctx);
+async function computeMyRange(ctx: QueryCtx | MutationCtx, agent: Doc<"agents">, from: number | undefined, to: number | undefined) {
     const now = Date.now();
     const hi = to ?? now;
     const lo = from ?? null;
@@ -324,5 +359,21 @@ export const myRangeStats = query({
       series,
       topCharges,
     };
+}
+
+// Lecture (Mon profil → Statistiques) : cache PAR AGENT. `null` = pas encore calculé.
+export const myRangeStats = query({
+  args: { from: v.optional(v.number()), to: v.optional(v.number()), cacheKey: v.string() },
+  handler: async (ctx, { cacheKey }) => {
+    const agent = await requireAgent(ctx);
+    return await readRangeCache<Awaited<ReturnType<typeof computeMyRange>>>(ctx, `m:${agent._id}:${cacheKey}`);
+  },
+});
+
+export const refreshMyRangeStats = mutation({
+  args: { from: v.optional(v.number()), to: v.optional(v.number()), cacheKey: v.string(), force: v.optional(v.boolean()) },
+  handler: async (ctx, { from, to, cacheKey, force }) => {
+    const agent = await requireAgent(ctx);
+    return await writeRangeCache(ctx, `m:${agent._id}:${cacheKey}`, force === true, () => computeMyRange(ctx, agent, from, to));
   },
 });

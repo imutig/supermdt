@@ -1,11 +1,21 @@
 import { useEffect, useRef, useState } from "react";
 import { useAction, useMutation, useQuery } from "convex/react";
-import { ChevronLeft, ChevronRight, FileSignature, Wand2, Plus, Trash2, Download, Save, Loader2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, FileSignature, Wand2, Plus, Trash2, Download, Save, Loader2, RefreshCw } from "lucide-react";
 import { api } from "@/lib/api";
 import { useCan } from "@/hooks/useCan";
 import { useToast } from "@/providers/toast";
 import { EmptyState } from "@/components/common/EmptyState";
 import { SkeletonRows } from "@/components/common/Skeleton";
+
+// « il y a X » compact pour l'horodatage du cache de données.
+function agoLabel(ts: number | null): string {
+  if (!ts) return "";
+  const s = Math.max(0, Math.round((Date.now() - ts) / 1000));
+  if (s < 60) return "à l'instant";
+  const m = Math.round(s / 60);
+  if (m < 60) return `il y a ${m} min`;
+  return `il y a ${Math.round(m / 60)} h`;
+}
 
 type Honneur = { name: string; matricule?: string; reason?: string };
 type Sections = { motChef: string; analyseCrime: string; operationsNotables: string; pointRH: string; objectifs: string; dataNote: string };
@@ -18,12 +28,24 @@ export function RapportGouv() {
   const overview = useQuery(api.weeklyReport.overview, bounds ? { from: bounds.from, to: bounds.to } : "skip");
   const save = useMutation(api.weeklyReport.saveSections);
   const generate = useAction(api.weeklyReport.generate);
+  const refreshData = useMutation(api.weeklyReport.refreshOverview);
   const toast = useToast();
 
   const [form, setForm] = useState<Sections>(EMPTY);
   const [honneur, setHonneur] = useState<Honneur[]>([]);
   const [busy, setBusy] = useState(false);
+  const [dataBusy, setDataBusy] = useState(false);
   const loadedKey = useRef<number | null>(null);
+
+  // Données agrégées mises en cache (15 min) : recalcul à l'ouverture si périmé.
+  useEffect(() => {
+    if (overview && bounds && (overview.data === null || overview.dataStale)) void refreshData({ from: bounds.from, to: bounds.to }).catch(() => {});
+  }, [overview, bounds, refreshData]);
+  const resyncData = async () => {
+    if (!bounds) return;
+    setDataBusy(true);
+    try { await refreshData({ from: bounds.from, to: bounds.to, force: true }); } finally { setDataBusy(false); }
+  };
 
   useEffect(() => {
     if (overview && bounds && loadedKey.current !== bounds.from) {
@@ -125,6 +147,14 @@ export function RapportGouv() {
 
           {/* Colonne droite : aperçu des données automatiques */}
           <div className="flex flex-col gap-[14px]">
+            <div className="flex items-center gap-2 rounded-card border border-border bg-surface px-[12px] py-[8px]">
+              <span className="flex-1 text-[11.5px] text-muted">
+                {overview.data === null ? "Données en cours de calcul…" : <>Données calculées {agoLabel(overview.dataComputedAt)}{overview.dataStale ? " · actualisation…" : ""}</>}
+              </span>
+              <button onClick={resyncData} disabled={dataBusy} title="Recalculer les données de la semaine" className="flex items-center gap-[6px] rounded-sm border border-border bg-surface-2 px-[10px] py-[6px] text-[12px] font-semibold text-muted hover:border-accent disabled:opacity-50">
+                <RefreshCw className={`h-[13px] w-[13px] ${dataBusy ? "animate-spin" : ""}`} /> Rafraîchir
+              </button>
+            </div>
             <section className="overflow-hidden rounded-card border border-border bg-surface">
               <Head>Synthèse (données automatiques)</Head>
               <div className="grid grid-cols-2 gap-px bg-border sm:grid-cols-4">

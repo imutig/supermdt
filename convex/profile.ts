@@ -1,14 +1,18 @@
-import { query } from "./_generated/server";
+import { query, mutation } from "./_generated/server";
+import type { MutationCtx, QueryCtx } from "./_generated/server";
+import { v } from "convex/values";
 import { requireAgent } from "./rbac";
-import type { Id } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 
 const DAY = 86_400_000;
+// Cache de la page profil : le calcul lit toutes les sessions + casiers +
+// contraventions de l'agent. On le met en cache 90 s (recalcul à l'ouverture si
+// périmé) : l'agent voit ses chiffres quasi temps réel, sans relire ces tables à
+// chaque render réactif.
+const PROFILE_TTL = 90 * 1000;
 
-// Données de la page "Mon profil" : infos, service/heures, rapports, activité.
-export const me = query({
-  args: {},
-  handler: async (ctx) => {
-    const agent = await requireAgent(ctx);
+// Calcul brut des données de « Mon profil » (mis en cache par `me`/`refreshMe`).
+async function computeMe(ctx: QueryCtx | MutationCtx, agent: Doc<"agents">) {
     const now = Date.now();
     const weekAgo = now - 7 * DAY;
 
@@ -93,5 +97,31 @@ export const me = query({
       activity: { myArrests, myArrestsMonth, myCitations, myCitationsMonth },
       reports,
     };
+}
+
+// Lecture (page Mon profil) : sert le cache. `null` = pas encore calculé.
+export const me = query({
+  args: {},
+  handler: async (ctx): Promise<(Awaited<ReturnType<typeof computeMe>> & { computedAt: number; stale: boolean }) | null> => {
+    const agent = await requireAgent(ctx);
+    const row = await ctx.db.query("statsRangeCache").withIndex("by_key", (q) => q.eq("key", `p:${agent._id}`)).unique();
+    if (!row) return null;
+    return { ...(JSON.parse(row.data) as Awaited<ReturnType<typeof computeMe>>), computedAt: row.computedAt, stale: Date.now() - row.computedAt > PROFILE_TTL };
+  },
+});
+
+// Recalcul du profil (à l'ouverture si périmé/absent, ou `force`). Ne recalcule
+// pas si le cache a moins de 90 s.
+export const refreshMe = mutation({
+  args: { force: v.optional(v.boolean()) },
+  handler: async (ctx, { force }) => {
+    const agent = await requireAgent(ctx);
+    const key = `p:${agent._id}`;
+    const row = await ctx.db.query("statsRangeCache").withIndex("by_key", (q) => q.eq("key", key)).unique();
+    if (row && force !== true && Date.now() - row.computedAt < PROFILE_TTL) return { cached: true as const };
+    const data = JSON.stringify(await computeMe(ctx, agent));
+    if (row) await ctx.db.patch(row._id, { data, computedAt: Date.now() });
+    else await ctx.db.insert("statsRangeCache", { key, data, computedAt: Date.now() });
+    return { cached: false as const };
   },
 });

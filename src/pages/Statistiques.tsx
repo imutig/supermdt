@@ -1,11 +1,23 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
+import { RefreshCw } from "lucide-react";
 import { api } from "@/lib/api";
 import { fmtMatricule } from "@/components/common/AgentTag";
 import { SkeletonRows } from "@/components/common/Skeleton";
 import { parisDayStart, parisDayEnd } from "@/lib/paris";
 
 const DAY = 86_400_000;
+
+// « il y a X » compact pour l'horodatage de calcul du cache de stats.
+function agoLabel(ts?: number): string {
+  if (!ts) return "";
+  const s = Math.max(0, Math.round((Date.now() - ts) / 1000));
+  if (s < 60) return "à l'instant";
+  const m = Math.round(s / 60);
+  if (m < 60) return `il y a ${m} min`;
+  const h = Math.round(m / 60);
+  return `il y a ${h} h`;
+}
 
 function Stat({ label, value, sub, color }: { label: string; value: string; sub?: string; color?: string }) {
   return (
@@ -50,24 +62,37 @@ export function Statistiques() {
 
   // Bornes de la plage. L'ancre `now` est figée au changement de sélection pour
   // ne pas ré-abonner la requête à chaque render.
-  const args = useMemo<{ from?: number; to?: number } | "skip">(() => {
+  const args = useMemo<{ from?: number; to?: number; cacheKey: string } | "skip">(() => {
     const now = Date.now();
+    const key = rangeKind === "custom" ? `custom:${customFrom}:${customTo}` : rangeKind;
     switch (rangeKind) {
-      case "24h": return { from: now - DAY };
-      case "7j": return { from: now - 7 * DAY };
-      case "14j": return { from: now - 14 * DAY };
-      case "30j": return { from: now - 30 * DAY };
-      case "all": return {};
+      case "24h": return { from: now - DAY, cacheKey: key };
+      case "7j": return { from: now - 7 * DAY, cacheKey: key };
+      case "14j": return { from: now - 14 * DAY, cacheKey: key };
+      case "30j": return { from: now - 30 * DAY, cacheKey: key };
+      case "all": return { cacheKey: key };
       case "custom": {
         const f = parisDayStart(customFrom);
         const t = parisDayEnd(customTo);
         if (f == null || t == null) return "skip";
-        return { from: f, to: t };
+        return { from: f, to: t, cacheKey: key };
       }
     }
   }, [rangeKind, customFrom, customTo]);
 
   const r = useQuery(api.stats.rangeStats, args);
+  const refreshRange = useMutation(api.stats.refreshRangeStats);
+  const [resyncing, setResyncing] = useState(false);
+  // Cache par plage : on (re)calcule à l'ouverture uniquement si vide ou périmé (>30 min).
+  useEffect(() => {
+    if (args === "skip") return;
+    if (r === null || (r && r.stale)) void refreshRange(args).catch(() => {});
+  }, [r, args, refreshRange]);
+  const resync = async () => {
+    if (args === "skip") return;
+    setResyncing(true);
+    try { await refreshRange({ ...args, force: true }); } finally { setResyncing(false); }
+  };
 
   if (s === undefined || s === null) {
     return (
@@ -91,9 +116,15 @@ export function Statistiques() {
       <div className="mb-[16px] flex flex-wrap items-center gap-3">
         <div>
           <h1 className="m-0 text-[21px] font-bold tracking-tight">Statistiques</h1>
-          <div className="mt-[3px] text-[13px] text-muted">Activité et indicateurs de la station</div>
+          <div className="mt-[3px] flex items-center gap-[8px] text-[13px] text-muted">
+            Activité et indicateurs de la station
+            {r && <span className="text-[11.5px] text-faint">· stats {agoLabel(r.computedAt)}{r.stale ? " (actualisation…)" : ""}</span>}
+          </div>
         </div>
         <div className="flex-1" />
+        <button onClick={resync} disabled={resyncing || args === "skip"} title="Recalculer les statistiques maintenant" className="flex items-center gap-[6px] rounded-[7px] border border-border bg-surface px-[10px] py-[7px] text-[12px] font-semibold text-muted hover:border-border-strong disabled:opacity-50">
+          <RefreshCw className={`h-[13px] w-[13px] ${resyncing ? "animate-spin" : ""}`} /> Resynchro des stats
+        </button>
         <div className="flex flex-wrap gap-[3px] rounded-[8px] bg-surface-2 p-[3px]">
           {PRESETS.map((p) => (
             <button
@@ -146,7 +177,7 @@ export function Statistiques() {
               <span className="flex items-center gap-[5px] text-[11px] text-muted"><span className="h-[8px] w-[8px] rounded-[2px]" style={{ background: "var(--danger)" }} /> Arrestations</span>
               <span className="flex items-center gap-[5px] text-[11px] text-muted"><span className="h-[8px] w-[8px] rounded-[2px]" style={{ background: "var(--warning)" }} /> Contraventions</span>
             </div>
-            {r === undefined && args !== "skip" ? (
+            {(r === undefined || r === null) && args !== "skip" ? (
               <div className="flex items-end gap-[6px]" style={{ height: 160 }}><SkeletonRows rows={1} /></div>
             ) : series.length === 0 ? (
               <div className="py-10 text-center text-[13px] text-faint">Aucune activité sur cette période.</div>

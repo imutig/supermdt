@@ -179,16 +179,24 @@ export const weekBounds = query({
 });
 
 // ---------- Vue d'ensemble (UI) ----------
+// Fraîcheur du cache des données agrégées (l'agrégat balaie de nombreuses tables ;
+// il ne tourne plus à chaque render réactif mais à l'ouverture si périmé/absent
+// ou via « Rafraîchir »). Les sections rédigées restent, elles, temps réel.
+const WR_TTL = 15 * 60 * 1000;
+
 export const overview = query({
   args: { from: v.number(), to: v.number() },
   handler: async (ctx, { from, to }) => {
     await assertManage(ctx);
     const doc = await ctx.db.query("weeklyReports").withIndex("by_weekStart", (q) => q.eq("weekStart", from)).first();
-    const data = await aggregate(ctx, from, to);
+    const cache = await ctx.db.query("statsRangeCache").withIndex("by_key", (q) => q.eq("key", `wr:${from}`)).unique();
+    const data = cache ? (JSON.parse(cache.data) as Awaited<ReturnType<typeof aggregate>>) : null;
     const { week, year } = isoWeek(from);
     return {
       meta: { periodLabel: periodLabel(from, to), weekLabel: `Semaine ${week} · ${year}` },
       data,
+      dataComputedAt: cache?.computedAt ?? null,
+      dataStale: cache ? Date.now() - cache.computedAt > WR_TTL : true,
       sections: {
         motChef: doc?.motChef ?? "",
         analyseCrime: doc?.analyseCrime ?? "",
@@ -201,6 +209,22 @@ export const overview = query({
       generatedAt: doc?.generatedAt ?? null,
       pdfUrl: doc?.pdfStorageId ? await ctx.storage.getUrl(doc.pdfStorageId) : null,
     };
+  },
+});
+
+// Recalcule les données agrégées de la semaine (à l'ouverture si périmé/absent,
+// ou bouton « Rafraîchir »). Ne recalcule pas si le cache a moins de 15 min.
+export const refreshOverview = mutation({
+  args: { from: v.number(), to: v.number(), force: v.optional(v.boolean()) },
+  handler: async (ctx, { from, to, force }) => {
+    await assertManage(ctx);
+    const key = `wr:${from}`;
+    const row = await ctx.db.query("statsRangeCache").withIndex("by_key", (q) => q.eq("key", key)).unique();
+    if (row && force !== true && Date.now() - row.computedAt < WR_TTL) return { cached: true as const };
+    const data = JSON.stringify(await aggregate(ctx, from, to));
+    if (row) await ctx.db.patch(row._id, { data, computedAt: Date.now() });
+    else await ctx.db.insert("statsRangeCache", { key, data, computedAt: Date.now() });
+    return { cached: false as const };
   },
 });
 

@@ -1787,6 +1787,16 @@ export default defineSchema({
     computedAt: v.number(),
   }),
 
+  // Cache des statistiques par PLAGE (rangeStats / myRangeStats). Le calcul balaie
+  // des milliers de fiches ; on le met en cache (JSON) par clé de plage et on ne le
+  // rejoue qu'à l'ouverture si périmé (> 30 min) ou sur « Resynchro ». Clé =
+  // « g:<plage> » (global) ou « m:<agentId>:<plage> » (perso).
+  statsRangeCache: defineTable({
+    key: v.string(),
+    data: v.string(), // JSON.stringify du résultat
+    computedAt: v.number(),
+  }).index("by_key", ["key"]),
+
   // ============ INTÉGRATIONS (webhooks Discord) ============
   // Réglages d'intégration, singleton. baseUrl sert à construire les liens
   // profonds envoyés dans les webhooks (le serveur ignore l'URL du client).

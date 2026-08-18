@@ -1,7 +1,7 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useQuery } from "convex/react";
-import { Moon, Sun } from "lucide-react";
+import { useMutation, useQuery } from "convex/react";
+import { Moon, Sun, RefreshCw } from "lucide-react";
 import { NexusSyncCard } from "@/components/profil/NexusSyncCard";
 import { api } from "@/lib/api";
 import { fmtMatricule } from "@/components/common/AgentTag";
@@ -16,12 +16,27 @@ import { actionLabel, resourceLabel } from "@/lib/auditLabels";
 
 const DAY = 86_400_000;
 const money = (n: number) => "$" + Math.round(n).toLocaleString("fr-FR");
+// « il y a X » compact pour l'horodatage de calcul du cache de stats.
+function agoLabel(ts?: number): string {
+  if (!ts) return "";
+  const s = Math.max(0, Math.round((Date.now() - ts) / 1000));
+  if (s < 60) return "à l'instant";
+  const m = Math.round(s / 60);
+  if (m < 60) return `il y a ${m} min`;
+  return `il y a ${Math.round(m / 60)} h`;
+}
 
 export function Profil() {
   const p = useQuery(api.profile.me);
+  const refreshMe = useMutation(api.profile.refreshMe);
   const [tab, setTab] = useState<"stats" | "activite" | "parametres">("stats");
 
-  if (p === undefined) {
+  // Cache profil (90 s) : recalcul à l'ouverture si vide ou périmé.
+  useEffect(() => {
+    if (p === null || (p && p.stale)) void refreshMe({}).catch(() => {});
+  }, [p, refreshMe]);
+
+  if (p === undefined || p === null) {
     return <div className="p-[22px_26px]"><div className="rounded-card border border-border bg-surface p-4"><SkeletonRows rows={6} /></div></div>;
   }
   const a = p.agent;
@@ -98,19 +113,32 @@ function StatsTab() {
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
 
-  const args = useMemo<{ from?: number; to?: number } | "skip">(() => {
+  const args = useMemo<{ from?: number; to?: number; cacheKey: string } | "skip">(() => {
     const now = Date.now();
+    const key = rangeKind === "custom" ? `custom:${customFrom}:${customTo}` : rangeKind;
     switch (rangeKind) {
-      case "24h": return { from: now - DAY };
-      case "7j": return { from: now - 7 * DAY };
-      case "14j": return { from: now - 14 * DAY };
-      case "30j": return { from: now - 30 * DAY };
-      case "all": return {};
-      case "custom": { const f = parisDayStart(customFrom); const t = parisDayEnd(customTo); if (f == null || t == null) return "skip"; return { from: f, to: t }; }
+      case "24h": return { from: now - DAY, cacheKey: key };
+      case "7j": return { from: now - 7 * DAY, cacheKey: key };
+      case "14j": return { from: now - 14 * DAY, cacheKey: key };
+      case "30j": return { from: now - 30 * DAY, cacheKey: key };
+      case "all": return { cacheKey: key };
+      case "custom": { const f = parisDayStart(customFrom); const t = parisDayEnd(customTo); if (f == null || t == null) return "skip"; return { from: f, to: t, cacheKey: key }; }
     }
   }, [rangeKind, customFrom, customTo]);
 
   const r = useQuery(api.stats.myRangeStats, args);
+  const refreshMine = useMutation(api.stats.refreshMyRangeStats);
+  const [resyncing, setResyncing] = useState(false);
+  // Cache par plage (par agent) : recalcul à l'ouverture si vide/périmé, ou bouton.
+  useEffect(() => {
+    if (args === "skip") return;
+    if (r === null || (r && r.stale)) void refreshMine(args).catch(() => {});
+  }, [r, args, refreshMine]);
+  const resync = async () => {
+    if (args === "skip") return;
+    setResyncing(true);
+    try { await refreshMine({ ...args, force: true }); } finally { setResyncing(false); }
+  };
   const sub = SUBLABEL[rangeKind];
   const series = r?.series ?? [];
   const maxBar = Math.max(1, ...series.map((d) => d.arr + d.cit));
@@ -134,6 +162,11 @@ function StatsTab() {
             <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} className="h-9 rounded-sm border border-border bg-surface-2 px-2 text-[12.5px] outline-none focus:border-accent" />
           </div>
         )}
+        <div className="flex-1" />
+        {r && <span className="text-[11px] text-faint">stats {agoLabel(r.computedAt)}{r.stale ? " (actualisation…)" : ""}</span>}
+        <button onClick={resync} disabled={resyncing || args === "skip"} title="Recalculer mes statistiques maintenant" className="flex items-center gap-[6px] rounded-[7px] border border-border bg-surface px-[10px] py-[6px] text-[12px] font-semibold text-muted hover:border-border-strong disabled:opacity-50">
+          <RefreshCw className={`h-[13px] w-[13px] ${resyncing ? "animate-spin" : ""}`} /> Resynchro
+        </button>
       </div>
 
       {/* Cartes de stats (période) */}
@@ -153,7 +186,7 @@ function StatsTab() {
             <span className="flex items-center gap-[5px] text-[11px] text-muted"><span className="h-[8px] w-[8px] rounded-[2px]" style={{ background: "var(--danger)" }} /> Arrestations</span>
             <span className="flex items-center gap-[5px] text-[11px] text-muted"><span className="h-[8px] w-[8px] rounded-[2px]" style={{ background: "var(--warning)" }} /> Contraventions</span>
           </div>
-          {r === undefined && args !== "skip" ? (
+          {(r === undefined || r === null) && args !== "skip" ? (
             <div style={{ height: 160 }}><SkeletonRows rows={1} /></div>
           ) : series.length === 0 ? (
             <div className="py-10 text-center text-[13px] text-faint">Aucune activité sur cette période.</div>
