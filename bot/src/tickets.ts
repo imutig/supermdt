@@ -783,8 +783,41 @@ async function handlePingSubscribe(msg: Message, cmd: string) {
 }
 
 // Message dans un salon serveur : commandes recruteur !r / !a / !close / !ping.
+// Membre disposant des droits d'encadrement (équivalent message de isStaff).
+function memberIsStaff(member: GuildMember | null): boolean {
+  return !!member?.permissions.has(PermissionFlagsBits.ManageMessages);
+}
+async function msgMember(msg: Message): Promise<GuildMember | null> {
+  return msg.member ?? (msg.guild ? await msg.guild.members.fetch(msg.author.id).catch(() => null) : null);
+}
+
+// !template : ouvre le menu Templates (créer / modifier / envoyer) dans le salon.
+// Comme /template, mais en un seul menu (contournement des slash non visibles).
+export async function openTemplateMenuMsg(msg: Message) {
+  if (msg.channel.type !== ChannelType.GuildText) return;
+  const cfg = await mdt.ticketConfigGet();
+  const member = await msgMember(msg);
+  if (!memberIsStaff(member) && !isRecruiter(member, cfg)) { await msg.react("⛔").catch(() => {}); return; }
+  const templates = await mdt.ticketTemplateList();
+  const embed = baseEmbed(BRAND.info).setTitle("🗂️ Templates de message")
+    .setDescription(templates.length === 0 ? "Aucun template. Crée-en un avec **Nouveau template**." : templates.map((t) => `• **${t.name}** - ${t.pingOwner ? "🔔 ping" : "silencieux"}`).join("\n"));
+  await msg.channel.send({ embeds: [embed], components: templatesListComponents(templates) }).catch(() => {});
+}
+
+// !statut : ouvre le panneau de statut de la candidature (dans un ticket).
+export async function openStatusMenuMsg(msg: Message) {
+  if (msg.channel.type !== ChannelType.GuildText) return;
+  const member = await msgMember(msg);
+  if (!memberIsStaff(member)) { await msg.react("⛔").catch(() => {}); return; }
+  const ticket = await mdt.ticketByChannel(msg.channel.id);
+  if (!ticket) { await msg.react("❓").catch(() => {}); return; }
+  await msg.channel.send({ ...statusPanel(ticket.integrationStatus) }).catch(() => {});
+}
+
 export async function handleTicketChannelMessage(msg: Message) {
   const content = msg.content ?? "";
+  if (/^!template\b/i.test(content)) { await openTemplateMenuMsg(msg); return; }
+  if (/^!statut\b/i.test(content)) { await openStatusMenuMsg(msg); return; }
   const closeM = /^!close\b\s*(.*)$/i.exec(content);
   // !ping (prochaine réponse), !alwaysping (chaque réponse), !unping (se désabonner).
   const pingM = /^!(alwaysping|unping|ping)\b/i.exec(content);
@@ -1616,6 +1649,30 @@ export async function handleTicketInteraction(interaction: Interaction) {
       if (id === "tk|icancel") { await handleCancelInterview(interaction); return; }
       if (id === "tk|iyes") { await handlePresenceButton(interaction, "CONFIRMED"); return; }
       if (id === "tk|ino") { await handlePresenceButton(interaction, "DECLINED"); return; }
+      // Gestion des templates + constructeur d'embed : réservé à l'encadrement
+      // (les menus sont désormais ouvrables via !template, donc publics). L'envoi
+      // (tk|tpl|send) reste ouvert aux recruteurs : géré dans son propre bloc.
+      if (((id.startsWith("tk|tpl|") && !id.startsWith("tk|tpl|send|")) || id.startsWith("tk|b|") || id.startsWith("tk|bf|")) && !isStaff(interaction)) {
+        await interaction.reply({ content: "Réservé à l'encadrement.", flags: EPH }); return;
+      }
+      if (id.startsWith("tk|tpl|send|")) {
+        const cfg = await mdt.ticketConfigGet();
+        if (!isStaff(interaction) && !isRecruiter(interaction.member as GuildMember | null, cfg)) { await interaction.reply({ content: "Réservé à l'encadrement.", flags: EPH }); return; }
+        const tpl = (await mdt.ticketTemplateList()).find((t) => t._id === id.split("|")[3]);
+        if (!tpl) { await interaction.reply({ content: "Template introuvable.", flags: EPH }); return; }
+        const channel = interaction.channel;
+        const ticket = channel && channel.type === ChannelType.GuildText ? await mdt.ticketByChannel(channel.id) : null;
+        if (!ticket) { await interaction.reply({ content: "À utiliser dans le salon d'un ticket de candidature.", flags: EPH }); return; }
+        await interaction.deferReply();
+        const m = interaction.member;
+        const nick = (m && "displayName" in m ? (m.displayName as string) : null) ?? interaction.user.username;
+        let delivered = true;
+        try { const user = await interaction.client.users.fetch(ticket.ownerId); await user.send({ embeds: [buildEmbed(tpl.embed)] }); } catch { delivered = false; }
+        const note = baseEmbed(BRAND.green).setAuthor({ name: nick, iconURL: interaction.user.displayAvatarURL() }).setDescription(`Template envoyé au candidat : **${tpl.name}**`);
+        if (!delivered) note.setFooter({ text: "Non reçu par le candidat (MP fermés)." });
+        await interaction.editReply({ embeds: [buildEmbed(tpl.embed), note] });
+        return;
+      }
       if (id === "tk|tpl|new") { const d = newTemplateDraft(); drafts.set(interaction.user.id, d); await renderBuilder(interaction, d); return; }
 
       // --- Constructeur d'embed ---
@@ -1678,6 +1735,7 @@ export async function handleTicketInteraction(interaction: Interaction) {
         if (!tpl) { await renderTemplates(interaction); return; }
         const embed = buildEmbed(tpl.embed).setFooter({ text: `Template « ${tpl.name} » · ${tpl.pingOwner ? "ping activé" : "sans ping"}` });
         const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+          new ButtonBuilder().setCustomId(`tk|tpl|send|${tpl._id}`).setLabel("Envoyer au candidat").setEmoji("📤").setStyle(ButtonStyle.Success),
           new ButtonBuilder().setCustomId(`tk|tpl|edit|${tpl._id}`).setLabel("Modifier").setEmoji("✏️").setStyle(ButtonStyle.Primary),
           new ButtonBuilder().setCustomId(`tk|tpl|del|${tpl._id}`).setLabel("Supprimer").setEmoji("🗑️").setStyle(ButtonStyle.Danger),
           new ButtonBuilder().setCustomId("tk|hub|templates").setLabel("Retour").setStyle(ButtonStyle.Secondary),
