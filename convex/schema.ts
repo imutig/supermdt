@@ -1782,6 +1782,48 @@ export default defineSchema({
     .index("by_deleted", ["deletedAt"])
     .index("by_announce", ["discordAnnounced"]),
 
+  // ============ ENQUÊTES INTERNES (Internal Affairs) ============
+  // Enquête interne sur un ou plusieurs agents. Confidentielle (visible aux seuls
+  // détenteurs de investigations.view). Journal d'actions + agents concernés liés.
+  internalInvestigations: defineTable({
+    reference: v.number(),            // n° d'enquête (auto-incrément)
+    title: v.string(),
+    reason: v.optional(v.string()),   // motif d'ouverture
+    status: v.union(v.literal("OPEN"), v.literal("IN_PROGRESS"), v.literal("CLOSED")),
+    severity: v.optional(v.union(v.literal("LOW"), v.literal("MEDIUM"), v.literal("HIGH"), v.literal("CRITICAL"))),
+    outcome: v.optional(v.union(v.literal("NO_ACTION"), v.literal("EXONERATED"), v.literal("SANCTION"), v.literal("DISMISSAL"), v.literal("OTHER"))),
+    conclusion: v.optional(v.string()),
+    openedBy: v.id("agents"),
+    at: v.number(),
+    closedBy: v.optional(v.id("agents")),
+    closedAt: v.optional(v.number()),
+    deletedAt: v.optional(v.number()),
+    deletedBy: v.optional(v.id("agents")),
+  })
+    .index("by_status", ["status"])
+    .index("by_deleted", ["deletedAt"]),
+
+  // Agents concernés par une enquête (plusieurs par enquête).
+  investigationTargets: defineTable({
+    investigationId: v.id("internalInvestigations"),
+    agentId: v.id("agents"),
+    role: v.optional(v.union(v.literal("SUSPECT"), v.literal("WITNESS"), v.literal("INVOLVED"))),
+    addedAt: v.number(),
+  })
+    .index("by_investigation", ["investigationId"])
+    .index("by_agent", ["agentId"]),
+
+  // Journal d'une enquête : notes manuelles + événements (ouverture, statut, clôture).
+  investigationNotes: defineTable({
+    investigationId: v.id("internalInvestigations"),
+    body: v.string(),
+    kind: v.union(v.literal("NOTE"), v.literal("EVENT")),
+    imageUrls: v.optional(v.array(v.string())),
+    authorId: v.id("agents"),
+    authorName: v.string(),
+    at: v.number(),
+  }).index("by_investigation", ["investigationId"]),
+
   // ============ RESSOURCES (livret cadets, §9) ============
   resourceCategories: defineTable({
     name: v.string(),

@@ -1,9 +1,11 @@
 import { Fragment, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { X, Paperclip, Trash2, RotateCcw } from "lucide-react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/lib/api";
 import { useToast } from "@/providers/toast";
 import { useCan } from "@/hooks/useCan";
+import { InvestigationsSection } from "@/components/discipline/Investigations";
 import { ImageGallery } from "@/components/common/ImageGallery";
 import { SanctionModal } from "@/components/effectif/SanctionModal";
 import { ConvocationModal } from "@/components/effectif/ConvocationModal";
@@ -24,8 +26,16 @@ export function Discipline() {
   const { can } = useCan();
   const canManage = can("discipline.create") || can("discipline.edit") || can("discipline.delete");
   const canConvoke = can("convocations.create");
-  const [tab, setTab] = useState<"sanctions" | "convocations">("sanctions");
+  const canInvestigate = can("investigations.view");
+  const [params] = useSearchParams();
+  const deepEnquete = params.get("enquete");
+  const [tab, setTab] = useState<"sanctions" | "convocations" | "enquetes">(deepEnquete && canInvestigate ? "enquetes" : "sanctions");
   const [modal, setModal] = useState<"sanction" | "convocation" | null>(null);
+  const TABS: { key: "sanctions" | "convocations" | "enquetes"; label: string }[] = [
+    { key: "sanctions", label: "Sanctions" },
+    { key: "convocations", label: "Convocations" },
+    ...(canInvestigate ? [{ key: "enquetes" as const, label: "Enquêtes internes" }] : []),
+  ];
 
   return (
     <div className="p-[22px_26px]" style={{ animation: "mdtFade .2s ease" }}>
@@ -46,14 +56,16 @@ export function Discipline() {
       </div>
 
       <div className="mb-[14px] flex gap-[2px] rounded-card border border-border bg-surface p-[5px]">
-        {(["sanctions", "convocations"] as const).map((t) => (
-          <button key={t} onClick={() => setTab(t)} className="rounded-[7px] px-[13px] py-[7px] text-[12.5px] font-semibold hover:bg-surface-2" style={tab === t ? { background: "var(--accent)", color: "#fff" } : { color: "var(--muted)" }}>
-            {t === "sanctions" ? "Sanctions" : "Convocations"}
+        {TABS.map((t) => (
+          <button key={t.key} onClick={() => setTab(t.key)} className="rounded-[7px] px-[13px] py-[7px] text-[12.5px] font-semibold hover:bg-surface-2" style={tab === t.key ? { background: "var(--accent)", color: "#fff" } : { color: "var(--muted)" }}>
+            {t.label}
           </button>
         ))}
       </div>
 
-      {tab === "sanctions" ? <SanctionsTable canManage={canManage} /> : <ConvocationsTable canManage={canManage} />}
+      {tab === "sanctions" ? <SanctionsTable canManage={canManage} />
+        : tab === "convocations" ? <ConvocationsTable canManage={canManage} />
+        : <InvestigationsSection initialOpenId={deepEnquete} />}
 
       {modal === "sanction" && <SanctionModal onClose={() => setModal(null)} />}
       {modal === "convocation" && <ConvocationModal onClose={() => setModal(null)} />}

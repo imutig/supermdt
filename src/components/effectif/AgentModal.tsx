@@ -10,6 +10,7 @@ import { fmtAnciennete, tsToDateInput, dateInputToTs } from "@/lib/anciennete";
 import { parisDayStart, parisDayEnd } from "@/lib/paris";
 import { actionLabel, resourceLabel } from "@/lib/auditLabels";
 import { SanctionModal } from "@/components/effectif/SanctionModal";
+import { AgentInvestigations } from "@/components/discipline/Investigations";
 import { ConvocationModal } from "@/components/effectif/ConvocationModal";
 import { FicheDocument } from "@/components/effectif/FicheDocument";
 import { useDialogs } from "@/components/detective/dialogs";
@@ -495,6 +496,11 @@ export function AgentModal({ agentId, onClose }: { agentId: Id<"agents">; onClos
                   </div>
                 )}
               </div>
+
+              {/* Enquêtes internes concernant l'agent (si habilité) */}
+              {can("investigations.view") && (
+                <AgentInvestigations agentId={agentId} onOpen={(id) => { onClose(); navigate(`/discipline?enquete=${id}`); }} />
+              )}
 
               {/* Convocations */}
               {(convocations ?? []).length > 0 && (
