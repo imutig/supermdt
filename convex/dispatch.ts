@@ -124,6 +124,8 @@ async function patrolView(ctx: QueryCtx, patrol: Doc<"patrols">, lk: Lookup = ma
       matricule: a ? (a.matricule ?? (a.isOwner ? 0 : null)) : null,
       name: a ? `${a.prenomRP} ${a.nomRP}` : "-",
       agentId: m.agentId,
+      avatarUrl: a?.avatarUrl ?? null,
+      phone: a?.phone ?? null,
       ...tag,
     });
   }

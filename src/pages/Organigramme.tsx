@@ -11,7 +11,7 @@ const CORPS_LABEL: Record<string, string> = {
   OPERATIONNEL: "Corps opérationnel",
 };
 
-type Agent = { _id: string; name: string; matricule: number | null; avatarUrl: string | null };
+type Agent = { _id: string; name: string; matricule: number | null; avatarUrl: string | null; phone: string | null };
 type Grade = { _id: string; name: string; corps: string; color: string | null; agents: Agent[] };
 
 // Au-delà de ce nombre par échelon, on abandonne les branches individuelles (qui
@@ -109,6 +109,7 @@ function PersonCard({ a, color, grade }: { a: Agent; color: string; grade: strin
         <div className="truncate text-[12.5px] font-semibold leading-tight" title={a.name}>{a.name}</div>
         <div className="mt-[2px] truncate text-[11px] font-semibold leading-tight" style={{ color }} title={grade}>{grade}</div>
         <div className="mt-[3px] font-data text-[10.5px] text-faint">{fmtMatricule(a.matricule) ?? "-"}</div>
+        {a.phone && <div className="mt-[1px] font-data text-[10px] text-faint">📞 {a.phone}</div>}
       </div>
     </div>
   );

@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { X, Plus, LogOut, Radio, Users, GripVertical, Flag, History, Maximize2, Minimize2 } from "lucide-react";
+import { X, Plus, LogOut, Radio, Users, GripVertical, Flag, History, Maximize2, Minimize2, Phone } from "lucide-react";
 import { useMutation, useQuery, usePaginatedQuery } from "convex/react";
 import { api, type Id } from "@/lib/api";
 import { LoadMore } from "@/components/common/Pagination";
@@ -13,9 +13,10 @@ import { PatrolCreateModal } from "@/components/dispatch/PatrolCreateModal";
 import { PatrolDetailModal, PatrolJournal } from "@/components/dispatch/PatrolDetailModal";
 import { StatusFieldsModal, fieldsSummary, type PatrolFields } from "@/components/dispatch/statusFields";
 import { patrolBg, patrolBorder } from "@/lib/patrolColors";
+import { AgentAvatar, fmtMatricule } from "@/components/common/AgentTag";
 
 type Status = { _id: string; name: string; color: string | null; icon: string | null; group: string | null; requires: string[] };
-type Member = { matricule: number | null; name: string; agentId: string; gradeAbbrev: string | null; gradeColor: string | null };
+type Member = { matricule: number | null; name: string; agentId: string; gradeAbbrev: string | null; gradeColor: string | null; avatarUrl: string | null; phone: string | null };
 type Operation = { _id: string; name: string; createdBy: string; startedAt: number; creator: string };
 type Patrol = {
   _id: string; label: string; indicator: string; vehicleNumber: string; color: string | null; callsignTypeId: string | null;
@@ -456,8 +457,29 @@ function PatrolCard({ patrol, drag, isMine, agentDragging, compact, over, dimmed
   dimmed?: boolean;
   onOpen: () => void;
 }) {
+  const [preview, setPreview] = useState<Member | null>(null);
   const names = patrol.members.map((m) => m.name.split(" ").slice(-1)[0]).join(", ");
   const grades = patrol.members.filter((m) => m.gradeAbbrev);
+  const av = compact ? 20 : 24;
+  const avatarStack = patrol.members.length > 0 ? (
+    <div className="flex flex-shrink-0 items-center">
+      {patrol.members.slice(0, 6).map((m, i) => (
+        <button
+          key={m.agentId + i}
+          onClick={(e) => { e.stopPropagation(); setPreview(m); }}
+          onPointerDown={(e) => e.stopPropagation()}
+          title={m.name}
+          className="-ml-[7px] rounded-full transition-transform first:ml-0 hover:z-10 hover:scale-110"
+          style={{ zIndex: 10 - i }}
+        >
+          <AgentAvatar url={m.avatarUrl} name={m.name} size={av} className="ring-2 ring-[var(--surface)]" />
+        </button>
+      ))}
+      {patrol.members.length > 6 && (
+        <span className="-ml-[7px] inline-flex items-center justify-center rounded-full border border-border bg-surface-2 text-[9px] font-bold text-muted ring-2 ring-[var(--surface)]" style={{ width: av, height: av }}>+{patrol.members.length - 6}</span>
+      )}
+    </div>
+  ) : null;
   const summary = fieldsSummary(patrol.fields, patrol.status?.requires ?? []);
   const accent = patrol.status?.color ?? patrol.color ?? "var(--accent)";
   // En compact, détail et champs obligatoires partagent une seule ligne :
@@ -475,6 +497,7 @@ function PatrolCard({ patrol, drag, isMine, agentDragging, compact, over, dimmed
   ));
 
   return (
+    <>
     <div
       {...(drag ?? {})}
       {...dropZone("patrol", patrol._id)}
@@ -501,8 +524,8 @@ function PatrolCard({ patrol, drag, isMine, agentDragging, compact, over, dimmed
         <span className="flex-shrink-0 font-data text-[10px] text-faint">{sinceLabel(patrol.statusSince)}</span>
       </div>
 
-      <div className={`flex items-center gap-[6px] text-muted ${compact ? "mt-[2px] text-[10.5px]" : "mt-[4px] text-[11.5px]"}`}>
-        <Users className="h-[12px] w-[12px] flex-shrink-0 text-faint" />
+      <div className={`flex items-center gap-[7px] text-muted ${compact ? "mt-[3px] text-[10.5px]" : "mt-[5px] text-[11.5px]"}`}>
+        {avatarStack ?? <Users className="h-[12px] w-[12px] flex-shrink-0 text-faint" />}
         <span className="min-w-0 flex-1 truncate">{names || "-"}</span>
       </div>
 
@@ -526,6 +549,45 @@ function PatrolCard({ patrol, drag, isMine, agentDragging, compact, over, dimmed
           )}
         </>
       )}
+    </div>
+    {preview && <AgentPreview member={preview} onClose={() => setPreview(null)} />}
+    </>
+  );
+}
+
+// Aperçu d'un agent (clic sur sa photo dans le dispatch) : photo mise en valeur,
+// nom, matricule, téléphone, grade.
+function AgentPreview({ member, onClose }: { member: Member; onClose: () => void }) {
+  const initials = member.name.split(/\s+/).map((s) => s[0]).filter(Boolean).slice(0, 2).join("").toUpperCase() || "?";
+  return (
+    <div
+      onClick={(e) => { e.stopPropagation(); onClose(); }}
+      onPointerDown={(e) => e.stopPropagation()}
+      className="fixed inset-0 z-[80] flex items-center justify-center p-6"
+      style={{ background: "var(--scrim)", backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)", animation: "mdtFade .12s ease" }}
+    >
+      <div onClick={(e) => e.stopPropagation()} className="w-[290px] max-w-[92vw] overflow-hidden rounded-card border border-border-strong bg-elev shadow-[0_24px_70px_rgba(0,0,0,.35)]" style={{ animation: "mdtFade .16s ease" }}>
+        <div className="flex items-center justify-center bg-surface-2 p-[18px]">
+          {member.avatarUrl ? (
+            <img src={member.avatarUrl} alt="" className="h-[180px] w-[180px] rounded-[14px] border border-border object-cover" />
+          ) : (
+            <div className="flex h-[180px] w-[180px] items-center justify-center rounded-[14px] border border-border bg-surface text-[46px] font-bold text-muted">{initials}</div>
+          )}
+        </div>
+        <div className="p-[16px]">
+          <div className="flex items-center gap-2">
+            {member.gradeAbbrev && (
+              <span className="rounded-[4px] border px-[6px] py-[2px] text-[10px] font-bold uppercase tracking-[0.05em]" style={member.gradeColor ? { borderColor: member.gradeColor, color: member.gradeColor } : { borderColor: "var(--border)", color: "var(--muted)" }}>{member.gradeAbbrev}</span>
+            )}
+            <h3 className="m-0 min-w-0 flex-1 truncate text-[16px] font-bold">{member.name}</h3>
+          </div>
+          {fmtMatricule(member.matricule) && <div className="mt-[3px] font-data text-[13px] font-semibold text-accent">{fmtMatricule(member.matricule)}</div>}
+          <div className="mt-[12px] flex items-center gap-[8px] rounded-sm border border-border bg-surface-2 px-[10px] py-[8px] text-[13px]">
+            <Phone className="h-[15px] w-[15px] text-faint" />
+            <span className="font-data">{member.phone ?? <span className="text-faint">Non renseigné</span>}</span>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

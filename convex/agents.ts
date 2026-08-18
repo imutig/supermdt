@@ -480,12 +480,12 @@ export const organigramme = query({
     const grades = await ctx.db.query("grades").withIndex("by_position").collect();
     const gradeById = new Map(grades.map((g) => [g._id, g]));
     const activeAgents = (await ctx.db.query("agents").withIndex("by_status", (q) => q.eq("status", "ACTIVE")).collect()).filter((a) => !a.isOwner);
-    const byGrade = new Map<string, { _id: string; name: string; matricule: number | null; avatarUrl: string | null }[]>();
+    const byGrade = new Map<string, { _id: string; name: string; matricule: number | null; avatarUrl: string | null; phone: string | null }[]>();
     for (const a of activeAgents) {
       const g = a.gradeId ? gradeById.get(a.gradeId) : null;
       if (!g || g.external) continue; // sans grade ou grade extérieur -> hors organigramme
       if (!byGrade.has(g._id)) byGrade.set(g._id, []);
-      byGrade.get(g._id)!.push({ _id: a._id, name: `${a.prenomRP} ${a.nomRP}`, matricule: a.matricule ?? null, avatarUrl: a.avatarUrl ?? null });
+      byGrade.get(g._id)!.push({ _id: a._id, name: `${a.prenomRP} ${a.nomRP}`, matricule: a.matricule ?? null, avatarUrl: a.avatarUrl ?? null, phone: a.phone ?? null });
     }
     return grades
       .filter((g) => !g.external)
