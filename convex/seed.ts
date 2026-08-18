@@ -1,8 +1,9 @@
-import { internalMutation } from "./_generated/server";
+import { internalMutation, mutation } from "./_generated/server";
 import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
 import { PERMISSION_SLUGS } from "./rbac";
+import { assertBot } from "./bot";
 import { SEVERITIES, CATEGORIES, SANCTIONS, CHARGES } from "./seedData/penalCode";
 
 // Statuts de dispatch par défaut. Les statuts d'un même `group` forment UNE colonne à sections.
@@ -98,10 +99,13 @@ export const resetDispatch = internalMutation({
 
 // Ajoute les slugs de permission manquants sur une base déjà seedée, et les accorde
 // aux grades État-Major (owner bypass de toute façon). Idempotent.
-// À lancer après ajout de nouveaux slugs : `npx convex run seed:syncPermissions`.
-export const syncPermissions = internalMutation({
-  args: {},
-  handler: async (ctx) => {
+// À lancer après ajout de nouveaux slugs. Gardé par le secret bot pour être
+// exécutable en CLI même avec un simple deploy key :
+// `npx convex run seed:syncPermissions '{"secret":"<BOT_SECRET>"}'`.
+export const syncPermissions = mutation({
+  args: { secret: v.string() },
+  handler: async (ctx, { secret }) => {
+    assertBot(secret);
     const catalog = new Set(PERMISSION_SLUGS.map((p) => p.slug));
     const existing = await ctx.db.query("permissions").collect();
     const existingSlugs = new Set(existing.map((p) => p.slug));
