@@ -370,6 +370,7 @@ export const saveCredential = action({
     if (!agentId) throw new ConvexError("Non authentifié.");
     const mail = email.trim();
     if (!mail || !password) throw new ConvexError("Email et mot de passe requis.");
+    if (!/@lspd\.ls$/i.test(mail)) throw new ConvexError("L'email du compte Nexus doit se terminer par @lspd.ls.");
 
     let status: "OK" | "INVALID" = "OK";
     let lastError: string | undefined;

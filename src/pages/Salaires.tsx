@@ -63,6 +63,10 @@ export function Salaires() {
     const r = await toast.guard(payAll({ weekStart: data.week.start }), "Action impossible");
     if (r !== undefined) toast.success(`${(r as { paid: number }).paid} salaire(s) marqué(s) payés.`);
   };
+  const copy = async (text: string, label: string) => {
+    try { await navigator.clipboard.writeText(text); toast.success(`${label} copié : ${text}`); }
+    catch { toast.error("Copie impossible."); }
+  };
 
   return (
     <div className="mx-auto w-full max-w-[1200px] p-[22px_26px]" style={{ animation: "mdtFade .2s ease" }}>
@@ -114,14 +118,15 @@ export function Salaires() {
       {/* Tableau */}
       <div className="overflow-hidden rounded-card border border-border bg-surface">
         <div className="overflow-x-auto">
-          <div className="min-w-[860px]">
-            <div className="grid grid-cols-[1.6fr_1fr_.8fr_.7fr_.8fr_.9fr_.9fr_.8fr] gap-3 border-b border-border px-4 py-[11px] text-[10px] font-bold uppercase tracking-[0.08em] text-faint">
+          <div className="min-w-[980px]">
+            <div className="grid grid-cols-[1.5fr_.9fr_.7fr_.55fr_.7fr_.75fr_.7fr_.8fr_.7fr] gap-3 border-b border-border px-4 py-[11px] text-[10px] font-bold uppercase tracking-[0.08em] text-faint">
               <Hd onClick={() => clickSort("name")}>Agent{arrow("name")}</Hd>
               <Hd onClick={() => clickSort("grade")}>Grade{arrow("grade")}</Hd>
               <Hd onClick={() => clickSort("hours")}>Heures IG{arrow("hours")}</Hd>
               <span>Taux/h</span>
               <Hd onClick={() => clickSort("base")}>Base{arrow("base")}</Hd>
               <span>Primes</span>
+              <span>IBAN</span>
               <Hd onClick={() => clickSort("salary")}>Salaire{arrow("salary")}</Hd>
               <span className="text-right">Payé</span>
             </div>
@@ -131,7 +136,7 @@ export function Salaires() {
               <EmptyState title="Aucun agent" message="Aucun agent actif à afficher." />
             ) : (
               rows.map((r) => (
-                <div key={r.agentId} className="grid grid-cols-[1.6fr_1fr_.8fr_.7fr_.8fr_.9fr_.9fr_.8fr] items-center gap-3 border-b border-border px-4 py-[10px] text-[12.5px] last:border-b-0">
+                <div key={r.agentId} className="grid grid-cols-[1.5fr_.9fr_.7fr_.55fr_.7fr_.75fr_.7fr_.8fr_.7fr] items-center gap-3 border-b border-border px-4 py-[10px] text-[12.5px] last:border-b-0">
                   <div className="flex items-center gap-2">
                     {r.avatarUrl ? <img src={r.avatarUrl} alt="" className="h-[26px] w-[26px] rounded-[6px] object-cover" /> : <div className="flex h-[26px] w-[26px] items-center justify-center rounded-[6px] bg-surface-2 text-[10px] font-bold text-muted">{r.name.split(" ").map((x) => x[0]).slice(0, 2).join("")}</div>}
                     <div className="min-w-0">
@@ -155,9 +160,19 @@ export function Salaires() {
                       <button onClick={() => (setBonusAgent({ id: r.agentId, name: r.name }), setBonusOpen(true))} className="text-faint hover:text-accent"><Plus className="h-[13px] w-[13px]" /></button>
                     ) : "—"}
                   </span>
-                  <span className="font-data font-bold" style={{ color: (r.paid ? r.paidAmount ?? r.total : r.total) > 0 ? "var(--success)" : "var(--faint)" }}>
+                  {r.iban ? (
+                    <button onClick={() => copy(r.iban!, "IBAN")} title="Copier l'IBAN" className="text-left font-data hover:text-accent hover:underline">{r.iban}</button>
+                  ) : (
+                    <span className="text-[11.5px] text-faint">non renseigné</span>
+                  )}
+                  <button
+                    onClick={() => copy(String(Math.round(r.paid ? r.paidAmount ?? r.total : r.total)), "Salaire")}
+                    title="Copier le montant (sans le $)"
+                    className="text-left font-data font-bold hover:underline"
+                    style={{ color: (r.paid ? r.paidAmount ?? r.total : r.total) > 0 ? "var(--success)" : "var(--faint)" }}
+                  >
                     {money(r.paid ? r.paidAmount : r.total)}
-                  </span>
+                  </button>
                   <div className="flex justify-end">
                     {r.paid ? (
                       <button disabled={!canManage} onClick={() => togglePaid(r.agentId, false)} title={r.paidAt ? `Payé le ${new Date(r.paidAt).toLocaleDateString("fr-FR")}` : "Payé"} className="flex items-center gap-[5px] rounded-[6px] px-[9px] py-[4px] text-[11.5px] font-semibold disabled:cursor-default" style={{ background: "color-mix(in srgb, var(--success) 15%, transparent)", color: "var(--success)" }}>

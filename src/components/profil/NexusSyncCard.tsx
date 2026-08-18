@@ -38,6 +38,7 @@ export function NexusSyncCard() {
 
   async function submit() {
     if (!email.trim() || !password || !consent) return;
+    if (!/@lspd\.ls$/i.test(email.trim())) { toast.error("L'email du compte Nexus doit se terminer par @lspd.ls."); return; }
     setBusy(true);
     const r = await toast.guard(saveCredential({ email: email.trim(), password }), "Enregistrement impossible");
     setBusy(false);
@@ -113,8 +114,8 @@ export function NexusSyncCard() {
               </div>
 
               <div className="mt-3">
-                <div className="mb-[5px] text-[10px] font-semibold uppercase tracking-[0.06em] text-faint">Email du compte Nexus</div>
-                <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" autoComplete="off" placeholder="prenom.nom@…" className="h-9 w-full rounded-sm border border-border bg-surface px-2 text-[13px] outline-none focus:border-accent" />
+                <div className="mb-[5px] text-[10px] font-semibold uppercase tracking-[0.06em] text-faint">Email du compte Nexus (@lspd.ls)</div>
+                <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" autoComplete="off" placeholder="prenom.nom@lspd.ls" className="h-9 w-full rounded-sm border border-border bg-surface px-2 text-[13px] outline-none focus:border-accent" />
               </div>
               <label className="mt-3 flex items-start gap-2 text-[12px] text-muted">
                 <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} className="mt-[2px]" />

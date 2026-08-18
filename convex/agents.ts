@@ -70,6 +70,35 @@ export const me = query({
   },
 });
 
+// IBAN in-game : 1 à 6 chiffres, ou vide pour effacer. Renvoie undefined si vide.
+function normalizeIban(raw: string): string | undefined {
+  const s = raw.trim();
+  if (!s) return undefined;
+  if (!/^\d{1,6}$/.test(s)) throw new ConvexError("IBAN invalide : 1 à 6 chiffres (retrouvable via /id en jeu).");
+  return s;
+}
+
+// L'agent renseigne / met à jour son propre IBAN.
+export const setMyIban = mutation({
+  args: { iban: v.string() },
+  handler: async (ctx, { iban }) => {
+    const agent = await requireAgent(ctx);
+    await ctx.db.patch(agent._id, { iban: normalizeIban(iban) });
+  },
+});
+
+// L'encadrement (effectif.edit) renseigne / corrige l'IBAN d'un agent.
+export const setIban = mutation({
+  args: { agentId: v.id("agents"), iban: v.string() },
+  handler: async (ctx, { agentId, iban }) => {
+    const actor = await requireAgent(ctx);
+    await requirePermission(ctx, actor, "effectif.edit");
+    const target = await ctx.db.get(agentId);
+    if (!target) throw new ConvexError("Agent introuvable.");
+    await ctx.db.patch(agentId, { iban: normalizeIban(iban) });
+  },
+});
+
 // Ensemble des slugs de permission effectifs de l'agent courant (owner = tout).
 // Sert au feedback UI (griser/désactiver les actions non autorisées).
 export const myPermissions = query({
@@ -593,6 +622,7 @@ export const getAgent = query({
       suspendedReason: a.suspendedReason ?? null,
       avatarUrl: a.avatarUrl ?? null,
       dateEntree: a.dateEntree ?? null,
+      iban: a.iban ?? null,
       lockedUntil: a.lockedUntil ?? null,
       discordId: a.discordId ?? null,
       grade: grade ? { _id: grade._id, name: grade.name, position: grade.position, discordRoleId: grade.discordRoleId ?? null } : null,

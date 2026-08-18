@@ -144,6 +144,7 @@ export const overview = query({
         name: `${a.prenomRP} ${a.nomRP}`,
         matricule: a.matricule ?? null,
         avatarUrl: a.avatarUrl ?? null,
+        iban: a.iban ?? null,
         gradeName: g?.name ?? "Sans grade",
         gradePosition: g?.position ?? -1,
         seconds: sec,

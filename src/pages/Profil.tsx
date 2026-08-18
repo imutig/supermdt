@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery } from "convex/react";
-import { Moon, Sun, RefreshCw } from "lucide-react";
+import { Moon, Sun, RefreshCw, Landmark } from "lucide-react";
+import { useMe } from "@/hooks/useMe";
+import { Button } from "@/components/common/Button";
+import { useToast } from "@/providers/toast";
 import { NexusSyncCard } from "@/components/profil/NexusSyncCard";
 import { api } from "@/lib/api";
 import { fmtMatricule } from "@/components/common/AgentTag";
@@ -24,6 +27,48 @@ function agoLabel(ts?: number): string {
   const m = Math.round(s / 60);
   if (m < 60) return `il y a ${m} min`;
   return `il y a ${Math.round(m / 60)} h`;
+}
+
+// Carte IBAN in-game : renseignée / modifiée par l'agent lui-même. Style
+// d'avertissement tant qu'elle est vide.
+function IbanCard() {
+  const me = useMe();
+  const save = useMutation(api.agents.setMyIban);
+  const toast = useToast();
+  const [editing, setEditing] = useState(false);
+  const [val, setVal] = useState("");
+  if (!me || me.agent.isOwner) return null;
+  const current = me.agent.iban ?? "";
+  const missing = !current;
+  const submit = async () => {
+    const clean = val.trim();
+    if (clean && !/^\d{1,6}$/.test(clean)) { toast.error("IBAN : 1 à 6 chiffres."); return; }
+    const r = await toast.guard(save({ iban: clean }), "Enregistrement impossible");
+    if (r !== undefined) { toast.success("IBAN enregistré."); setEditing(false); }
+  };
+  return (
+    <div className="mb-[16px] flex flex-wrap items-center gap-3 rounded-card border px-[16px] py-[12px]"
+      style={missing ? { borderColor: "color-mix(in srgb, var(--warning) 40%, var(--border))", background: "color-mix(in srgb, var(--warning) 7%, var(--surface))" } : { borderColor: "var(--border)", background: "var(--surface)" }}>
+      <Landmark className="h-[18px] w-[18px] flex-shrink-0" style={{ color: missing ? "var(--warning)" : "var(--accent)" }} />
+      <div className="min-w-0">
+        <div className="text-[10.5px] font-bold uppercase tracking-[0.09em] text-faint">IBAN in-game</div>
+        {!editing && <div className="font-data text-[15px] font-bold">{current || <span style={{ color: "var(--warning)" }}>Non renseigné</span>}</div>}
+      </div>
+      {editing ? (
+        <div className="flex flex-1 flex-wrap items-center gap-2">
+          <input autoFocus value={val} onChange={(e) => setVal(e.target.value.replace(/[^0-9]/g, "").slice(0, 6))} inputMode="numeric" placeholder="ex. 5832" className="h-9 w-[140px] rounded-sm border border-border bg-surface-2 px-3 font-data text-[13px] outline-none focus:border-accent" />
+          <Button variant="primary" onClick={submit}>Enregistrer</Button>
+          <Button variant="ghost" onClick={() => setEditing(false)}>Annuler</Button>
+        </div>
+      ) : (
+        <>
+          <span className="text-[11.5px] text-faint">Retrouvable via <b>/id</b> en jeu.</span>
+          <div className="flex-1" />
+          <button onClick={() => { setVal(current); setEditing(true); }} className="rounded-[7px] border border-border bg-surface-2 px-[12px] py-[7px] text-[12.5px] font-semibold hover:border-accent">{current ? "Modifier" : "Renseigner"}</button>
+        </>
+      )}
+    </div>
+  );
 }
 
 export function Profil() {
@@ -74,6 +119,8 @@ export function Profil() {
           {a.dateEntree && <div className="text-[11px] text-faint">depuis le {new Date(a.dateEntree).toLocaleDateString("fr-FR", { timeZone: "UTC" })}</div>}
         </div>
       </div>
+
+      <IbanCard />
 
       {/* Onglets */}
       <div className="mb-[16px] flex gap-[2px] rounded-card border border-border bg-surface p-[5px]">

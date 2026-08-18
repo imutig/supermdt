@@ -53,6 +53,9 @@ export default defineSchema({
     avatarStorageId: v.optional(v.id("_storage")),
     avatarUrl: v.optional(v.string()),
     dateEntree: v.optional(v.number()),
+    // IBAN in-game (compte bancaire du jeu) : 1 à 6 chiffres, retrouvable via /id
+    // en jeu. Sert au versement des salaires. Renseigné par l'agent ou l'encadrement.
+    iban: v.optional(v.string()),
     // Grade d'académie, cumulé au grade LSPD (Instructor, Supervisor, Director).
     academyRankId: v.optional(v.id("academyRanks")),
     // Mot de passe temporaire remis par l'État-Major : impose un changement

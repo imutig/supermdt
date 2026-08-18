@@ -35,6 +35,7 @@ export function AgentModal({ agentId, onClose }: { agentId: Id<"agents">; onClos
   const setQualifications = useMutation(api.agents.setQualifications);
   const setStatus = useMutation(api.agents.setStatus);
   const setDateEntree = useMutation(api.agents.setDateEntree);
+  const setIban = useMutation(api.agents.setIban);
   const resetPassword = useAction(api.accounts.resetPassword);
   const setLock = useMutation(api.agents.setLock);
   const cutService = useMutation(api.services.cut);
@@ -45,6 +46,7 @@ export function AgentModal({ agentId, onClose }: { agentId: Id<"agents">; onClos
   const [matInput, setMatInput] = useState("");
   const [nameEdit, setNameEdit] = useState<{ prenom: string; nom: string } | null>(null);
   const [loginEdit, setLoginEdit] = useState("");
+  const [ibanEdit, setIbanEdit] = useState<string | null>(null);
   const [sanctionModal, setSanctionModal] = useState(false);
   const [convocationModal, setConvocationModal] = useState(false);
   const [absOpen, setAbsOpen] = useState(false);
@@ -325,8 +327,8 @@ export function AgentModal({ agentId, onClose }: { agentId: Id<"agents">; onClos
                 </div>
               </div>
 
-              {/* Date d'arrivée + ancienneté */}
-              <div className="grid grid-cols-2 gap-3">
+              {/* Date d'arrivée + ancienneté + IBAN */}
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                 <div>
                   <div className="mb-[6px] text-[10.5px] font-bold uppercase tracking-[0.09em] text-faint">Date d'arrivée</div>
                   {canEditAgent ? (
@@ -343,6 +345,26 @@ export function AgentModal({ agentId, onClose }: { agentId: Id<"agents">; onClos
                 <div>
                   <div className="mb-[6px] text-[10.5px] font-bold uppercase tracking-[0.09em] text-faint">Ancienneté</div>
                   <div className="flex h-9 items-center text-[13px] font-semibold">{fmtAnciennete(a.dateEntree)}</div>
+                </div>
+                <div>
+                  <div className="mb-[6px] text-[10.5px] font-bold uppercase tracking-[0.09em] text-faint">IBAN in-game</div>
+                  {canEditAgent ? (
+                    <input
+                      inputMode="numeric"
+                      value={ibanEdit === null ? (a.iban ?? "") : ibanEdit}
+                      onChange={(e) => setIbanEdit(e.target.value.replace(/[^0-9]/g, "").slice(0, 6))}
+                      onBlur={async () => {
+                        if (ibanEdit === null || ibanEdit === (a.iban ?? "")) { setIbanEdit(null); return; }
+                        const r = await toast.guard(setIban({ agentId, iban: ibanEdit }), "Modification impossible");
+                        setIbanEdit(null);
+                        if (r !== undefined) toast.success("IBAN mis à jour.");
+                      }}
+                      placeholder="ex. 5832"
+                      className="h-9 w-full rounded-sm border border-border bg-surface-2 px-2 font-data text-[13px] outline-none focus:border-accent"
+                    />
+                  ) : (
+                    <div className="font-data text-[13px]">{a.iban ?? "-"}</div>
+                  )}
                 </div>
               </div>
 
