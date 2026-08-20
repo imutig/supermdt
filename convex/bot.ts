@@ -1224,8 +1224,12 @@ export const ticketProvisionAccount = mutation({
     const t = await ctx.db.query("tickets").withIndex("by_channel", (q) => q.eq("channelId", channelId)).first();
     if (!t) return { ok: false as const, reason: "notfound" as const };
     if (t.integrationStatus !== "PRESENT") return { ok: false as const, reason: "notpresent" as const };
-    const linked = await ctx.db.query("agents").withIndex("by_discord", (q) => q.eq("discordId", t.ownerId)).first();
-    if (linked) return { ok: false as const, reason: "linked" as const };
+    // Un compte VIVANT relié à ce Discord bloque. Les anciens comptes désactivés
+    // (INACTIVE, invisibles dans l'effectif) ne doivent pas réserver la liaison :
+    // on les délie pour libérer le Discord avant de fournir le nouveau compte.
+    const linkedAll = await ctx.db.query("agents").withIndex("by_discord", (q) => q.eq("discordId", t.ownerId)).collect();
+    if (linkedAll.some((a) => a.status !== "INACTIVE")) return { ok: false as const, reason: "linked" as const };
+    for (const dead of linkedAll) await ctx.db.patch(dead._id, { discordId: undefined });
     const cadetGrade = (await ctx.db.query("grades").collect())
       .filter((g) => g.academyOnly === true)
       .sort((a, b) => a.position - b.position)[0];

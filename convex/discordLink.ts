@@ -73,8 +73,11 @@ export const sendAccount = mutation({
   handler: async (ctx, { discordId }) => {
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "invites.manage");
-    const already = await ctx.db.query("agents").withIndex("by_discord", (q) => q.eq("discordId", discordId)).first();
-    if (already) throw new ConvexError("Ce membre Discord est déjà relié à un compte.");
+    // Seul un compte vivant bloque : on libère au passage les anciens comptes
+    // désactivés (INACTIVE) qui retiendraient encore ce Discord.
+    const holders = await ctx.db.query("agents").withIndex("by_discord", (q) => q.eq("discordId", discordId)).collect();
+    if (holders.some((a) => a.status !== "INACTIVE")) throw new ConvexError("Ce membre Discord est déjà relié à un compte.");
+    for (const dead of holders) await ctx.db.patch(dead._id, { discordId: undefined });
     const member = await ctx.db.query("discordMembers").withIndex("by_discord", (q) => q.eq("discordId", discordId)).first();
     const prefill = member ? parseNickname(member.displayName) : {};
     // Grade détecté depuis les rôles Discord du membre (grades.discordRoleId).
@@ -115,8 +118,11 @@ export const linkExisting = mutation({
   handler: async (ctx, { agentId, discordId }) => {
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "invites.manage");
-    const other = await ctx.db.query("agents").withIndex("by_discord", (q) => q.eq("discordId", discordId)).first();
-    if (other && other._id !== agentId) throw new ConvexError("Ce membre Discord est déjà relié à un autre compte.");
+    // Un autre compte VIVANT bloque ; les anciens comptes désactivés sont déliés.
+    const others = (await ctx.db.query("agents").withIndex("by_discord", (q) => q.eq("discordId", discordId)).collect())
+      .filter((a) => a._id !== agentId);
+    if (others.some((a) => a.status !== "INACTIVE")) throw new ConvexError("Ce membre Discord est déjà relié à un autre compte.");
+    for (const dead of others) await ctx.db.patch(dead._id, { discordId: undefined });
     await ctx.db.patch(agentId, { discordId });
   },
 });
