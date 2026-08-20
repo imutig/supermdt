@@ -594,10 +594,33 @@ export const absencesToAnnounce = query({
 });
 
 export const markAbsenceAnnounced = mutation({
+  args: { secret: v.string(), id: v.id("absences"), messageId: v.optional(v.string()), channelId: v.optional(v.string()) },
+  handler: async (ctx, { secret, id, messageId, channelId }) => {
+    assertBot(secret);
+    await ctx.db.patch(id, { announced: true, announceMsgId: messageId, announceChannelId: channelId });
+  },
+});
+
+// Absences modifiées / annulées après publication : le bot doit éditer ou
+// supprimer le message Discord correspondant.
+export const absenceMsgOps = query({
+  args: { secret: v.string() },
+  handler: async (ctx, { secret }) => {
+    assertBot(secret);
+    return readAbsenceMsgOps(ctx);
+  },
+});
+
+// Confirme le traitement (édition faite, ou message supprimé) : on lève le drapeau
+// « dirty », et sur suppression on oublie la référence au message.
+export const markAbsenceMsgOpDone = mutation({
   args: { secret: v.string(), id: v.id("absences") },
   handler: async (ctx, { secret, id }) => {
     assertBot(secret);
-    await ctx.db.patch(id, { announced: true });
+    const ab = await ctx.db.get(id);
+    if (!ab) return;
+    if (ab.status === "ANNULEE") await ctx.db.patch(id, { announceDirty: false, announceMsgId: undefined, announceChannelId: undefined });
+    else await ctx.db.patch(id, { announceDirty: false });
   },
 });
 
@@ -1601,6 +1624,28 @@ async function readAbsencesToAnnounce(ctx: QueryCtx) {
   return out;
 }
 
+async function readAbsenceMsgOps(ctx: QueryCtx) {
+  const rows = (await ctx.db.query("absences").withIndex("by_dirty", (q) => q.eq("announceDirty", true)).collect())
+    .filter((ab) => !!ab.announceMsgId && !!ab.announceChannelId)
+    .slice(0, 20);
+  const out = [];
+  for (const ab of rows) {
+    const a = await ctx.db.get(ab.agentId);
+    out.push({
+      id: ab._id,
+      // ANNULEE => supprimer le message ; sinon (prolongée / corrigée) => l'éditer.
+      op: ab.status === "ANNULEE" ? ("delete" as const) : ("edit" as const),
+      channelId: ab.announceChannelId!,
+      messageId: ab.announceMsgId!,
+      name: a ? `${a.prenomRP} ${a.nomRP}` : "Agent",
+      matricule: a?.matricule ?? null,
+      discordId: a?.discordId ?? null,
+      from: ab.from, to: ab.to, reason: ab.reason,
+    });
+  }
+  return out;
+}
+
 async function readSanctionsToAnnounce(ctx: QueryCtx) {
   const rows = (await ctx.db.query("disciplines").withIndex("by_announce", (q) => q.eq("discordAnnounced", false)).collect())
     .filter((d) => !d.deletedAt)
@@ -1824,6 +1869,9 @@ export const tick = query({
       ftoAnnouncements: await readFtoAnnouncements(ctx),
       // Tranches conditionnées au salon configuré (rien à publier sinon).
       absencesToAnnounce: config.absenceChannel ? await readAbsencesToAnnounce(ctx) : [],
+      // Éditions / suppressions de messages d'absence (indépendantes du salon
+      // courant : elles ciblent le salon où le message a été publié).
+      absenceMsgOps: await readAbsenceMsgOps(ctx),
       sanctionsToAnnounce: config.sanctionsChannel ? await readSanctionsToAnnounce(ctx) : [],
       convocationsToAnnounce: config.sanctionsChannel ? await readConvocationsToAnnounce(ctx) : [],
       trackingPending: config.trackingChannel ? await readTrackingPending(ctx) : [],

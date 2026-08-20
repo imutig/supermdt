@@ -305,13 +305,35 @@ export function startTasks(client: Client) {
           for (const ab of pending) {
             // On ne marque « publié » qu'après un envoi CONFIRMÉ : un échec
             // (salon absent, rate-limit) sera réessayé au prochain tick plutôt
-            // que perdu silencieusement.
-            let ok = false;
-            if (chan) { try { await chan.send({ embeds: [absencePublishEmbed(ab)] }); ok = true; } catch (e) { console.error("[absence] envoi échoué :", e); } }
-            if (ok) await mdt.markAbsenceAnnounced(ab.id);
+            // que perdu silencieusement. On mémorise l'id du message pour pouvoir
+            // l'éditer / le supprimer si l'absence change ensuite.
+            if (!chan) continue;
+            try {
+              const sent = await chan.send({ embeds: [absencePublishEmbed(ab)] });
+              await mdt.markAbsenceAnnounced(ab.id, sent.id, chan.id);
+            } catch (e) { console.error("[absence] envoi échoué :", e); }
           }
         }
       } catch (err) { console.error("[absence] publication :", err); }
+    }
+
+    // --- Édition / suppression des messages d'absence modifiés ou annulés ---
+    if (t.absenceMsgOps.length) {
+      for (const op of t.absenceMsgOps) {
+        try {
+          const chan = await channel(client, op.channelId);
+          if (!chan) { continue; } // salon introuvable : on réessaiera
+          const msg = await chan.messages.fetch(op.messageId).catch(() => null);
+          if (op.op === "delete") {
+            if (msg) await msg.delete().catch(() => {});
+            // Message absent (déjà supprimé) ou supprimé à l'instant : traité.
+            await mdt.markAbsenceMsgOpDone(op.id);
+          } else {
+            if (msg) { await msg.edit({ embeds: [absencePublishEmbed(op)] }); await mdt.markAbsenceMsgOpDone(op.id); }
+            else await mdt.markAbsenceMsgOpDone(op.id); // message disparu : plus rien à éditer
+          }
+        } catch (e) { console.error("[absence] maj message :", e); }
+      }
     }
 
     // --- Publication des sanctions (embed + ping rôle LSPD) ---

@@ -26,7 +26,11 @@ export const list = query({
           .collect();
     const out = [];
     for (const a of rows) {
+      // Les absences annulées (tombstones conservés pour la synchro Discord) ne
+      // sont pas affichées.
+      if (a.status === "ANNULEE") continue;
       const ag = await ctx.db.get(a.agentId);
+      const mine = a.agentId === viewer._id;
       out.push({
         _id: a._id,
         agentName: ag ? `${ag.prenomRP} ${ag.nomRP}` : "-",
@@ -35,7 +39,9 @@ export const list = query({
         to: a.to,
         status: a.status,
         canDecide: isManager && a.status === "EN_ATTENTE",
-        canDelete,
+        // Chacun gère ses propres absences (prolonger / annuler) ; l'encadrement
+        // (absences.delete) peut aussi agir sur celles des autres.
+        canManage: mine || canDelete,
       });
     }
     return out;
@@ -111,21 +117,57 @@ export const createFor = mutation({
   },
 });
 
+// Chaque agent peut prolonger / raccourcir / corriger SA propre absence ;
+// l'encadrement (absences.manage) peut modifier celles des autres. Si le message
+// Discord a déjà été publié, on le marque « à mettre à jour » (le bot l'édite).
+export const update = mutation({
+  args: { id: v.id("absences"), reason: v.string(), from: v.number(), to: v.number() },
+  handler: async (ctx, { id, reason, from, to }) => {
+    const actor = await requireAgent(ctx);
+    const ab = await ctx.db.get(id);
+    if (!ab) throw new ConvexError("Absence introuvable.");
+    const mine = ab.agentId === actor._id;
+    if (mine) await requirePermission(ctx, actor, "absences.request");
+    else await requirePermission(ctx, actor, "absences.manage");
+    if (ab.status === "ANNULEE") throw new ConvexError("Cette absence est annulée.");
+    if (to < from) throw new ConvexError("La date de fin précède la date de début.");
+    if (inclusiveDaysParis(from, to) < MIN_ABSENCE_DAYS) throw new ConvexError(TOO_SHORT_MSG);
+    await ctx.db.patch(id, {
+      reason: reason.trim() || "Absence",
+      from,
+      to,
+      ...(ab.announceMsgId ? { announceDirty: true } : {}),
+    });
+    await writeAudit(ctx, actor, { action: "absence.update", resourceType: "absence", resourceId: id });
+    if (ab.announceMsgId) await ctx.scheduler.runAfter(0, internal.push.notify, {}); // le bot met à jour le message
+  },
+});
+
+// Annulation (par l'agent lui-même, ou par l'encadrement absences.delete) :
+// soft-delete (statut ANNULEE) qui conserve un tombstone tant que le message
+// Discord n'a pas été supprimé par le bot.
 export const remove = mutation({
   args: { id: v.id("absences") },
   handler: async (ctx, { id }) => {
     const actor = await requireAgent(ctx);
-    await requirePermission(ctx, actor, "absences.delete");
     const ab = await ctx.db.get(id);
-    await ctx.db.delete(id);
+    if (!ab) return;
+    const mine = ab.agentId === actor._id;
+    if (mine) await requirePermission(ctx, actor, "absences.request");
+    else await requirePermission(ctx, actor, "absences.delete");
+    await ctx.db.patch(id, {
+      status: "ANNULEE",
+      ...(ab.announceMsgId ? { announceDirty: true } : {}),
+    });
     await writeAudit(ctx, actor, { action: "absence.delete", resourceType: "absence", resourceId: id });
-    const target = ab ? await ctx.db.get(ab.agentId) : null;
+    if (ab.announceMsgId) await ctx.scheduler.runAfter(0, internal.push.notify, {}); // le bot supprime le message
+    const target = await ctx.db.get(ab.agentId);
     await notify(ctx, "absence.delete", {
-      title: "Absence supprimée",
+      title: "Absence annulée",
       description: target ? `**${target.prenomRP} ${target.nomRP}**` : undefined,
       color: NOTIFY_COLOR.danger,
       url: await deepLink(ctx, "/discipline"),
-      footer: `Supprimée par ${actor.prenomRP} ${actor.nomRP}`,
+      footer: `Annulée par ${actor.prenomRP} ${actor.nomRP}`,
     });
   },
 });

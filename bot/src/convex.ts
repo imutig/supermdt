@@ -119,6 +119,7 @@ export type TickResult = {
   ceremonyPosts: { channel: string | null; posts: { id: string; content: string }[] };
   ftoAnnouncements: { id: string; channelId: string; pingContent: string | null; description: string | null; tutorCount: number; traineeCount: number; content: string | null }[];
   absencesToAnnounce: { id: string; name: string; matricule: number | null; discordId: string | null; from: number; to: number; reason: string }[];
+  absenceMsgOps: { id: string; op: "edit" | "delete"; channelId: string; messageId: string; name: string; matricule: number | null; discordId: string | null; from: number; to: number; reason: string }[];
   sanctionsToAnnounce: SanctionAnnounce[];
   convocationsToAnnounce: ConvocationAnnounce[];
   trackingPending: TrackingItem[];
@@ -184,7 +185,8 @@ export const mdt = {
   commandAllowed: (command: string, discordId: string, roleIds: string[], isLspd: boolean) => client.query(anyApi.bot.commandAllowed, { secret: env.botSecret, command, discordId, roleIds, isLspd }) as Promise<boolean>,
   absencesCurrent: () => client.query(anyApi.bot.absencesCurrent, { secret: env.botSecret }) as Promise<{ name: string; matricule: number | null; until: number; reason: string }[]>,
   absencesToAnnounce: () => client.query(anyApi.bot.absencesToAnnounce, { secret: env.botSecret }) as Promise<{ id: string; name: string; matricule: number | null; discordId: string | null; from: number; to: number; reason: string }[]>,
-  markAbsenceAnnounced: (id: string) => client.mutation(anyApi.bot.markAbsenceAnnounced, { secret: env.botSecret, id }) as Promise<void>,
+  markAbsenceAnnounced: (id: string, messageId?: string, channelId?: string) => client.mutation(anyApi.bot.markAbsenceAnnounced, { secret: env.botSecret, id, messageId, channelId }) as Promise<void>,
+  markAbsenceMsgOpDone: (id: string) => client.mutation(anyApi.bot.markAbsenceMsgOpDone, { secret: env.botSecret, id }) as Promise<void>,
   presenceMessageGet: () => client.query(anyApi.bot.presenceMessageGet, { secret: env.botSecret }) as Promise<string | null>,
   presenceMessageSet: (messageId: string) => client.mutation(anyApi.bot.presenceMessageSet, { secret: env.botSecret, messageId }) as Promise<void>,
 

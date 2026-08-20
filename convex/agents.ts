@@ -414,6 +414,11 @@ export const roster = query({
     const weaponAgentIds = new Set(
       (await ctx.db.query("serviceWeapons").collect()).filter((w) => !w.deletedAt).map((w) => w.agentId as string),
     );
+    // Agents dont la liaison au compte Nexus est active (identifiants validés) :
+    // leurs écritures (casiers, rapports…) se synchronisent vers le Nexus.
+    const syncAgentIds = new Set(
+      (await ctx.db.query("nexusCredentials").collect()).filter((c) => c.status === "OK").map((c) => c.agentId as string),
+    );
 
     const out = [];
     for (const a of agents) {
@@ -439,6 +444,9 @@ export const roster = query({
         // Arme de service enregistrée ? Les cadets (grade académie) n'en ont pas besoin.
         hasWeapon: weaponAgentIds.has(a._id as string),
         weaponRequired: !grade?.academyOnly,
+        // Numéro de téléphone renseigné ? Liaison Nexus active ?
+        hasPhone: !!a.phone,
+        syncActive: syncAgentIds.has(a._id as string),
       });
     }
     return out.sort((a, b) => b.gradePosition - a.gradePosition);

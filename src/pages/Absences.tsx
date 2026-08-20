@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { X } from "lucide-react";
+import { X, Pencil } from "lucide-react";
 import { useMutation, useQuery } from "convex/react";
 import { api, type Id } from "@/lib/api";
 import { useToast } from "@/providers/toast";
@@ -8,6 +8,12 @@ import { EmptyState } from "@/components/common/EmptyState";
 import { SkeletonRows } from "@/components/common/Skeleton";
 import { Clover } from "@/components/common/Clover";
 import { DeleteButton } from "@/components/common/DeleteButton";
+
+// epoch (ms) -> « AAAA-MM-JJ » en heure de Paris, pour pré-remplir <input date>.
+function toDateInput(ms: number): string {
+  return new Date(ms).toLocaleDateString("en-CA", { timeZone: "Europe/Paris" });
+}
+type EditTarget = { _id: string; reason: string; from: number; to: number };
 
 // Les absences ne sont plus soumises à approbation : on affiche leur état
 // temporel (à venir / en cours / terminée) plutôt qu'un statut de validation.
@@ -23,6 +29,7 @@ export function Absences() {
   const remove = useMutation(api.absences.remove);
   const toast = useToast();
   const [modal, setModal] = useState(false);
+  const [edit, setEdit] = useState<EditTarget | null>(null);
 
   return (
     <div className="p-[22px_26px]" style={{ animation: "mdtFade .2s ease" }}>
@@ -51,8 +58,17 @@ export function Absences() {
               </span>
               <span className="text-[12px] font-semibold" style={{ color: s.color }}>{s.label}</span>
               <span className="flex items-center justify-end gap-2">
-                {a.canDelete && (
-                  <DeleteButton onDelete={() => toast.guard(remove({ id: a._id as Id<"absences"> }), "Suppression impossible")} title="Supprimer l'absence" />
+                {a.canManage && (
+                  <>
+                    <button
+                      onClick={() => setEdit({ _id: a._id, reason: a.reason, from: a.from, to: a.to })}
+                      title="Prolonger / modifier l'absence"
+                      className="flex h-[30px] w-[30px] items-center justify-center rounded-sm border border-border bg-surface-2 text-muted hover:border-border-strong hover:text-accent"
+                    >
+                      <Pencil className="h-[14px] w-[14px]" />
+                    </button>
+                    <DeleteButton onDelete={() => toast.guard(remove({ id: a._id as Id<"absences"> }), "Annulation impossible")} title="Annuler l'absence" />
+                  </>
                 )}
               </span>
             </div>
@@ -61,16 +77,18 @@ export function Absences() {
       </div>
 
       {modal && <AbsenceModal onClose={() => setModal(false)} />}
+      {edit && <AbsenceModal edit={edit} onClose={() => setEdit(null)} />}
     </div>
   );
 }
 
-function AbsenceModal({ onClose }: { onClose: () => void }) {
+function AbsenceModal({ onClose, edit }: { onClose: () => void; edit?: EditTarget }) {
   const request = useMutation(api.absences.request);
+  const update = useMutation(api.absences.update);
   const toast = useToast();
-  const [reason, setReason] = useState("");
-  const [from, setFrom] = useState("");
-  const [to, setTo] = useState("");
+  const [reason, setReason] = useState(edit?.reason ?? "");
+  const [from, setFrom] = useState(edit ? toDateInput(edit.from) : "");
+  const [to, setTo] = useState(edit ? toDateInput(edit.to) : "");
   const [busy, setBusy] = useState(false);
 
   async function submit() {
@@ -78,13 +96,12 @@ function AbsenceModal({ onClose }: { onClose: () => void }) {
     const toTs = parisDayEnd(to);
     if (!reason.trim() || fromTs == null || toTs == null) return;
     setBusy(true);
-    const r = await toast.guard(
-      request({ reason: reason.trim(), from: fromTs, to: toTs }),
-      "Demande impossible",
-    );
+    const r = edit
+      ? await toast.guard(update({ id: edit._id as Id<"absences">, reason: reason.trim(), from: fromTs, to: toTs }), "Modification impossible")
+      : await toast.guard(request({ reason: reason.trim(), from: fromTs, to: toTs }), "Demande impossible");
     setBusy(false);
     if (r !== undefined) {
-      toast.success("Absence demandée.");
+      toast.success(edit ? "Absence mise à jour." : "Absence déclarée.");
       onClose();
     }
   }
@@ -93,7 +110,7 @@ function AbsenceModal({ onClose }: { onClose: () => void }) {
     <div onClick={onClose} className="fixed inset-0 z-[60] flex justify-end" style={{ background: "var(--scrim)", backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)", animation: "mdtFade .15s ease" }}>
       <div onClick={(e) => e.stopPropagation()} className="flex h-full w-[440px] max-w-[94vw] flex-col border-l border-border-strong bg-elev shadow-[-24px_0_70px_rgba(0,0,0,.3)]" style={{ animation: "mdtSlide .26s cubic-bezier(.16,1,.3,1)" }}>
         <div className="flex flex-shrink-0 items-center gap-3 border-b border-border px-[18px] py-4">
-          <h2 className="m-0 flex-1 text-[15px] font-bold">Déclarer une absence</h2>
+          <h2 className="m-0 flex-1 text-[15px] font-bold">{edit ? "Modifier l'absence" : "Déclarer une absence"}</h2>
           <button onClick={onClose} className="flex h-[30px] w-[30px] items-center justify-center rounded-sm border border-border bg-surface-2 text-muted hover:border-border-strong"><X className="h-4 w-4" /></button>
         </div>
         <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-[18px] py-4">
@@ -112,7 +129,7 @@ function AbsenceModal({ onClose }: { onClose: () => void }) {
         <div className="flex flex-shrink-0 gap-2 border-t border-border px-[18px] py-4">
           <button onClick={onClose} className="rounded-sm border border-border bg-surface-2 px-4 py-[10px] text-[13px] font-semibold hover:border-border-strong">Annuler</button>
           <button onClick={submit} disabled={busy || !reason.trim() || !from || !to} className="flex-1 rounded-sm bg-accent px-4 py-[10px] text-[13px] font-semibold text-accent-contrast hover:brightness-[1.06] disabled:opacity-50">
-            {busy ? "…" : "Déclarer"}
+            {busy ? "…" : edit ? "Enregistrer" : "Déclarer"}
           </button>
         </div>
       </div>

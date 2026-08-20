@@ -1728,9 +1728,16 @@ export default defineSchema({
     decidedBy: v.optional(v.id("agents")),
     at: v.number(),
     announced: v.optional(v.boolean()), // publiée dans le salon Discord des absences
+    // Message Discord publié (pour l'éditer / le supprimer si l'absence change).
+    announceMsgId: v.optional(v.string()),
+    announceChannelId: v.optional(v.string()),
+    // L'absence a changé (prolongée / annulée) après publication : le bot doit
+    // mettre à jour ou supprimer le message Discord correspondant.
+    announceDirty: v.optional(v.boolean()),
   })
     .index("by_agent", ["agentId"])
-    .index("by_status", ["status"]),
+    .index("by_status", ["status"])
+    .index("by_dirty", ["announceDirty"]),
 
   // ============ DISCIPLINE ============
   // Types de sanction disciplinaire prédéfinis, configurables (§12).

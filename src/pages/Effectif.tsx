@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "convex/react";
-import { MessagesSquare, Search, X, Crosshair } from "lucide-react";
+import { MessagesSquare, Search, X, Crosshair, Phone, RefreshCw } from "lucide-react";
 import { api, type Id } from "@/lib/api";
 import { AgentModal } from "@/components/effectif/AgentModal";
 import { DiscordAccounts } from "@/components/effectif/DiscordAccounts";
@@ -139,22 +139,32 @@ export function Effectif() {
           >
             <div className="flex items-center gap-[10px]">
               <AgentAvatar url={a.avatarUrl} name={`${a.prenomRP} ${a.nomRP}`} size={32} />
-              <span className="text-[13px] font-semibold">
+              <span className="min-w-0 truncate text-[13px] font-semibold">
                 {a.prenomRP} {a.nomRP}
               </span>
-              {a.weaponRequired && !a.hasWeapon ? (
-                <span
-                  title="Aucune arme de service enregistrée"
-                  className="inline-flex items-center gap-[4px] rounded-[5px] px-[7px] py-[2px] text-[10px] font-bold"
-                  style={{ background: "color-mix(in srgb, var(--warning) 16%, transparent)", color: "var(--warning)" }}
+              {/* Indicateurs rapides : téléphone / arme de service / synchro Nexus. */}
+              <div className="ml-auto flex flex-shrink-0 items-center gap-[5px]">
+                <StatusIcon
+                  active={a.hasPhone}
+                  title={a.hasPhone ? "Numéro de téléphone renseigné" : "Numéro de téléphone manquant"}
                 >
-                  <Crosshair className="h-[11px] w-[11px]" /> Sans arme
-                </span>
-              ) : a.weaponRequired && a.hasWeapon ? (
-                <span title="Arme de service enregistrée" className="inline-flex" style={{ color: "var(--success)" }}>
-                  <Crosshair className="h-[13px] w-[13px]" />
-                </span>
-              ) : null}
+                  <Phone className="h-[12px] w-[12px]" />
+                </StatusIcon>
+                <StatusIcon
+                  active={a.hasWeapon}
+                  warn={a.weaponRequired && !a.hasWeapon}
+                  muted={!a.weaponRequired}
+                  title={a.hasWeapon ? "Arme de service enregistrée" : a.weaponRequired ? "Aucune arme de service enregistrée" : "Arme de service non requise"}
+                >
+                  <Crosshair className="h-[12px] w-[12px]" />
+                </StatusIcon>
+                <StatusIcon
+                  active={a.syncActive}
+                  title={a.syncActive ? "Synchronisation Nexus active" : "Compte Nexus non lié"}
+                >
+                  <RefreshCw className="h-[12px] w-[12px]" />
+                </StatusIcon>
+              </div>
             </div>
             <span className="font-data text-[13px] text-accent">{fmtMatricule(a.matricule) ?? "-"}</span>
             <span className="text-[13px]">{a.grade ?? "-"}</span>
@@ -202,5 +212,25 @@ export function Effectif() {
       {openAgent && <AgentModal agentId={openAgent} onClose={() => setOpenAgent(null)} />}
       {discordOpen && <DiscordAccounts onClose={() => setDiscordOpen(false)} />}
     </div>
+  );
+}
+
+// Pastille d'état compacte (téléphone / arme / synchro) : verte si actif, rouge
+// « attention » si l'élément est requis mais manquant (arme), grisée sinon.
+function StatusIcon({ active, warn = false, muted = false, title, children }: { active: boolean; warn?: boolean; muted?: boolean; title: string; children: React.ReactNode }) {
+  const color = active ? "var(--success)" : warn ? "var(--warning)" : "var(--faint)";
+  const bg = active
+    ? "color-mix(in srgb, var(--success) 15%, transparent)"
+    : warn
+      ? "color-mix(in srgb, var(--warning) 15%, transparent)"
+      : "var(--surface-2)";
+  return (
+    <span
+      title={title}
+      className="inline-flex h-[20px] w-[20px] items-center justify-center rounded-[5px]"
+      style={{ color, background: bg, opacity: muted ? 0.4 : 1 }}
+    >
+      {children}
+    </span>
   );
 }
