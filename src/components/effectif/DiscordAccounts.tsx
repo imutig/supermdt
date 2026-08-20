@@ -7,6 +7,13 @@ import { fmtMatricule } from "@/components/common/AgentTag";
 import { EmptyState } from "@/components/common/EmptyState";
 import { SkeletonRows } from "@/components/common/Skeleton";
 
+const STATUT_FR: Record<string, string> = {
+  ACTIVE: "Actif",
+  INACTIVE: "Désactivé",
+  SUSPENDED: "Suspendu",
+  PENDING: "En attente",
+};
+
 // Panneau « Comptes Discord » : membres LSPD synchronisés par le bot, avec leur
 // statut de liaison. On envoie un compte (invitation + MP par le bot), on relie
 // un agent existant, ou on délie. La synchro et les MP sont pilotés par le bot.
@@ -21,6 +28,8 @@ export function DiscordAccounts({ onClose }: { onClose: () => void }) {
   const [q, setQ] = useState("");
   const [codes, setCodes] = useState<Record<string, string>>({});
   const [linkFor, setLinkFor] = useState<string | null>(null);
+  const [staleTerm, setStaleTerm] = useState("");
+  const staleMatches = useQuery(api.discordLink.linkedAgentsSearch, staleTerm.trim() ? { term: staleTerm.trim() } : "skip");
 
   const filtered = useMemo(() => {
     const t = q.trim().toLowerCase();
@@ -71,6 +80,46 @@ export function DiscordAccounts({ onClose }: { onClose: () => void }) {
               className="h-9 flex-1 bg-transparent text-[13px] outline-none"
             />
           </div>
+        </div>
+
+        {/* Délier un ancien compte : cherche parmi TOUS les agents portant une
+            liaison Discord (y compris les comptes désactivés, invisibles dans
+            l'effectif) qui bloqueraient l'envoi d'un nouveau compte. */}
+        <div className="flex-shrink-0 border-b border-border bg-surface-2/40 px-[18px] py-3">
+          <div className="mb-[7px] flex items-center gap-[6px] text-[11px] font-bold uppercase tracking-[0.06em] text-faint">
+            <Link2Off className="h-[13px] w-[13px]" /> Délier un ancien compte
+          </div>
+          <div className="flex items-center gap-2 rounded-sm border border-border bg-surface px-3">
+            <Search className="h-[15px] w-[15px] text-faint" />
+            <input
+              value={staleTerm}
+              onChange={(e) => setStaleTerm(e.target.value)}
+              placeholder="Nom ou matricule de l'ancien agent…"
+              className="h-9 flex-1 bg-transparent text-[13px] outline-none"
+            />
+          </div>
+          {staleTerm.trim() && (
+            <div className="mt-[8px] flex flex-col gap-[6px]">
+              {staleMatches === undefined && <div className="px-1 py-1 text-[12px] text-faint">Recherche…</div>}
+              {staleMatches && staleMatches.length === 0 && <div className="px-1 py-1 text-[12px] text-faint">Aucun agent relié à un Discord ne correspond.</div>}
+              {(staleMatches ?? []).map((a) => (
+                <div key={a._id} className="flex items-center gap-2 rounded-sm border border-border bg-surface px-[10px] py-[8px]">
+                  <span className="font-data text-[11px] text-accent">{fmtMatricule(a.matricule) ?? "-"}</span>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-[12.5px] font-semibold">{a.name}</div>
+                    <div className="truncate text-[11px] text-faint">{STATUT_FR[a.status]}{a.gradeName ? ` · ${a.gradeName}` : ""}{a.discordLabel ? ` · Discord : ${a.discordLabel}` : ""}</div>
+                  </div>
+                  <button
+                    onClick={() => toast.guard(unlink({ agentId: a._id }), "Action impossible").then((r) => r !== undefined && toast.success("Compte délié. Tu peux renvoyer un compte."))}
+                    title="Délier ce compte du Discord"
+                    className="flex items-center gap-[5px] rounded-sm border border-border bg-surface-2 px-[9px] py-[6px] text-[11.5px] font-semibold text-muted hover:border-danger hover:text-danger"
+                  >
+                    <Link2Off className="h-[13px] w-[13px]" /> Délier
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="flex flex-1 flex-col gap-[10px] overflow-y-auto px-[18px] py-4">

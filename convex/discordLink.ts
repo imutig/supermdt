@@ -67,6 +67,39 @@ export const list = query({
   },
 });
 
+// Recherche des agents PORTANT une liaison Discord (tous statuts, y compris les
+// comptes désactivés invisibles dans l'effectif), par nom ou matricule. Sert à
+// délier un ancien compte qui « réserve » encore un Discord et bloque l'envoi
+// d'un nouveau compte à la même personne.
+export const linkedAgentsSearch = query({
+  args: { term: v.string() },
+  handler: async (ctx, { term }) => {
+    const agent = await requireAgent(ctx);
+    await requirePermission(ctx, agent, "invites.manage");
+    const t = term.trim().toLowerCase();
+    if (!t) return [];
+    const rows = (await ctx.db.query("agents").collect())
+      .filter((a) => a.discordId && !a.isOwner)
+      .filter((a) => `${a.prenomRP} ${a.nomRP}`.toLowerCase().includes(t) || String(a.matricule ?? "").includes(t))
+      .slice(0, 12);
+    const out = [];
+    for (const a of rows) {
+      const grade = a.gradeId ? await ctx.db.get(a.gradeId) : null;
+      const member = a.discordId ? await ctx.db.query("discordMembers").withIndex("by_discord", (q) => q.eq("discordId", a.discordId!)).first() : null;
+      out.push({
+        _id: a._id,
+        name: `${a.prenomRP} ${a.nomRP}`,
+        matricule: a.matricule ?? null,
+        status: a.status,
+        gradeName: grade?.name ?? null,
+        discordId: a.discordId!,
+        discordLabel: member?.displayName ?? member?.username ?? null,
+      });
+    }
+    return out;
+  },
+});
+
 // Envoie un compte : invitation ciblée à ce membre, MP délégué au bot.
 export const sendAccount = mutation({
   args: { discordId: v.string() },
