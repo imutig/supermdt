@@ -78,9 +78,12 @@ export const linkedAgentsSearch = query({
     await requirePermission(ctx, agent, "invites.manage");
     const t = term.trim().toLowerCase();
     if (!t) return [];
+    const raw = term.trim();
     const rows = (await ctx.db.query("agents").collect())
       .filter((a) => a.discordId && !a.isOwner)
-      .filter((a) => `${a.prenomRP} ${a.nomRP}`.toLowerCase().includes(t) || String(a.matricule ?? "").includes(t))
+      // Recherche par nom, matricule, OU identifiant Discord (clic droit → Copier
+      // l'identifiant), pour retrouver un compte même sans connaître son nom actuel.
+      .filter((a) => `${a.prenomRP} ${a.nomRP}`.toLowerCase().includes(t) || String(a.matricule ?? "").includes(t) || (a.discordId ?? "").includes(raw))
       .slice(0, 12);
     const out = [];
     for (const a of rows) {

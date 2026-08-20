@@ -94,7 +94,7 @@ export function DiscordAccounts({ onClose }: { onClose: () => void }) {
             <input
               value={staleTerm}
               onChange={(e) => setStaleTerm(e.target.value)}
-              placeholder="Nom ou matricule de l'ancien agent…"
+              placeholder="Nom, matricule ou identifiant Discord…"
               className="h-9 flex-1 bg-transparent text-[13px] outline-none"
             />
           </div>
