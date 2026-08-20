@@ -3,7 +3,7 @@ import { useMutation, useQuery } from "convex/react";
 import { useNavigate } from "react-router-dom";
 import {
   ArrowLeft, Play, Square, Radio, Users, CheckCircle2, Hourglass, Trophy,
-  PenLine, Send, Loader2, ChevronRight, BarChart3,
+  PenLine, Send, Loader2, ChevronRight, BarChart3, Trash2,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import type { Id } from "convex/_generated/dataModel";
@@ -23,6 +23,7 @@ export function InstructorConsole({ sessionId }: { sessionId: Id<"quizSessions">
   const start = useMutation(api.quizSession.start);
   const close = useMutation(api.quizSession.close);
   const cancel = useMutation(api.quizSession.cancel);
+  const deleteSession = useMutation(api.quizSession.deleteSession);
   const publish = useMutation(api.quizSession.publish);
   const navigate = useNavigate();
   const toast = useToast();
@@ -117,6 +118,17 @@ export function InstructorConsole({ sessionId }: { sessionId: Id<"quizSessions">
           )}
           {session.status === "PUBLISHED" && (
             <div className="flex items-center gap-[7px] text-[13px] font-semibold text-accent"><CheckCircle2 className="h-[15px] w-[15px]" /> Résultats publiés.</div>
+          )}
+
+          {/* Annuler une épreuve en cours / retirer une session (même publiée) :
+              elle est supprimée et ne compte plus dans la promotion. */}
+          {session.status !== "LOBBY" && (
+            <DangerConfirm
+              label={session.status === "RUNNING" ? "Annuler la session" : "Supprimer la session"}
+              busy={busy}
+              hint={session.status === "PUBLISHED" ? "Retire les résultats du décompte de la promotion." : session.status === "RUNNING" ? "Arrête l'épreuve sans publier de résultats." : undefined}
+              onConfirm={() => void run(deleteSession({ sessionId }), "Suppression impossible", "Session supprimée.").then((r) => r !== undefined && navigate(`/lspa/quiz/${session.quizId}`))}
+            />
           )}
         </div>
       </div>
@@ -231,6 +243,28 @@ function ParticipantReview({ participantId, onBack }: { participantId: Id<"quizP
   if (r === undefined) return <LoadingScreen label="Chargement de la copie…" />;
   if (r === null) return <div className="p-[26px]"><EmptyState title="Copie introuvable" action={<Button onClick={onBack}>Retour</Button>} /></div>;
   return <CopyReview review={r} onBack={onBack} showCandidate />;
+}
+
+// Action destructrice avec confirmation en place (annuler / supprimer une session).
+function DangerConfirm({ label, hint, onConfirm, busy }: { label: string; hint?: string; onConfirm: () => void; busy?: boolean }) {
+  const [confirm, setConfirm] = useState(false);
+  if (confirm) {
+    return (
+      <span className="ml-auto flex items-center gap-2">
+        <span className="text-[12px] text-muted">{hint ?? "Confirmer ?"}</span>
+        <Button variant="danger" loading={busy} onClick={() => { setConfirm(false); onConfirm(); }}>Supprimer</Button>
+        <Button variant="ghost" onClick={() => setConfirm(false)}>Retour</Button>
+      </span>
+    );
+  }
+  return (
+    <button
+      onClick={() => setConfirm(true)}
+      className="ml-auto flex items-center gap-[6px] rounded-[8px] border border-border px-[12px] py-[8px] text-[12.5px] font-semibold text-muted transition-colors hover:border-danger hover:text-danger"
+    >
+      <Trash2 className="h-[14px] w-[14px]" /> {label}
+    </button>
+  );
 }
 
 function StatusBadge({ status }: { status: string }) {

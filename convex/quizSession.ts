@@ -251,16 +251,44 @@ export const cancel = mutation({
     await requirePermission(ctx, agent, "lspa.session.manage");
     const session = await ctx.db.get(sessionId);
     if (!session) return;
-    // On ne supprime une session que tant qu'elle n'a rien produit d'utile
-    // (salle d'attente). Une session jouée se termine et s'archive avec ses
-    // copies plutôt que de disparaître.
-    if (session.status !== "LOBBY") throw new ConvexError("Une session lancée ne peut plus être annulée : terminez-la.");
+    // Salle d'attente : rien de produit, on supprime simplement. Pour annuler une
+    // session déjà lancée (ou en supprimer une de l'historique), voir deleteSession.
+    if (session.status !== "LOBBY") throw new ConvexError("Une session lancée s'annule via « Supprimer la session ».");
     const participants = await ctx.db
       .query("quizParticipants")
       .withIndex("by_session", (q) => q.eq("sessionId", sessionId))
       .collect();
     for (const p of participants) await ctx.db.delete(p._id);
     await ctx.db.delete(sessionId);
+  },
+});
+
+// Supprime définitivement une session à N'IMPORTE QUEL stade (en cours, terminée,
+// même publiée), avec toutes ses copies et réponses. Sert à : annuler une épreuve
+// en cours sans être obligé de la clôturer/publier, et retirer de l'historique une
+// session publiée par erreur pour qu'elle NE COMPTE PLUS dans la promotion (le
+// décompte de promo n'additionne que les sessions PUBLISHED, celle-ci disparaît).
+export const deleteSession = mutation({
+  args: { sessionId: v.id("quizSessions") },
+  handler: async (ctx, { sessionId }) => {
+    const agent = await requireAgent(ctx);
+    await requirePermission(ctx, agent, "lspa.session.manage");
+    const session = await ctx.db.get(sessionId);
+    if (!session) return;
+    const participants = await ctx.db
+      .query("quizParticipants")
+      .withIndex("by_session", (q) => q.eq("sessionId", sessionId))
+      .collect();
+    for (const p of participants) {
+      const answers = await ctx.db
+        .query("quizAnswers")
+        .withIndex("by_participant", (q) => q.eq("participantId", p._id))
+        .collect();
+      for (const a of answers) await ctx.db.delete(a._id);
+      await ctx.db.delete(p._id);
+    }
+    await ctx.db.delete(sessionId);
+    await writeAudit(ctx, agent, { action: "lspa.session_delete", resourceType: "quizSession", resourceId: sessionId, resourceLabel: session.title });
   },
 });
 
