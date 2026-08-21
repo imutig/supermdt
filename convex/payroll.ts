@@ -114,7 +114,7 @@ export const overview = query({
     const grades = new Map((await ctx.db.query("grades").collect()).map((g) => [g._id as string, g]));
     const seconds = await secondsByAgent(ctx, meta.start, meta.end);
 
-    const bonusRows = await ctx.db.query("salaryBonuses").withIndex("by_week", (q) => q.eq("weekStart", meta.start)).collect();
+    const bonusRows = (await ctx.db.query("salaryBonuses").withIndex("by_week", (q) => q.eq("weekStart", meta.start)).collect()).filter((b) => !b.deletedAt);
     const globalBonusTotal = bonusRows.filter((b) => !b.agentId).reduce((s, b) => s + b.amount, 0);
     const indivByAgent = new Map<string, number>();
     for (const b of bonusRows) if (b.agentId) indivByAgent.set(b.agentId as string, (indivByAgent.get(b.agentId as string) ?? 0) + b.amount);
@@ -293,7 +293,8 @@ export const deleteBonus = mutation({
   handler: async (ctx, { id }) => {
     const agent = await assertManage(ctx);
     const before = await ctx.db.get(id);
-    await ctx.db.delete(id);
+    if (before?.deletedAt) return;
+    await ctx.db.patch(id, { deletedAt: Date.now(), deletedBy: agent._id });
     await writeAudit(ctx, agent, { action: "payroll.bonus_delete", resourceType: "salaryBonus", resourceId: id, before: before ? { amount: before.amount, motif: before.motif } : null });
   },
 });
@@ -306,7 +307,7 @@ async function currentAmount(ctx: QueryCtx, agentId: Id<"agents">, weekStart: nu
   const scale = await scaleForWeek(ctx, weekStart);
   const seconds = (await secondsByAgent(ctx, weekStart, weekEnd)).get(agentId as string) ?? 0;
   const { base } = computeBase(seconds, rateFor(scale, agent.gradeId), scale?.maxSalary);
-  const bonuses = await ctx.db.query("salaryBonuses").withIndex("by_week", (q) => q.eq("weekStart", weekStart)).collect();
+  const bonuses = (await ctx.db.query("salaryBonuses").withIndex("by_week", (q) => q.eq("weekStart", weekStart)).collect()).filter((b) => !b.deletedAt);
   const indiv = bonuses.filter((b) => b.agentId === agentId).reduce((s, b) => s + b.amount, 0);
   const global = bonuses.filter((b) => !b.agentId).reduce((s, b) => s + b.amount, 0);
   return base + indiv + global;
@@ -343,7 +344,7 @@ export const payAll = mutation({
     const start = weekStartOf(weekStart), end = weekEndOf(start);
     const scale = await scaleForWeek(ctx, start);
     const seconds = await secondsByAgent(ctx, start, end);
-    const bonuses = await ctx.db.query("salaryBonuses").withIndex("by_week", (q) => q.eq("weekStart", start)).collect();
+    const bonuses = (await ctx.db.query("salaryBonuses").withIndex("by_week", (q) => q.eq("weekStart", start)).collect()).filter((b) => !b.deletedAt);
     const globalBonus = bonuses.filter((b) => !b.agentId).reduce((s, b) => s + b.amount, 0);
     const indivByAgent = new Map<string, number>();
     for (const b of bonuses) if (b.agentId) indivByAgent.set(b.agentId as string, (indivByAgent.get(b.agentId as string) ?? 0) + b.amount);
@@ -375,7 +376,7 @@ export const mySalary = query({
     const seconds = (await secondsByAgent(ctx, meta.start, meta.end)).get(agent._id as string) ?? 0;
     const rate = rateFor(scale, agent.gradeId);
     const { hours, gross, base, maxed } = computeBase(seconds, rate, scale?.maxSalary);
-    const bonuses = await ctx.db.query("salaryBonuses").withIndex("by_week", (q) => q.eq("weekStart", meta.start)).collect();
+    const bonuses = (await ctx.db.query("salaryBonuses").withIndex("by_week", (q) => q.eq("weekStart", meta.start)).collect()).filter((b) => !b.deletedAt);
     const indiv = bonuses.filter((b) => b.agentId === agent._id).reduce((s, b) => s + b.amount, 0);
     const global = bonuses.filter((b) => !b.agentId).reduce((s, b) => s + b.amount, 0);
     const pay = await ctx.db

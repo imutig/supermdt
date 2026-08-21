@@ -4,6 +4,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { requireAgent, can } from "./rbac";
+import { writeAudit } from "./lib/audit";
 
 // FTO : formation terrain des Officiers 1 Probatoire, encadrés par un tuteur
 // (officier référent) jusqu'à leur passage Officier 1 Confirmé. Fiche
@@ -295,6 +296,7 @@ export const setConfig = mutation({
     };
     if (cfg) await ctx.db.patch(cfg._id, patch);
     else await ctx.db.insert("ftoConfig", patch);
+    await writeAudit(ctx, viewer, { action: "fto.config", resourceType: "config", after: patch });
   },
 });
 
@@ -389,6 +391,7 @@ export const autoAssignTutors = mutation({
       else await ctx.db.insert("ftoSheets", { agentId: tr._id, tutorId: best.agent._id });
     }
 
+    await writeAudit(ctx, viewer, { action: "fto.auto_assign", resourceType: "ftoSheet", metadata: { assigned: toAssign.length, tutors: tutors.length } });
     return {
       trainees: trainees.length,
       tutors: tutors.length,
@@ -449,6 +452,7 @@ export const announceTutors = mutation({
     });
     // Réveille le bot (best-effort ; le poll de sécurité rattrape sinon).
     await ctx.scheduler.runAfter(0, internal.push.notify, {});
+    await writeAudit(ctx, viewer, { action: "fto.announce", resourceType: "ftoSheet", metadata: { tutors: groups.length, trainees: trainees.length } });
     return { tutors: groups.length, trainees: trainees.length };
   },
 });
@@ -481,6 +485,7 @@ export const sheet = query({
     });
 
     const patrols = (await ctx.db.query("ftoPatrols").withIndex("by_agent", (q) => q.eq("agentId", agentId)).collect())
+      .filter((p) => !p.deletedAt)
       .sort((a, b) => b.startAt - a.startAt)
       .map((p) => ({ _id: p._id, startAt: p.startAt, endAt: p.endAt ?? null, lacunes: p.lacunes ?? "", progres: p.progres ?? "", general: p.general ?? "", authorName: p.authorName, mine: p.authorId === viewer._id }));
 
@@ -595,9 +600,9 @@ export const removePatrol = mutation({
   handler: async (ctx, { patrolId }) => {
     const viewer = await requireAgent(ctx);
     const p = await ctx.db.get(patrolId);
-    if (!p) return;
+    if (!p || p.deletedAt) return;
     if (p.authorId !== viewer._id) await assertManage(ctx, viewer);
-    await ctx.db.delete(patrolId);
+    await ctx.db.patch(patrolId, { deletedAt: Date.now(), deletedBy: viewer._id });
     await logHistory(ctx, viewer, p.agentId, { action: "PATROL_REMOVE", detail: `Rapport de patrouille retiré (${new Date(p.startAt).toLocaleDateString("fr-FR", { timeZone: "Europe/Paris" })})` });
   },
 });
@@ -641,10 +646,16 @@ export const saveItem = mutation({
     await assertManage(ctx, viewer);
     if (!a.section.trim() || !a.label.trim()) throw new ConvexError("Section et libellé obligatoires.");
     const base = { section: a.section.trim(), label: a.label.trim(), kind: a.kind };
-    if (a.itemId) { await ctx.db.patch(a.itemId, base); return a.itemId; }
+    if (a.itemId) {
+      await ctx.db.patch(a.itemId, base);
+      await writeAudit(ctx, viewer, { action: "fto.item_save", resourceType: "ftoItem", resourceId: a.itemId, resourceLabel: base.label });
+      return a.itemId;
+    }
     const all = await ctx.db.query("ftoItems").collect();
     const position = all.reduce((m, i) => Math.max(m, i.position), -1) + 1;
-    return await ctx.db.insert("ftoItems", { ...base, position, active: true });
+    const newId = await ctx.db.insert("ftoItems", { ...base, position, active: true });
+    await writeAudit(ctx, viewer, { action: "fto.item_save", resourceType: "ftoItem", resourceId: newId, resourceLabel: base.label });
+    return newId;
   },
 });
 
@@ -653,8 +664,10 @@ export const removeItem = mutation({
   handler: async (ctx, { itemId }) => {
     const viewer = await requireAgent(ctx);
     await assertManage(ctx, viewer);
+    const item = await ctx.db.get(itemId);
     for (const e of await ctx.db.query("ftoEntries").collect()) if (e.itemId === itemId) await ctx.db.delete(e._id);
     await ctx.db.delete(itemId);
+    await writeAudit(ctx, viewer, { action: "fto.item_remove", resourceType: "ftoItem", resourceId: itemId, resourceLabel: item?.label });
   },
 });
 
@@ -669,6 +682,7 @@ export const moveItem = mutation({
     if (i < 0 || j < 0 || j >= all.length) return;
     await ctx.db.patch(all[i]._id, { position: all[j].position });
     await ctx.db.patch(all[j]._id, { position: all[i].position });
+    await writeAudit(ctx, viewer, { action: "fto.item_move", resourceType: "ftoItem", resourceId: itemId });
   },
 });
 
@@ -690,6 +704,7 @@ export const seedDefault = mutation({
     ];
     let position = 0;
     for (const it of items) await ctx.db.insert("ftoItems", { ...it, position: position++, active: true });
+    await writeAudit(ctx, viewer, { action: "fto.seed", resourceType: "ftoItem", metadata: { count: items.length } });
     return "seeded" as const;
   },
 });

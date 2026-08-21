@@ -31,6 +31,12 @@ const KIND = v.union(
   v.literal("ceremony"),
   v.literal("protocol"),
   v.literal("resource"),
+  v.literal("divisionAnnouncement"),
+  v.literal("cadetNote"),
+  v.literal("flEvaluation"),
+  v.literal("ftoPatrol"),
+  v.literal("salaryBonus"),
+  v.literal("citizenLicense"),
   v.literal("citizen"),
   v.literal("agent"),
 );
@@ -38,6 +44,7 @@ type Kind =
   | "casier" | "citation" | "mandat" | "report" | "complaint" | "vehicle" | "weapon"
   | "saisie" | "discipline" | "deposition" | "note" | "relation" | "fleetVehicle" | "interview"
   | "amende" | "convocation" | "investigation" | "serviceWeapon" | "ceremony" | "protocol" | "resource"
+  | "divisionAnnouncement" | "cadetNote" | "flEvaluation" | "ftoPatrol" | "salaryBonus" | "citizenLicense"
   | "citizen" | "agent";
 
 async function citizenName(ctx: QueryCtx, id: Id<"citizens"> | undefined | null) {
@@ -160,6 +167,33 @@ const SOFT: Record<Exclude<Kind, "citizen" | "agent">, SoftConfig> = {
   resource: {
     table: "resources",
     describe: async (_ctx, r) => ({ label: r.title, summary: "Ressource de formation" }),
+  },
+  divisionAnnouncement: {
+    table: "divisionAnnouncements",
+    describe: async (_ctx, a) => ({ label: a.title, summary: "Annonce de division" }),
+  },
+  cadetNote: {
+    table: "cadetNotes",
+    describe: async (ctx, n) => ({ label: await agentName(ctx, n.agentId), summary: `Note de cadet - ${(n.text ?? "").slice(0, 60)}` }),
+  },
+  flEvaluation: {
+    table: "flEvaluations",
+    describe: async (ctx, e) => ({ label: await agentName(ctx, e.agentId), summary: `Évaluation First Lincoln - ${e.verdict}` }),
+    children: async (ctx, e) => {
+      for (const s of await ctx.db.query("flScores").withIndex("by_evaluation", (q) => q.eq("evaluationId", e._id)).collect()) await ctx.db.delete(s._id);
+    },
+  },
+  ftoPatrol: {
+    table: "ftoPatrols",
+    describe: async (ctx, p) => ({ label: await agentName(ctx, p.agentId), summary: "Rapport de patrouille FTO" }),
+  },
+  salaryBonus: {
+    table: "salaryBonuses",
+    describe: async (ctx, b) => ({ label: b.agentId ? await agentName(ctx, b.agentId) : "Prime globale", summary: `Prime - $${(b.amount ?? 0).toLocaleString("fr-FR")} · ${b.motif}` }),
+  },
+  citizenLicense: {
+    table: "citizenLicenses",
+    describe: async (ctx, l) => ({ label: await citizenName(ctx, l.citizenId), summary: "Licence citoyen" }),
   },
 };
 

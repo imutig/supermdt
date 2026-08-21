@@ -150,7 +150,9 @@ export default defineSchema({
     imageUrls: v.optional(v.array(v.string())),
     pinned: v.optional(v.boolean()),
     at: v.number(),
-  }).index("by_division", ["divisionId"]),
+    deletedAt: v.optional(v.number()),
+    deletedBy: v.optional(v.id("agents")),
+  }).index("by_division", ["divisionId"]).index("by_deleted", ["deletedAt"]),
 
   // Chat interne de la division (texte riche + images).
   divisionMessages: defineTable({
@@ -672,7 +674,9 @@ export default defineSchema({
     authorName: v.string(),
     text: v.string(),
     at: v.number(),
-  }).index("by_agent", ["agentId"]),
+    deletedAt: v.optional(v.number()),
+    deletedBy: v.optional(v.id("agents")),
+  }).index("by_agent", ["agentId"]).index("by_deleted", ["deletedAt"]),
 
   // Conclusion du recrutement : un texte partagé par cadet, rempli par tous.
   cadetConclusions: defineTable({
@@ -738,7 +742,9 @@ export default defineSchema({
     authorId: v.id("agents"),
     authorName: v.string(),
     at: v.number(),
-  }).index("by_agent", ["agentId"]),
+    deletedAt: v.optional(v.number()),
+    deletedBy: v.optional(v.id("agents")),
+  }).index("by_agent", ["agentId"]).index("by_deleted", ["deletedAt"]),
 
   // Journal des modifications d'une fiche FTO : qui a coché/noté quel critère,
   // attribué un tuteur, ajouté/retiré une patrouille. Comme n'importe quel FTO
@@ -831,7 +837,9 @@ export default defineSchema({
     motif: v.string(),
     createdBy: v.optional(v.id("agents")),
     createdAt: v.number(),
-  }).index("by_week", ["weekStart"]),
+    deletedAt: v.optional(v.number()),
+    deletedBy: v.optional(v.id("agents")),
+  }).index("by_week", ["weekStart"]).index("by_deleted", ["deletedAt"]),
 
   // Rapport hebdomadaire d'activité (à l'attention du Gouvernement RP) : sections
   // rédigées à la main + agents à l'honneur curatés + référence du dernier PDF.
@@ -893,7 +901,9 @@ export default defineSchema({
     axes: v.optional(v.string()),
     conclusion: v.optional(v.string()),
     createdAt: v.number(),
-  }).index("by_agent", ["agentId"]),
+    deletedAt: v.optional(v.number()),
+    deletedBy: v.optional(v.id("agents")),
+  }).index("by_agent", ["agentId"]).index("by_deleted", ["deletedAt"]),
 
   // Score d'un critère pour une évaluation First Lincoln donnée.
   flScores: defineTable({
@@ -1351,7 +1361,9 @@ export default defineSchema({
     until: v.optional(v.number()),
     updatedBy: v.optional(v.id("agents")),
     updatedAt: v.number(),
-  }).index("by_citizen", ["citizenId"]),
+    deletedAt: v.optional(v.number()),
+    deletedBy: v.optional(v.id("agents")),
+  }).index("by_citizen", ["citizenId"]).index("by_deleted", ["deletedAt"]),
 
   flagTypes: defineTable({
     name: v.string(),

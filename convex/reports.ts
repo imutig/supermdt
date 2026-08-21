@@ -232,6 +232,8 @@ export const setVehicles = mutation({
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "rapports.contribute");
     await ctx.db.patch(reportId, { vehicleIds });
+    const r = await ctx.db.get(reportId);
+    await writeAudit(ctx, agent, { action: "report.content_update", resourceType: "report", resourceId: reportId, resourceLabel: r?.title, metadata: { field: "vehicles" } });
   },
 });
 
@@ -241,6 +243,8 @@ export const setWeapons = mutation({
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "rapports.contribute");
     await ctx.db.patch(reportId, { weaponIds });
+    const r = await ctx.db.get(reportId);
+    await writeAudit(ctx, agent, { action: "report.content_update", resourceType: "report", resourceId: reportId, resourceLabel: r?.title, metadata: { field: "weapons" } });
   },
 });
 
@@ -250,6 +254,8 @@ export const setCasings = mutation({
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "rapports.contribute");
     await ctx.db.patch(reportId, { casings });
+    const r = await ctx.db.get(reportId);
+    await writeAudit(ctx, agent, { action: "report.content_update", resourceType: "report", resourceId: reportId, resourceLabel: r?.title, metadata: { field: "casings" } });
   },
 });
 
@@ -266,6 +272,8 @@ export const open = mutation({
     if (!existing.some((c) => c.agentId === agent._id)) {
       await ctx.db.insert("reportContributors", { reportId: id, agentId: agent._id, at: Date.now() });
     }
+    const r = await ctx.db.get(id);
+    await writeAudit(ctx, agent, { action: "report.open", resourceType: "report", resourceId: id, resourceLabel: r?.title });
   },
 });
 
@@ -282,6 +290,8 @@ export const addContributor = mutation({
     if (!existing.some((c) => c.agentId === agentId)) {
       await ctx.db.insert("reportContributors", { reportId, agentId, at: Date.now(), manual: true });
     }
+    const r = await ctx.db.get(reportId);
+    await writeAudit(ctx, agent, { action: "report.contributor_add", resourceType: "report", resourceId: reportId, resourceLabel: r?.title, metadata: { agentId } });
   },
 });
 
@@ -298,6 +308,8 @@ export const removeContributor = mutation({
     for (const l of links) {
       if (l.agentId === agentId) await ctx.db.delete(l._id);
     }
+    const r = await ctx.db.get(reportId);
+    await writeAudit(ctx, agent, { action: "report.contributor_remove", resourceType: "report", resourceId: reportId, resourceLabel: r?.title, metadata: { agentId } });
   },
 });
 
@@ -360,24 +372,28 @@ export const setNote = mutation({
     if (!contribs.some((c) => c.agentId === agent._id)) {
       await ctx.db.insert("reportContributors", { reportId, agentId: agent._id, at: Date.now() });
     }
+    const r = await ctx.db.get(reportId);
+    await writeAudit(ctx, agent, { action: "report.content_update", resourceType: "report", resourceId: reportId, resourceLabel: r?.title, metadata: { field: "note" } });
   },
 });
 
 export const addSuspect = mutation({
   args: { reportId: v.id("reports"), citizenId: v.id("citizens") },
   handler: async (ctx, { reportId, citizenId }) => {
-    const { report: r } = await requireReportWrite(ctx, reportId);
+    const { agent, report: r } = await requireReportWrite(ctx, reportId);
     if (!r.citizenIds.includes(citizenId)) {
       await ctx.db.patch(reportId, { citizenIds: [...r.citizenIds, citizenId] });
     }
+    await writeAudit(ctx, agent, { action: "report.suspect_add", resourceType: "report", resourceId: reportId, resourceLabel: r.title, metadata: { citizenId } });
   },
 });
 
 export const removeSuspect = mutation({
   args: { reportId: v.id("reports"), citizenId: v.id("citizens") },
   handler: async (ctx, { reportId, citizenId }) => {
-    const { report: r } = await requireReportWrite(ctx, reportId);
+    const { agent, report: r } = await requireReportWrite(ctx, reportId);
     await ctx.db.patch(reportId, { citizenIds: r.citizenIds.filter((c) => c !== citizenId) });
+    await writeAudit(ctx, agent, { action: "report.suspect_remove", resourceType: "report", resourceId: reportId, resourceLabel: r.title, metadata: { citizenId } });
   },
 });
 
@@ -387,6 +403,8 @@ export const setLieu = mutation({
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "rapports.contribute");
     await ctx.db.patch(reportId, { lieu });
+    const r = await ctx.db.get(reportId);
+    await writeAudit(ctx, agent, { action: "report.content_update", resourceType: "report", resourceId: reportId, resourceLabel: r?.title, metadata: { field: "lieu" } });
   },
 });
 
@@ -396,6 +414,8 @@ export const setMapPos = mutation({
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "rapports.contribute");
     await ctx.db.patch(reportId, { mapX: x, mapY: y });
+    const r = await ctx.db.get(reportId);
+    await writeAudit(ctx, agent, { action: "report.content_update", resourceType: "report", resourceId: reportId, resourceLabel: r?.title, metadata: { field: "mapPos" } });
   },
 });
 
@@ -405,6 +425,8 @@ export const setGallery = mutation({
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "rapports.contribute");
     await ctx.db.patch(reportId, { imageUrls });
+    const r = await ctx.db.get(reportId);
+    await writeAudit(ctx, agent, { action: "report.content_update", resourceType: "report", resourceId: reportId, resourceLabel: r?.title, metadata: { field: "gallery" } });
   },
 });
 
@@ -425,6 +447,8 @@ export const setRole = mutation({
           : { negotiatorId: agentId };
     if (role === "lead" && !agentId) throw new ConvexError("Le lead opé est obligatoire.");
     await ctx.db.patch(reportId, patch);
+    const r = await ctx.db.get(reportId);
+    await writeAudit(ctx, agent, { action: "report.role_set", resourceType: "report", resourceId: reportId, resourceLabel: r?.title, metadata: { role, agentId } });
   },
 });
 
@@ -468,8 +492,9 @@ export const create = mutation({
 export const setFacts = mutation({
   args: { reportId: v.id("reports"), factsAt: v.optional(v.number()), bodycamUrl: v.optional(v.string()) },
   handler: async (ctx, { reportId, factsAt, bodycamUrl }) => {
-    await requireReportWrite(ctx, reportId);
+    const { agent, report: r } = await requireReportWrite(ctx, reportId);
     await ctx.db.patch(reportId, { factsAt, bodycamUrl: bodycamUrl?.trim() || undefined });
+    await writeAudit(ctx, agent, { action: "report.content_update", resourceType: "report", resourceId: reportId, resourceLabel: r.title, metadata: { field: "facts" } });
   },
 });
 
@@ -533,10 +558,12 @@ function cleanHostage(a: Record<string, unknown>) {
 export const addHostage = mutation({
   args: { reportId: v.id("reports"), ...HOSTAGE_FIELDS },
   handler: async (ctx, { reportId, ...a }) => {
-    const { agent } = await requireReportWrite(ctx, reportId);
+    const { agent, report: r } = await requireReportWrite(ctx, reportId);
     const f = cleanHostage(a);
     if (!f.name) throw new ConvexError("Le nom de l'otage est requis.");
-    return await ctx.db.insert("reportHostages", { reportId, ...f, at: Date.now(), createdBy: agent._id });
+    const hostageId = await ctx.db.insert("reportHostages", { reportId, ...f, at: Date.now(), createdBy: agent._id });
+    await writeAudit(ctx, agent, { action: "report.hostage_add", resourceType: "report", resourceId: reportId, resourceLabel: r.title, metadata: { hostageId, name: f.name } });
+    return hostageId;
   },
 });
 
@@ -545,10 +572,11 @@ export const updateHostage = mutation({
   handler: async (ctx, { hostageId, ...a }) => {
     const h = await ctx.db.get(hostageId);
     if (!h || h.deletedAt) throw new ConvexError("Otage introuvable.");
-    await requireReportWrite(ctx, h.reportId);
+    const { agent, report: r } = await requireReportWrite(ctx, h.reportId);
     const f = cleanHostage(a);
     if (!f.name) throw new ConvexError("Le nom de l'otage est requis.");
     await ctx.db.patch(hostageId, f);
+    await writeAudit(ctx, agent, { action: "report.hostage_update", resourceType: "report", resourceId: h.reportId, resourceLabel: r.title, metadata: { hostageId, name: f.name } });
   },
 });
 
@@ -557,8 +585,9 @@ export const removeHostage = mutation({
   handler: async (ctx, { hostageId }) => {
     const h = await ctx.db.get(hostageId);
     if (!h || h.deletedAt) return;
-    await requireReportWrite(ctx, h.reportId);
+    const { agent, report: r } = await requireReportWrite(ctx, h.reportId);
     await ctx.db.patch(hostageId, { deletedAt: Date.now() });
+    await writeAudit(ctx, agent, { action: "report.hostage_remove", resourceType: "report", resourceId: h.reportId, resourceLabel: r.title, metadata: { hostageId, name: h.name } });
   },
 });
 
@@ -568,8 +597,9 @@ export const setHostageDeposition = mutation({
   handler: async (ctx, { hostageId, depositionNexusId }) => {
     const h = await ctx.db.get(hostageId);
     if (!h || h.deletedAt) return;
-    await requireReportWrite(ctx, h.reportId);
+    const { agent, report: r } = await requireReportWrite(ctx, h.reportId);
     await ctx.db.patch(hostageId, { depositionNexusId });
+    await writeAudit(ctx, agent, { action: "report.hostage_deposition", resourceType: "report", resourceId: h.reportId, resourceLabel: r.title, metadata: { hostageId } });
   },
 });
 

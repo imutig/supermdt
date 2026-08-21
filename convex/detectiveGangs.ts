@@ -4,6 +4,7 @@ import type { MutationCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { requireDivView, requireDivPerm, requireCaseRead, requireCaseWrite, agentName } from "./lib/detectiveAccess";
 import { hasPerm } from "./lib/divisionAccess";
+import { writeAudit } from "./lib/audit";
 
 // Gangs / organisations (GND) : fiche, organigramme configurable, membres,
 // rivalités / alliances, territoires + QG (carte globale agrégée). Plus la
@@ -82,12 +83,14 @@ export const createGang = mutation({
   handler: async (ctx, args) => {
     const { agent } = await requireDivPerm(ctx, args.divisionId, "db.gangs");
     if (!args.name.trim()) throw new ConvexError("Nom requis.");
-    return await ctx.db.insert("dbGangs", {
+    const id = await ctx.db.insert("dbGangs", {
       divisionId: args.divisionId, name: args.name.trim(), orgType: args.orgType,
       subDivision: args.subDivision ?? undefined, color: args.color ?? undefined, logoUrl: args.logoUrl ?? undefined,
       description: args.description, territoryText: args.territoryText?.trim() || undefined,
       createdBy: agent._id, authorName: agentName(agent), at: Date.now(),
     });
+    await writeAudit(ctx, agent, { action: "detective.gang_create", resourceType: "dbGang", resourceId: id, resourceLabel: args.name.trim() });
+    return id;
   },
 });
 
@@ -102,7 +105,7 @@ export const updateGang = mutation({
   handler: async (ctx, { gangId, ...patch }) => {
     const g = await ctx.db.get(gangId);
     if (!g || g.deletedAt) return;
-    await requireDivPerm(ctx, g.divisionId, "db.gangs");
+    const { agent } = await requireDivPerm(ctx, g.divisionId, "db.gangs");
     const up: Record<string, unknown> = {};
     if (patch.name !== undefined) { if (!patch.name.trim()) throw new ConvexError("Nom requis."); up.name = patch.name.trim(); }
     if (patch.orgType !== undefined) up.orgType = patch.orgType;
@@ -114,6 +117,7 @@ export const updateGang = mutation({
     if (patch.hqX !== undefined) up.hqX = patch.hqX ?? undefined;
     if (patch.hqY !== undefined) up.hqY = patch.hqY ?? undefined;
     await ctx.db.patch(gangId, up);
+    await writeAudit(ctx, agent, { action: "detective.gang_update", resourceType: "dbGang", resourceId: gangId, resourceLabel: g.name });
   },
 });
 
@@ -134,6 +138,7 @@ export const removeGang = mutation({
     const terrs = await ctx.db.query("dbGangTerritories").withIndex("by_gang", (x) => x.eq("gangId", gangId)).collect();
     for (const t of terrs) await ctx.db.delete(t._id);
     await ctx.db.patch(gangId, { deletedAt: Date.now(), deletedBy: agent._id });
+    await writeAudit(ctx, agent, { action: "detective.gang_delete", resourceType: "dbGang", resourceId: gangId, resourceLabel: g.name });
   },
 });
 
@@ -152,21 +157,24 @@ export const gangRankCreate = mutation({
   handler: async (ctx, { gangId, name }) => {
     const g = await ctx.db.get(gangId);
     if (!g || g.deletedAt) throw new ConvexError("Organisation introuvable.");
-    await requireDivPerm(ctx, g.divisionId, "db.gangs");
+    const { agent } = await requireDivPerm(ctx, g.divisionId, "db.gangs");
     if (!name.trim()) throw new ConvexError("Nom requis.");
     const all = await ctx.db.query("dbGangRanks").withIndex("by_gang", (x) => x.eq("gangId", gangId)).collect();
     const position = all.reduce((m, r) => Math.max(m, r.position), -1) + 1;
-    return await ctx.db.insert("dbGangRanks", { gangId, name: name.trim(), position });
+    const id = await ctx.db.insert("dbGangRanks", { gangId, name: name.trim(), position });
+    await writeAudit(ctx, agent, { action: "detective.gang_rank_create", resourceType: "dbGangRank", resourceId: id, resourceLabel: name.trim(), metadata: { gang: g.name } });
+    return id;
   },
 });
 
 export const gangRankRename = mutation({
   args: { rankId: v.id("dbGangRanks"), name: v.string() },
   handler: async (ctx, { rankId, name }) => {
-    const { gang } = await gangByRank(ctx, rankId);
-    await requireDivPerm(ctx, gang.divisionId, "db.gangs");
+    const { rank, gang } = await gangByRank(ctx, rankId);
+    const { agent } = await requireDivPerm(ctx, gang.divisionId, "db.gangs");
     if (!name.trim()) throw new ConvexError("Nom requis.");
     await ctx.db.patch(rankId, { name: name.trim() });
+    await writeAudit(ctx, agent, { action: "detective.gang_rank_rename", resourceType: "dbGangRank", resourceId: rankId, resourceLabel: name.trim(), before: { name: rank.name }, after: { name: name.trim() } });
   },
 });
 
@@ -174,7 +182,7 @@ export const gangRankMove = mutation({
   args: { rankId: v.id("dbGangRanks"), dir: v.union(v.literal("up"), v.literal("down")) },
   handler: async (ctx, { rankId, dir }) => {
     const { rank, gang } = await gangByRank(ctx, rankId);
-    await requireDivPerm(ctx, gang.divisionId, "db.gangs");
+    const { agent } = await requireDivPerm(ctx, gang.divisionId, "db.gangs");
     const all = (await ctx.db.query("dbGangRanks").withIndex("by_gang", (x) => x.eq("gangId", rank.gangId)).collect())
       .sort((a, b) => a.position - b.position);
     const i = all.findIndex((r) => r._id === rankId);
@@ -182,6 +190,7 @@ export const gangRankMove = mutation({
     if (j < 0 || j >= all.length) return;
     await ctx.db.patch(all[i]._id, { position: all[j].position });
     await ctx.db.patch(all[j]._id, { position: all[i].position });
+    await writeAudit(ctx, agent, { action: "detective.gang_rank_move", resourceType: "dbGangRank", resourceId: rankId, resourceLabel: rank.name, metadata: { dir } });
   },
 });
 
@@ -189,11 +198,12 @@ export const gangRankRemove = mutation({
   args: { rankId: v.id("dbGangRanks") },
   handler: async (ctx, { rankId }) => {
     const { rank, gang } = await gangByRank(ctx, rankId);
-    await requireDivPerm(ctx, gang.divisionId, "db.gangs");
+    const { agent } = await requireDivPerm(ctx, gang.divisionId, "db.gangs");
     const members = (await ctx.db.query("dbPersons").withIndex("by_gang", (x) => x.eq("gangId", rank.gangId)).collect())
       .filter((p) => p.gangRankId === rankId);
     for (const m of members) await ctx.db.patch(m._id, { gangRankId: undefined });
     await ctx.db.delete(rankId);
+    await writeAudit(ctx, agent, { action: "detective.gang_rank_delete", resourceType: "dbGangRank", resourceId: rankId, resourceLabel: rank.name });
   },
 });
 
@@ -208,12 +218,13 @@ export const setMemberGang = mutation({
   handler: async (ctx, { personId, gangId, gangRankId, gangRoleLabel }) => {
     const p = await ctx.db.get(personId);
     if (!p || p.deletedAt) return;
-    await requireDivPerm(ctx, p.divisionId, "db.gangs");
+    const { agent } = await requireDivPerm(ctx, p.divisionId, "db.gangs");
     await ctx.db.patch(personId, {
       gangId: gangId ?? undefined,
       gangRankId: gangId ? (gangRankId ?? undefined) : undefined,
       gangRoleLabel: gangId ? (gangRoleLabel?.trim() || undefined) : undefined,
     });
+    await writeAudit(ctx, agent, { action: "detective.gang_member_set", resourceType: "dbPerson", resourceId: personId, resourceLabel: p.name, metadata: { gangId: gangId ?? null } });
   },
 });
 
@@ -224,7 +235,7 @@ export const setGangRelation = mutation({
   handler: async (ctx, { gangId, otherGangId, kind }) => {
     const g = await ctx.db.get(gangId);
     if (!g || g.deletedAt) throw new ConvexError("Organisation introuvable.");
-    await requireDivPerm(ctx, g.divisionId, "db.gangs");
+    const { agent } = await requireDivPerm(ctx, g.divisionId, "db.gangs");
     if (gangId === otherGangId) throw new ConvexError("Une organisation ne peut se relier à elle-même.");
     const other = await ctx.db.get(otherGangId);
     if (!other || other.deletedAt) throw new ConvexError("Organisation cible introuvable.");
@@ -235,6 +246,7 @@ export const setGangRelation = mutation({
     }
     await ctx.db.insert("dbGangRelations", { gangId, otherGangId, kind });
     await ctx.db.insert("dbGangRelations", { gangId: otherGangId, otherGangId: gangId, kind });
+    await writeAudit(ctx, agent, { action: "detective.gang_relation_set", resourceType: "dbGang", resourceId: gangId, resourceLabel: g.name, metadata: { otherGang: other.name, kind } });
   },
 });
 
@@ -243,11 +255,12 @@ export const removeGangRelation = mutation({
   handler: async (ctx, { gangId, otherGangId }) => {
     const g = await ctx.db.get(gangId);
     if (!g || g.deletedAt) return;
-    await requireDivPerm(ctx, g.divisionId, "db.gangs");
+    const { agent } = await requireDivPerm(ctx, g.divisionId, "db.gangs");
     for (const [a, b] of [[gangId, otherGangId], [otherGangId, gangId]] as const) {
       const rows = (await ctx.db.query("dbGangRelations").withIndex("by_gang", (x) => x.eq("gangId", a)).collect()).filter((r) => r.otherGangId === b);
       for (const r of rows) await ctx.db.delete(r._id);
     }
+    await writeAudit(ctx, agent, { action: "detective.gang_relation_remove", resourceType: "dbGang", resourceId: gangId, resourceLabel: g.name, metadata: { otherGangId } });
   },
 });
 
@@ -258,8 +271,9 @@ export const setGangHq = mutation({
   handler: async (ctx, { gangId, x, y }) => {
     const g = await ctx.db.get(gangId);
     if (!g || g.deletedAt) return;
-    await requireDivPerm(ctx, g.divisionId, "db.gangs");
+    const { agent } = await requireDivPerm(ctx, g.divisionId, "db.gangs");
     await ctx.db.patch(gangId, { hqX: x ?? undefined, hqY: y ?? undefined });
+    await writeAudit(ctx, agent, { action: "detective.gang_hq_set", resourceType: "dbGang", resourceId: gangId, resourceLabel: g.name, metadata: { x, y } });
   },
 });
 
@@ -268,9 +282,11 @@ export const territoryAdd = mutation({
   handler: async (ctx, { gangId, name, points, color }) => {
     const g = await ctx.db.get(gangId);
     if (!g || g.deletedAt) throw new ConvexError("Organisation introuvable.");
-    await requireDivPerm(ctx, g.divisionId, "db.gangs");
+    const { agent } = await requireDivPerm(ctx, g.divisionId, "db.gangs");
     if (points.length < 3) throw new ConvexError("Un territoire nécessite au moins 3 points.");
-    return await ctx.db.insert("dbGangTerritories", { gangId, name: name?.trim() || undefined, points, color: color ?? g.color });
+    const id = await ctx.db.insert("dbGangTerritories", { gangId, name: name?.trim() || undefined, points, color: color ?? g.color });
+    await writeAudit(ctx, agent, { action: "detective.territory_add", resourceType: "dbGangTerritory", resourceId: id, resourceLabel: name?.trim() || g.name, metadata: { gang: g.name } });
+    return id;
   },
 });
 
@@ -281,8 +297,9 @@ export const territoryRemove = mutation({
     if (!t) return;
     const g = await ctx.db.get(t.gangId);
     if (!g) return;
-    await requireDivPerm(ctx, g.divisionId, "db.gangs");
+    const { agent } = await requireDivPerm(ctx, g.divisionId, "db.gangs");
     await ctx.db.delete(id);
+    await writeAudit(ctx, agent, { action: "detective.territory_remove", resourceType: "dbGangTerritory", resourceId: id, resourceLabel: t.name ?? g.name });
   },
 });
 
@@ -341,6 +358,7 @@ export const addCaseGang = mutation({
     if (!g || g.deletedAt) throw new ConvexError("Organisation introuvable.");
     const id = await ctx.db.insert("dbCaseGangs", { caseId, gangId, note: note?.trim() || undefined });
     await ctx.db.insert("dbTimeline", { caseId, at: Date.now(), type: "auto", label: `Affiliation : ${g.name}`, authorId: agent._id, authorName: agentName(agent) });
+    await writeAudit(ctx, agent, { action: "detective.case_gang_add", resourceType: "dbCaseGang", resourceId: id, resourceLabel: g.name, metadata: { caseId, gangId } });
     return id;
   },
 });
@@ -350,8 +368,9 @@ export const removeCaseGang = mutation({
   handler: async (ctx, { id }) => {
     const l = await ctx.db.get(id);
     if (!l) return;
-    await requireCaseWrite(ctx, l.caseId);
+    const { agent } = await requireCaseWrite(ctx, l.caseId);
     await ctx.db.delete(id);
+    await writeAudit(ctx, agent, { action: "detective.case_gang_remove", resourceType: "dbCaseGang", resourceId: id, metadata: { caseId: l.caseId, gangId: l.gangId } });
   },
 });
 
@@ -388,11 +407,13 @@ export const createDrugSite = mutation({
   handler: async (ctx, args) => {
     const { agent } = await requireDivPerm(ctx, args.divisionId, "db.drugs");
     if (!args.name.trim()) throw new ConvexError("Nom requis.");
-    return await ctx.db.insert("dbDrugSites", {
+    const id = await ctx.db.insert("dbDrugSites", {
       divisionId: args.divisionId, name: args.name.trim(), kind: args.kind, gangId: args.gangId,
       drugTypes: args.drugTypes?.trim() || undefined, note: args.note, x: args.x, y: args.y, mediaUrls: args.mediaUrls,
       createdBy: agent._id, authorName: agentName(agent), at: Date.now(),
     });
+    await writeAudit(ctx, agent, { action: "detective.drugsite_create", resourceType: "dbDrugSite", resourceId: id, resourceLabel: args.name.trim() });
+    return id;
   },
 });
 
@@ -405,7 +426,7 @@ export const updateDrugSite = mutation({
   handler: async (ctx, { id, ...patch }) => {
     const d = await ctx.db.get(id);
     if (!d || d.deletedAt) return;
-    await requireDivPerm(ctx, d.divisionId, "db.drugs");
+    const { agent } = await requireDivPerm(ctx, d.divisionId, "db.drugs");
     const up: Record<string, unknown> = {};
     if (patch.name !== undefined) { if (!patch.name.trim()) throw new ConvexError("Nom requis."); up.name = patch.name.trim(); }
     if (patch.kind !== undefined) up.kind = patch.kind;
@@ -416,6 +437,7 @@ export const updateDrugSite = mutation({
     if (patch.y !== undefined) up.y = patch.y ?? undefined;
     if (patch.mediaUrls !== undefined) up.mediaUrls = patch.mediaUrls;
     await ctx.db.patch(id, up);
+    await writeAudit(ctx, agent, { action: "detective.drugsite_update", resourceType: "dbDrugSite", resourceId: id, resourceLabel: d.name });
   },
 });
 
@@ -426,5 +448,6 @@ export const removeDrugSite = mutation({
     if (!d) return;
     const { agent } = await requireDivPerm(ctx, d.divisionId, "db.delete");
     await ctx.db.patch(id, { deletedAt: Date.now(), deletedBy: agent._id });
+    await writeAudit(ctx, agent, { action: "detective.drugsite_delete", resourceType: "dbDrugSite", resourceId: id, resourceLabel: d.name });
   },
 });

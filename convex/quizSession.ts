@@ -194,6 +194,7 @@ export const start = mutation({
     const startedAt = now + 3000;
     const endsAt = quiz?.durationSeconds ? startedAt + quiz.durationSeconds * 1000 : undefined;
     await ctx.db.patch(sessionId, { status: "RUNNING", startedAt, endsAt });
+    await writeAudit(ctx, agent, { action: "lspa.session_start", resourceType: "quizSession", resourceId: sessionId, resourceLabel: session.title });
     return { startedAt, endsAt: endsAt ?? null };
   },
 });
@@ -219,6 +220,7 @@ export const close = mutation({
       await recomputeParticipant(ctx, (await ctx.db.get(p._id))!);
     }
     await ctx.db.patch(sessionId, { status: "CLOSED", closedAt: Date.now() });
+    await writeAudit(ctx, agent, { action: "lspa.session_close", resourceType: "quizSession", resourceId: sessionId, resourceLabel: session.title });
   },
 });
 
@@ -260,6 +262,7 @@ export const cancel = mutation({
       .collect();
     for (const p of participants) await ctx.db.delete(p._id);
     await ctx.db.delete(sessionId);
+    await writeAudit(ctx, agent, { action: "lspa.session_cancel", resourceType: "quizSession", resourceId: sessionId, resourceLabel: session.title });
   },
 });
 
@@ -574,6 +577,7 @@ export const gradeParticipant = mutation({
       // Corrigée : on libère la réservation pour les autres correcteurs.
       await ctx.db.patch(participantId, { gradedAt: Date.now(), gradingBy: undefined, gradingByName: undefined, gradingAt: undefined });
     }
+    await writeAudit(ctx, agent, { action: "lspa.session_grade", resourceType: "quizSession", resourceId: participant.sessionId, resourceLabel: participant.name, metadata: { participantId } });
   },
 });
 

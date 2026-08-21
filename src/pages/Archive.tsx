@@ -13,6 +13,7 @@ type Kind =
   | "casier" | "citation" | "mandat" | "report" | "complaint" | "vehicle" | "weapon"
   | "saisie" | "discipline" | "deposition" | "note" | "relation" | "fleetVehicle" | "interview"
   | "amende" | "convocation" | "investigation" | "serviceWeapon" | "ceremony" | "protocol" | "resource"
+  | "divisionAnnouncement" | "cadetNote" | "flEvaluation" | "ftoPatrol" | "salaryBonus" | "citizenLicense"
   | "citizen" | "agent";
 const KIND_LABEL: Record<Kind, string> = {
   casier: "Casier",
@@ -36,6 +37,12 @@ const KIND_LABEL: Record<Kind, string> = {
   ceremony: "Cérémonie",
   protocol: "Protocole",
   resource: "Ressource",
+  divisionAnnouncement: "Annonce de division",
+  cadetNote: "Note de cadet",
+  flEvaluation: "Éval. First Lincoln",
+  ftoPatrol: "Patrouille FTO",
+  salaryBonus: "Prime",
+  citizenLicense: "Licence",
   citizen: "Citoyen",
   agent: "Compte agent",
 };
@@ -63,6 +70,12 @@ const FILTERS: { key: Kind | "all"; label: string }[] = [
   { key: "ceremony", label: "Cérémonies" },
   { key: "protocol", label: "Protocoles" },
   { key: "resource", label: "Ressources" },
+  { key: "divisionAnnouncement", label: "Annonces division" },
+  { key: "cadetNote", label: "Notes cadet" },
+  { key: "flEvaluation", label: "Évals First Lincoln" },
+  { key: "ftoPatrol", label: "Patrouilles FTO" },
+  { key: "salaryBonus", label: "Primes" },
+  { key: "citizenLicense", label: "Licences" },
   { key: "agent", label: "Comptes agents" },
 ];
 

@@ -2,6 +2,7 @@ import { v, ConvexError } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { requireDivView, requireDivPerm, requireCaseRead, requireCaseWrite, agentName } from "./lib/detectiveAccess";
 import { hasPerm } from "./lib/divisionAccess";
+import { writeAudit } from "./lib/audit";
 
 // Registre des personnes du bureau : suspects, témoins, victimes, membres de gang
 // (entrés par la GND). Reliables aux enquêtes via dbCasePersons. Fiche victime
@@ -97,7 +98,7 @@ export const createPerson = mutation({
   handler: async (ctx, { divisionId, ...f }) => {
     const { agent } = await requireDivPerm(ctx, divisionId, "db.registry");
     if (!f.name.trim()) throw new ConvexError("Nom requis.");
-    return await ctx.db.insert("dbPersons", {
+    const id = await ctx.db.insert("dbPersons", {
       divisionId, name: f.name.trim(), alias: f.alias?.trim() || undefined,
       citizenId: f.citizenId ?? undefined, role: f.role ?? undefined, notes: f.notes,
       photoUrl: f.photoUrl ?? undefined, mediaUrls: f.mediaUrls,
@@ -106,6 +107,8 @@ export const createPerson = mutation({
       victimCause: f.victimCause, victimAutopsy: f.victimAutopsy, victimNextOfKin: f.victimNextOfKin,
       createdBy: agent._id, authorName: agentName(agent), at: Date.now(),
     });
+    await writeAudit(ctx, agent, { action: "detective.person_create", resourceType: "dbPerson", resourceId: id, resourceLabel: f.name.trim() });
+    return id;
   },
 });
 
@@ -114,7 +117,7 @@ export const updatePerson = mutation({
   handler: async (ctx, { personId, ...patch }) => {
     const p = await ctx.db.get(personId);
     if (!p || p.deletedAt) return;
-    await requireDivPerm(ctx, p.divisionId, "db.registry");
+    const { agent } = await requireDivPerm(ctx, p.divisionId, "db.registry");
     const up: Record<string, unknown> = {};
     const t = (s?: string) => (s === undefined ? undefined : (s.trim() || undefined));
     if (patch.name !== undefined) { if (!patch.name.trim()) throw new ConvexError("Nom requis."); up.name = patch.name.trim(); }
@@ -133,6 +136,7 @@ export const updatePerson = mutation({
     if (patch.victimAutopsy !== undefined) up.victimAutopsy = patch.victimAutopsy;
     if (patch.victimNextOfKin !== undefined) up.victimNextOfKin = patch.victimNextOfKin;
     await ctx.db.patch(personId, up);
+    await writeAudit(ctx, agent, { action: "detective.person_update", resourceType: "dbPerson", resourceId: personId, resourceLabel: p.name });
   },
 });
 
@@ -143,6 +147,7 @@ export const removePerson = mutation({
     if (!p) return;
     const { agent } = await requireDivPerm(ctx, p.divisionId, "db.delete");
     await ctx.db.patch(personId, { deletedAt: Date.now(), deletedBy: agent._id });
+    await writeAudit(ctx, agent, { action: "detective.person_delete", resourceType: "dbPerson", resourceId: personId, resourceLabel: p.name });
   },
 });
 
@@ -202,6 +207,7 @@ export const addCasePerson = mutation({
     const linkId = await ctx.db.insert("dbCasePersons", { caseId, personId: pid, caseRole, note: note?.trim() || undefined });
     const p = await ctx.db.get(pid);
     await ctx.db.insert("dbTimeline", { caseId, at: Date.now(), type: "auto", label: `${caseRole === "VICTIM" ? "Victime" : caseRole === "WITNESS" ? "Témoin" : caseRole === "SUSPECT" ? "Suspect" : "Personne"} ajouté${caseRole === "VICTIM" ? "e" : ""} : ${p?.name ?? ""}`, authorId: agent._id, authorName: agentName(agent) });
+    await writeAudit(ctx, agent, { action: "detective.case_person_add", resourceType: "dbCasePerson", resourceId: linkId, resourceLabel: p?.name, metadata: { caseId, caseRole } });
     return linkId;
   },
 });
@@ -211,11 +217,12 @@ export const updateCasePerson = mutation({
   handler: async (ctx, { id, caseRole, note }) => {
     const l = await ctx.db.get(id);
     if (!l) return;
-    await requireCaseWrite(ctx, l.caseId);
+    const { agent } = await requireCaseWrite(ctx, l.caseId);
     const up: Record<string, unknown> = {};
     if (caseRole !== undefined) up.caseRole = caseRole;
     if (note !== undefined) up.note = note.trim() || undefined;
     await ctx.db.patch(id, up);
+    await writeAudit(ctx, agent, { action: "detective.case_person_update", resourceType: "dbCasePerson", resourceId: id, metadata: { caseId: l.caseId, caseRole } });
   },
 });
 
@@ -224,8 +231,9 @@ export const removeCasePerson = mutation({
   handler: async (ctx, { id }) => {
     const l = await ctx.db.get(id);
     if (!l) return;
-    await requireCaseWrite(ctx, l.caseId);
+    const { agent } = await requireCaseWrite(ctx, l.caseId);
     await ctx.db.delete(id);
+    await writeAudit(ctx, agent, { action: "detective.case_person_remove", resourceType: "dbCasePerson", resourceId: id, metadata: { caseId: l.caseId, personId: l.personId } });
   },
 });
 

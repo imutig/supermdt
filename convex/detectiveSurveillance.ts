@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { requireDivView, requireDivPerm, agentName } from "./lib/detectiveAccess";
+import { writeAudit } from "./lib/audit";
 
 // Journal de surveillance du bureau : membres présents, lieu, date/heure, durée,
 // éléments observés (texte riche + médias). Reliable optionnellement à une enquête.
@@ -46,13 +47,15 @@ export const createSurveillance = mutation({
   },
   handler: async (ctx, args) => {
     const { agent } = await requireDivPerm(ctx, args.divisionId, "db.surveillance");
-    return await ctx.db.insert("dbSurveillance", {
+    const id = await ctx.db.insert("dbSurveillance", {
       divisionId: args.divisionId, caseId: args.caseId, title: args.title?.trim() || undefined,
       members: args.members, locationText: args.locationText?.trim() || undefined,
       x: args.x, y: args.y, date: args.date, durationMin: args.durationMin,
       observations: args.observations, mediaUrls: args.mediaUrls,
       createdBy: agent._id, authorName: agentName(agent), at: Date.now(),
     });
+    await writeAudit(ctx, agent, { action: "detective.surveillance_create", resourceType: "dbSurveillance", resourceId: id, resourceLabel: args.title?.trim() || undefined });
+    return id;
   },
 });
 
@@ -73,7 +76,7 @@ export const updateSurveillance = mutation({
   handler: async (ctx, { id, ...patch }) => {
     const s = await ctx.db.get(id);
     if (!s || s.deletedAt) return;
-    await requireDivPerm(ctx, s.divisionId, "db.surveillance");
+    const { agent } = await requireDivPerm(ctx, s.divisionId, "db.surveillance");
     const up: Record<string, unknown> = {};
     if (patch.caseId !== undefined) up.caseId = patch.caseId ?? undefined;
     if (patch.title !== undefined) up.title = patch.title.trim() || undefined;
@@ -86,6 +89,7 @@ export const updateSurveillance = mutation({
     if (patch.observations !== undefined) up.observations = patch.observations;
     if (patch.mediaUrls !== undefined) up.mediaUrls = patch.mediaUrls;
     await ctx.db.patch(id, up);
+    await writeAudit(ctx, agent, { action: "detective.surveillance_update", resourceType: "dbSurveillance", resourceId: id, resourceLabel: s.title ?? undefined });
   },
 });
 
@@ -96,5 +100,6 @@ export const removeSurveillance = mutation({
     if (!s) return;
     const { agent } = await requireDivPerm(ctx, s.divisionId, "db.delete");
     await ctx.db.patch(id, { deletedAt: Date.now(), deletedBy: agent._id });
+    await writeAudit(ctx, agent, { action: "detective.surveillance_delete", resourceType: "dbSurveillance", resourceId: id, resourceLabel: s.title ?? undefined });
   },
 });

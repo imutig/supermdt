@@ -49,6 +49,7 @@ export const home = query({
     const lead = division.leadAgentId ? await ctx.db.get(division.leadAgentId) : null;
     const members = await ctx.db.query("agentDivisions").withIndex("by_division", (q) => q.eq("divisionId", divisionId)).collect();
     const announcements = (await ctx.db.query("divisionAnnouncements").withIndex("by_division", (q) => q.eq("divisionId", divisionId)).collect())
+      .filter((a) => !a.deletedAt)
       .sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || b.at - a.at)
       .slice(0, 30)
       .map((a) => ({ _id: a._id, authorName: a.authorName, title: a.title, body: a.body, imageUrls: a.imageUrls ?? [], pinned: !!a.pinned, at: a.at, mine: a.authorId === agent._id }));
@@ -150,6 +151,7 @@ export const setDescription = mutation({
     const division = await loadDivision(ctx, divisionId);
     await assertPerm(ctx, agent, division, "config");
     await ctx.db.patch(divisionId, { description: description.trim() || undefined });
+    await writeAudit(ctx, agent, { action: "division.set_description", resourceType: "division", resourceId: divisionId, resourceLabel: division.name });
   },
 });
 
@@ -160,6 +162,7 @@ export const setLogo = mutation({
     const division = await loadDivision(ctx, divisionId);
     await assertPerm(ctx, agent, division, "config");
     await ctx.db.patch(divisionId, { logoUrl: url ?? undefined });
+    await writeAudit(ctx, agent, { action: "division.set_logo", resourceType: "division", resourceId: divisionId, resourceLabel: division.name });
   },
 });
 
@@ -217,7 +220,9 @@ export const rankCreate = mutation({
     if (!name.trim()) throw new ConvexError("Nom du grade requis.");
     const all = await ctx.db.query("divisionRanks").withIndex("by_division", (q) => q.eq("divisionId", divisionId)).collect();
     const position = all.reduce((m, r) => Math.max(m, r.position), -1) + 1;
-    return await ctx.db.insert("divisionRanks", { divisionId, name: name.trim(), color, position });
+    const rankId = await ctx.db.insert("divisionRanks", { divisionId, name: name.trim(), color, position });
+    await writeAudit(ctx, agent, { action: "division.rank_create", resourceType: "divisionRank", resourceId: rankId, resourceLabel: `${division.name} · ${name.trim()}` });
+    return rankId;
   },
 });
 
@@ -230,6 +235,7 @@ export const rankUpdate = mutation({
     const division = await loadDivision(ctx, rank.divisionId);
     await assertPerm(ctx, agent, division, "ranks");
     await ctx.db.patch(rankId, { name: name.trim() || rank.name, color });
+    await writeAudit(ctx, agent, { action: "division.rank_update", resourceType: "divisionRank", resourceId: rankId, resourceLabel: `${division.name} · ${name.trim() || rank.name}` });
   },
 });
 
@@ -247,6 +253,7 @@ export const rankMove = mutation({
     if (i < 0 || j < 0 || j >= all.length) return;
     await ctx.db.patch(all[i]._id, { position: all[j].position });
     await ctx.db.patch(all[j]._id, { position: all[i].position });
+    await writeAudit(ctx, agent, { action: "division.rank_move", resourceType: "divisionRank", resourceId: rankId });
   },
 });
 
@@ -264,6 +271,7 @@ export const rankRemove = mutation({
     }
     for (const p of await ctx.db.query("divisionRankPermissions").withIndex("by_rank", (q) => q.eq("rankId", rankId)).collect()) await ctx.db.delete(p._id);
     await ctx.db.delete(rankId);
+    await writeAudit(ctx, agent, { action: "division.rank_remove", resourceType: "divisionRank", resourceId: rankId, resourceLabel: `${division.name} · ${rank.name}` });
   },
 });
 
@@ -280,6 +288,7 @@ export const setRankPerms = mutation({
     const existing = await ctx.db.query("divisionRankPermissions").withIndex("by_rank", (q) => q.eq("rankId", rankId)).collect();
     for (const e of existing) { if (!wanted.has(e.perm)) await ctx.db.delete(e._id); else wanted.delete(e.perm); }
     for (const p of wanted) await ctx.db.insert("divisionRankPermissions", { rankId, perm: p });
+    await writeAudit(ctx, agent, { action: "division.rank_perms", resourceType: "divisionRank", resourceId: rankId, resourceLabel: `${division.name} · ${rank.name}`, after: { perms: [...new Set(perms)] } });
   },
 });
 
@@ -292,6 +301,8 @@ export const assignMemberRank = mutation({
     const m = await membershipOf(ctx, agentId, divisionId);
     if (!m) throw new ConvexError("Cet agent n'est pas membre de la division.");
     await ctx.db.patch(m._id, { rankId: rankId ?? undefined });
+    const target = await ctx.db.get(agentId);
+    await writeAudit(ctx, agent, { action: "division.member_rank", resourceType: "division", resourceId: divisionId, resourceLabel: target ? `${target.prenomRP} ${target.nomRP}` : division.name });
   },
 });
 
@@ -304,10 +315,12 @@ export const announce = mutation({
     const division = await loadDivision(ctx, a.divisionId);
     await assertPerm(ctx, agent, division, "announcements");
     if (!a.title.trim()) throw new ConvexError("Titre requis.");
-    return await ctx.db.insert("divisionAnnouncements", {
+    const id = await ctx.db.insert("divisionAnnouncements", {
       divisionId: a.divisionId, authorId: agent._id, authorName: `${agent.prenomRP} ${agent.nomRP}`,
       title: a.title.trim(), body: a.body, imageUrls: a.imageUrls, pinned: a.pinned, at: Date.now(),
     });
+    await writeAudit(ctx, agent, { action: "division.announce", resourceType: "divisionAnnouncement", resourceId: id, resourceLabel: `${division.name} · ${a.title.trim()}` });
+    return id;
   },
 });
 
@@ -316,11 +329,13 @@ export const announceRemove = mutation({
   handler: async (ctx, { id }) => {
     const agent = await requireAgent(ctx);
     const post = await ctx.db.get(id);
-    if (!post) return;
+    if (!post || post.deletedAt) return;
     const division = await loadDivision(ctx, post.divisionId);
     if (post.authorId !== agent._id) await assertPerm(ctx, agent, division, "announcements");
     else await assertMember(ctx, agent, division);
-    await ctx.db.delete(id);
+    // Soft-delete : l'annonce part aux Archives (restaurable).
+    await ctx.db.patch(id, { deletedAt: Date.now(), deletedBy: agent._id });
+    await writeAudit(ctx, agent, { action: "division.announce_remove", resourceType: "divisionAnnouncement", resourceId: id, resourceLabel: `${division.name} · ${post.title}` });
   },
 });
 

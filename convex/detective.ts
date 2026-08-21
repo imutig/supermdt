@@ -6,6 +6,7 @@ import {
   agentName, requireDivView, requireDivPerm, loadCase,
   requireCaseRead, requireCaseWrite, addTimeline, notify,
 } from "./lib/detectiveAccess";
+import { writeAudit } from "./lib/audit";
 
 // Detective Bureau - enquêtes connectées (GND + HRD). Voir SPEC-DETECTIVE-BUREAU.md.
 // Les helpers d'accès vivent dans ./lib/detectiveAccess (partagés avec les autres
@@ -100,6 +101,10 @@ export const createCase = mutation({
     if (args.leadAgentId && args.leadAgentId !== agent._id) {
       await notify(ctx, args.divisionId, args.leadAgentId, "case_lead", `Vous êtes référent de l'enquête #${number} - ${args.title.trim()}`, caseId);
     }
+    await writeAudit(ctx, agent, {
+      action: "detective.case_create", resourceType: "dbCase",
+      resourceId: caseId, resourceLabel: `#${number} - ${args.title.trim()}`,
+    });
     return caseId;
   },
 });
@@ -127,6 +132,10 @@ export const updateCase = mutation({
       }
     }
     await ctx.db.patch(caseId, up);
+    await writeAudit(ctx, agent, {
+      action: "detective.case_update", resourceType: "dbCase",
+      resourceId: caseId, resourceLabel: `#${c.number} - ${c.title}`,
+    });
   },
 });
 
@@ -141,14 +150,23 @@ export const setStatus = mutation({
     };
     await ctx.db.patch(caseId, { status });
     await addTimeline(ctx, caseId, agent, `Statut : ${LABEL[status]}`);
+    await writeAudit(ctx, agent, {
+      action: "detective.case_status", resourceType: "dbCase",
+      resourceId: caseId, resourceLabel: `#${c.number} - ${c.title}`,
+      before: c.status, after: status,
+    });
   },
 });
 
 export const setSynthesis = mutation({
   args: { caseId: v.id("dbCases"), synthesis: v.string() },
   handler: async (ctx, { caseId, synthesis }) => {
-    await requireCaseWrite(ctx, caseId);
+    const { agent, case: c } = await requireCaseWrite(ctx, caseId);
     await ctx.db.patch(caseId, { synthesis });
+    await writeAudit(ctx, agent, {
+      action: "detective.case_synthesis", resourceType: "dbCase",
+      resourceId: caseId, resourceLabel: `#${c.number} - ${c.title}`,
+    });
   },
 });
 
@@ -158,6 +176,10 @@ export const removeCase = mutation({
     const c = await loadCase(ctx, caseId);
     const { agent } = await requireDivPerm(ctx, c.divisionId, "db.delete");
     await ctx.db.patch(caseId, { deletedAt: Date.now(), deletedBy: agent._id });
+    await writeAudit(ctx, agent, {
+      action: "detective.case_delete", resourceType: "dbCase",
+      resourceId: caseId, resourceLabel: `#${c.number} - ${c.title}`,
+    });
   },
 });
 
@@ -173,6 +195,11 @@ export const addTeamMember = mutation({
     const a = await ctx.db.get(agentId);
     await addTimeline(ctx, caseId, agent, `${a ? agentName(a) : "Un agent"} ajouté à l'équipe`);
     if (agentId !== agent._id) await notify(ctx, c.divisionId, agentId, "case_team", `Vous êtes assigné à l'enquête #${c.number} - ${c.title}`, caseId);
+    await writeAudit(ctx, agent, {
+      action: "detective.team_add", resourceType: "dbCase",
+      resourceId: caseId, resourceLabel: `#${c.number} - ${c.title}`,
+      metadata: { agent: a ? agentName(a) : null },
+    });
   },
 });
 
@@ -181,8 +208,12 @@ export const removeTeamMember = mutation({
   handler: async (ctx, { teamId }) => {
     const row = await ctx.db.get(teamId);
     if (!row) return;
-    await requireCaseWrite(ctx, row.caseId);
+    const { agent } = await requireCaseWrite(ctx, row.caseId);
     await ctx.db.delete(teamId);
+    await writeAudit(ctx, agent, {
+      action: "detective.team_remove", resourceType: "dbCaseTeam",
+      resourceId: teamId,
+    });
   },
 });
 
@@ -205,6 +236,10 @@ export const addTimelineEvent = mutation({
     const { agent } = await requireCaseWrite(ctx, caseId);
     if (!label.trim()) throw new ConvexError("Intitulé requis.");
     await addTimeline(ctx, caseId, agent, label.trim(), "event", body);
+    await writeAudit(ctx, agent, {
+      action: "detective.timeline_add", resourceType: "dbTimeline",
+      resourceId: caseId, resourceLabel: label.trim(),
+    });
   },
 });
 
@@ -215,6 +250,10 @@ export const removeTimelineEvent = mutation({
     if (!row) return;
     const { agent } = await requireCaseWrite(ctx, row.caseId);
     await ctx.db.patch(id, { deletedAt: Date.now(), deletedBy: agent._id });
+    await writeAudit(ctx, agent, {
+      action: "detective.timeline_remove", resourceType: "dbTimeline",
+      resourceId: id, resourceLabel: row.label,
+    });
   },
 });
 
@@ -242,8 +281,12 @@ export const addTodo = mutation({
     if (!text.trim()) throw new ConvexError("Texte requis.");
     const all = await ctx.db.query("dbTodos").withIndex("by_case", (x) => x.eq("caseId", caseId)).collect();
     const order = all.reduce((m, t) => Math.max(m, t.order), -1) + 1;
-    await ctx.db.insert("dbTodos", { caseId, text: text.trim(), done: false, assigneeId, order, createdBy: agent._id, at: Date.now() });
+    const todoId = await ctx.db.insert("dbTodos", { caseId, text: text.trim(), done: false, assigneeId, order, createdBy: agent._id, at: Date.now() });
     if (assigneeId && assigneeId !== agent._id) await notify(ctx, c.divisionId, assigneeId, "todo", `Nouvelle piste sur l'enquête #${c.number} : ${text.trim()}`, caseId);
+    await writeAudit(ctx, agent, {
+      action: "detective.todo_add", resourceType: "dbTodo",
+      resourceId: todoId, resourceLabel: text.trim(),
+    });
   },
 });
 
@@ -252,8 +295,12 @@ export const toggleTodo = mutation({
   handler: async (ctx, { id }) => {
     const t = await ctx.db.get(id);
     if (!t) return;
-    await requireCaseWrite(ctx, t.caseId);
+    const { agent } = await requireCaseWrite(ctx, t.caseId);
     await ctx.db.patch(id, { done: !t.done, doneAt: !t.done ? Date.now() : undefined });
+    await writeAudit(ctx, agent, {
+      action: "detective.todo_toggle", resourceType: "dbTodo",
+      resourceId: id, resourceLabel: t.text, before: t.done, after: !t.done,
+    });
   },
 });
 
@@ -262,8 +309,12 @@ export const removeTodo = mutation({
   handler: async (ctx, { id }) => {
     const t = await ctx.db.get(id);
     if (!t) return;
-    await requireCaseWrite(ctx, t.caseId);
+    const { agent } = await requireCaseWrite(ctx, t.caseId);
     await ctx.db.delete(id);
+    await writeAudit(ctx, agent, {
+      action: "detective.todo_remove", resourceType: "dbTodo",
+      resourceId: id, resourceLabel: t.text,
+    });
   },
 });
 
@@ -286,7 +337,12 @@ export const addFolder = mutation({
     if (!name.trim()) throw new ConvexError("Nom requis.");
     const all = await ctx.db.query("dbFolders").withIndex("by_case", (x) => x.eq("caseId", caseId)).collect();
     const order = all.reduce((m, f) => Math.max(m, f.order), -1) + 1;
-    return await ctx.db.insert("dbFolders", { caseId, name: name.trim(), order, createdBy: agent._id, at: Date.now() });
+    const folderId = await ctx.db.insert("dbFolders", { caseId, name: name.trim(), order, createdBy: agent._id, at: Date.now() });
+    await writeAudit(ctx, agent, {
+      action: "detective.folder_add", resourceType: "dbFolder",
+      resourceId: folderId, resourceLabel: name.trim(),
+    });
+    return folderId;
   },
 });
 
@@ -295,9 +351,13 @@ export const renameFolder = mutation({
   handler: async (ctx, { id, name }) => {
     const f = await ctx.db.get(id);
     if (!f) return;
-    await requireCaseWrite(ctx, f.caseId);
+    const { agent } = await requireCaseWrite(ctx, f.caseId);
     if (!name.trim()) throw new ConvexError("Nom requis.");
     await ctx.db.patch(id, { name: name.trim() });
+    await writeAudit(ctx, agent, {
+      action: "detective.folder_rename", resourceType: "dbFolder",
+      resourceId: id, before: f.name, after: name.trim(),
+    });
   },
 });
 
@@ -306,11 +366,15 @@ export const removeFolder = mutation({
   handler: async (ctx, { id }) => {
     const f = await ctx.db.get(id);
     if (!f) return;
-    await requireCaseWrite(ctx, f.caseId);
+    const { agent } = await requireCaseWrite(ctx, f.caseId);
     // Les pièces du dossier repassent à la racine de l'enquête.
     const items = await ctx.db.query("dbItems").withIndex("by_folder", (x) => x.eq("folderId", id)).collect();
     for (const it of items) await ctx.db.patch(it._id, { folderId: undefined });
     await ctx.db.delete(id);
+    await writeAudit(ctx, agent, {
+      action: "detective.folder_remove", resourceType: "dbFolder",
+      resourceId: id, resourceLabel: f.name,
+    });
   },
 });
 
@@ -370,6 +434,11 @@ export const addItem = mutation({
       createdBy: agent._id, authorName: agentName(agent), at: Date.now(),
     });
     await addTimeline(ctx, args.caseId, agent, `${TYPE_LABEL[args.type]} ajouté${args.title ? ` : ${args.title.trim()}` : ""}`);
+    await writeAudit(ctx, agent, {
+      action: "detective.item_add", resourceType: "dbItem",
+      resourceId: id, resourceLabel: args.title?.trim() || TYPE_LABEL[args.type],
+      metadata: { type: args.type },
+    });
     return id;
   },
 });
@@ -389,7 +458,7 @@ export const updateItem = mutation({
   handler: async (ctx, { id, ...patch }) => {
     const it = await ctx.db.get(id);
     if (!it || it.deletedAt) return;
-    await requireCaseWrite(ctx, it.caseId);
+    const { agent } = await requireCaseWrite(ctx, it.caseId);
     const up: Record<string, unknown> = {};
     if (patch.title !== undefined) up.title = patch.title.trim() || undefined;
     if (patch.body !== undefined) up.body = patch.body;
@@ -400,6 +469,10 @@ export const updateItem = mutation({
     if (patch.locY !== undefined) up.locY = patch.locY;
     if (patch.locNote !== undefined) up.locNote = patch.locNote;
     await ctx.db.patch(id, up);
+    await writeAudit(ctx, agent, {
+      action: "detective.item_update", resourceType: "dbItem",
+      resourceId: id, resourceLabel: it.title || undefined,
+    });
   },
 });
 
@@ -410,6 +483,10 @@ export const removeItem = mutation({
     if (!it) return;
     const { agent } = await requireCaseWrite(ctx, it.caseId);
     await ctx.db.patch(id, { deletedAt: Date.now(), deletedBy: agent._id });
+    await writeAudit(ctx, agent, {
+      action: "detective.item_remove", resourceType: "dbItem",
+      resourceId: id, resourceLabel: it.title || undefined,
+    });
   },
 });
 
@@ -452,6 +529,10 @@ export const addEvidence = mutation({
       createdBy: agent._id, authorName: agentName(agent), at: Date.now(),
     });
     await addTimeline(ctx, args.caseId, agent, `Preuve scellée : ${args.label.trim()}`);
+    await writeAudit(ctx, agent, {
+      action: "detective.evidence_add", resourceType: "dbEvidence",
+      resourceId: id, resourceLabel: args.label.trim(),
+    });
     return id;
   },
 });
@@ -469,7 +550,7 @@ export const updateEvidence = mutation({
   handler: async (ctx, { id, ...patch }) => {
     const e = await ctx.db.get(id);
     if (!e || e.deletedAt) return;
-    await requireCaseWrite(ctx, e.caseId);
+    const { agent } = await requireCaseWrite(ctx, e.caseId);
     const up: Record<string, unknown> = {};
     if (patch.label !== undefined) { if (!patch.label.trim()) throw new ConvexError("Libellé requis."); up.label = patch.label.trim(); }
     if (patch.evidenceType !== undefined) up.evidenceType = patch.evidenceType ?? undefined;
@@ -478,6 +559,10 @@ export const updateEvidence = mutation({
     if (patch.storageLoc !== undefined) up.storageLoc = patch.storageLoc.trim() || undefined;
     if (patch.mediaUrls !== undefined) up.mediaUrls = patch.mediaUrls;
     await ctx.db.patch(id, up);
+    await writeAudit(ctx, agent, {
+      action: "detective.evidence_update", resourceType: "dbEvidence",
+      resourceId: id, resourceLabel: e.label,
+    });
   },
 });
 
@@ -488,6 +573,10 @@ export const removeEvidence = mutation({
     if (!e) return;
     const { agent } = await requireCaseWrite(ctx, e.caseId);
     await ctx.db.patch(id, { deletedAt: Date.now(), deletedBy: agent._id });
+    await writeAudit(ctx, agent, {
+      action: "detective.evidence_remove", resourceType: "dbEvidence",
+      resourceId: id, resourceLabel: e.label,
+    });
   },
 });
 
@@ -521,12 +610,17 @@ export const addCaseVehicle = mutation({
     note: v.optional(v.string()),
   },
   handler: async (ctx, { caseId, vehicleId, plaque, label, note }) => {
-    await requireCaseWrite(ctx, caseId);
+    const { agent } = await requireCaseWrite(ctx, caseId);
     if (!vehicleId && !plaque?.trim()) throw new ConvexError("Véhicule ou plaque requis.");
-    return await ctx.db.insert("dbCaseVehicles", {
+    const vehRowId = await ctx.db.insert("dbCaseVehicles", {
       caseId, vehicleId, plaque: plaque?.trim() || undefined,
       label: label?.trim() || undefined, note: note?.trim() || undefined,
     });
+    await writeAudit(ctx, agent, {
+      action: "detective.vehicle_add", resourceType: "dbCaseVehicle",
+      resourceId: vehRowId, resourceLabel: plaque?.trim() || label?.trim() || undefined,
+    });
+    return vehRowId;
   },
 });
 
@@ -535,7 +629,11 @@ export const removeCaseVehicle = mutation({
   handler: async (ctx, { id }) => {
     const r = await ctx.db.get(id);
     if (!r) return;
-    await requireCaseWrite(ctx, r.caseId);
+    const { agent } = await requireCaseWrite(ctx, r.caseId);
     await ctx.db.delete(id);
+    await writeAudit(ctx, agent, {
+      action: "detective.vehicle_remove", resourceType: "dbCaseVehicle",
+      resourceId: id, resourceLabel: r.plaque || r.label || undefined,
+    });
   },
 });

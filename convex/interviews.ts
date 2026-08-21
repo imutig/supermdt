@@ -69,10 +69,16 @@ export const saveItem = mutation({
     const text = a.text.trim();
     if (!text) throw new ConvexError("L'intitulé est obligatoire.");
     const base = { kind: a.kind, text, explanation: a.explanation?.trim() || undefined };
-    if (a.itemId) { await ctx.db.patch(a.itemId, base); return a.itemId; }
+    if (a.itemId) {
+      await ctx.db.patch(a.itemId, base);
+      await writeAudit(ctx, agent, { action: "interviewitem.update", resourceType: "interviewItem", resourceId: a.itemId, resourceLabel: text, metadata: { kind: a.kind } });
+      return a.itemId;
+    }
     const all = await ctx.db.query("interviewItems").collect();
     const position = all.reduce((m, i) => Math.max(m, i.position), -1) + 1;
-    return await ctx.db.insert("interviewItems", { ...base, position, active: true });
+    const itemId = await ctx.db.insert("interviewItems", { ...base, position, active: true });
+    await writeAudit(ctx, agent, { action: "interviewitem.create", resourceType: "interviewItem", resourceId: itemId, resourceLabel: text, metadata: { kind: a.kind } });
+    return itemId;
   },
 });
 
@@ -82,6 +88,8 @@ export const toggleItem = mutation({
     const agent = await requireAgent(ctx);
     assertConfig(agent);
     await ctx.db.patch(itemId, { active });
+    const it = await ctx.db.get(itemId);
+    await writeAudit(ctx, agent, { action: "interviewitem.toggle", resourceType: "interviewItem", resourceId: itemId, resourceLabel: it?.text, metadata: { active } });
   },
 });
 
@@ -90,7 +98,9 @@ export const removeItem = mutation({
   handler: async (ctx, { itemId }) => {
     const agent = await requireAgent(ctx);
     assertConfig(agent);
+    const it = await ctx.db.get(itemId);
     await ctx.db.delete(itemId);
+    await writeAudit(ctx, agent, { action: "interviewitem.remove", resourceType: "interviewItem", resourceId: itemId, resourceLabel: it?.text });
   },
 });
 
@@ -108,6 +118,7 @@ export const moveItem = mutation({
     if (i < 0 || j < 0 || j >= same.length) return;
     await ctx.db.patch(same[i]._id, { position: same[j].position });
     await ctx.db.patch(same[j]._id, { position: same[i].position });
+    await writeAudit(ctx, agent, { action: "interviewitem.move", resourceType: "interviewItem", resourceId: itemId, resourceLabel: it.text, metadata: { direction } });
   },
 });
 
@@ -208,6 +219,7 @@ export const save = mutation({
       prenom: prenom.trim(), nom: nom.trim(), dateNaissance: dateNaissance?.trim() || undefined,
       questions: q, scenario: sc, score: computeScore(q, sc),
     });
+    await writeAudit(ctx, agent, { action: "interview.update", resourceType: "interview", resourceId: id, resourceLabel: `${prenom.trim()} ${nom.trim()}` });
   },
 });
 

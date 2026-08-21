@@ -102,10 +102,10 @@ export const getById = query({
       if (t) flags.push({ _id: f._id, flagTypeId: f.flagTypeId, name: t.name, color: t.color, note: f.note ?? null });
     }
 
-    const licenseLinks = await ctx.db
+    const licenseLinks = (await ctx.db
       .query("citizenLicenses")
       .withIndex("by_citizen", (q) => q.eq("citizenId", id))
-      .collect();
+      .collect()).filter((l) => !l.deletedAt);
     const licenses = [];
     for (const l of licenseLinks) {
       const t = await ctx.db.get(l.licenseTypeId);
@@ -387,7 +387,8 @@ export const licenseSet = mutation({
     const type = await ctx.db.get(licenseTypeId);
     const citizen = await ctx.db.get(citizenId);
     if (existing) {
-      await ctx.db.patch(existing._id, { status, note, updatedBy: agent._id, updatedAt: Date.now() });
+      // Re-délivrer une licence « supprimée » la restaure (efface deletedAt).
+      await ctx.db.patch(existing._id, { status, note, updatedBy: agent._id, updatedAt: Date.now(), deletedAt: undefined, deletedBy: undefined });
     } else {
       await ctx.db.insert("citizenLicenses", {
         citizenId,
@@ -414,8 +415,8 @@ export const licenseRemove = mutation({
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "citoyens.licenses");
     const l = await ctx.db.get(id);
-    if (!l) return;
-    await ctx.db.delete(id);
+    if (!l || l.deletedAt) return;
+    await ctx.db.patch(id, { deletedAt: Date.now(), deletedBy: agent._id });
     await writeAudit(ctx, agent, {
       action: "citizen.license_remove",
       resourceType: "citizen",

@@ -3,6 +3,7 @@ import { mutation, query } from "./_generated/server";
 import type { QueryCtx } from "./_generated/server";
 import type { Doc } from "./_generated/dataModel";
 import { requireCaseRead, requireCaseWrite } from "./lib/detectiveAccess";
+import { writeAudit } from "./lib/audit";
 
 // Tableau d'enquête (murder board). Chaque nœud référence une entité
 // (personne, véhicule, pièce, preuve, gang, évènement, point stup) ou du texte
@@ -97,12 +98,18 @@ export const addNode = mutation({
     color: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    await requireCaseWrite(ctx, args.caseId);
-    return await ctx.db.insert("dbBoardNodes", {
+    const { agent } = await requireCaseWrite(ctx, args.caseId);
+    const nodeId = await ctx.db.insert("dbBoardNodes", {
       caseId: args.caseId, x: args.x, y: args.y, refType: args.refType,
       refId: args.refId, label: args.label?.trim() || undefined,
       note: args.note?.trim() || undefined, color: args.color,
     });
+    await writeAudit(ctx, agent, {
+      action: "detective.board_node_add", resourceType: "dbBoardNode",
+      resourceId: nodeId, resourceLabel: args.label?.trim() || undefined,
+      metadata: { refType: args.refType },
+    });
+    return nodeId;
   },
 });
 
@@ -112,8 +119,12 @@ export const moveNode = mutation({
   handler: async (ctx, { id, x, y }) => {
     const n = await ctx.db.get(id);
     if (!n) return;
-    await requireCaseWrite(ctx, n.caseId);
+    const { agent } = await requireCaseWrite(ctx, n.caseId);
     await ctx.db.patch(id, { x, y });
+    await writeAudit(ctx, agent, {
+      action: "detective.board_node_move", resourceType: "dbBoardNode",
+      resourceId: id, metadata: { x, y },
+    });
   },
 });
 
@@ -127,12 +138,16 @@ export const updateNode = mutation({
   handler: async (ctx, { id, ...patch }) => {
     const n = await ctx.db.get(id);
     if (!n) return;
-    await requireCaseWrite(ctx, n.caseId);
+    const { agent } = await requireCaseWrite(ctx, n.caseId);
     const up: Record<string, unknown> = {};
     if (patch.label !== undefined) up.label = patch.label.trim() || undefined;
     if (patch.note !== undefined) up.note = patch.note.trim() || undefined;
     if (patch.color !== undefined) up.color = patch.color ?? undefined;
     await ctx.db.patch(id, up);
+    await writeAudit(ctx, agent, {
+      action: "detective.board_node_update", resourceType: "dbBoardNode",
+      resourceId: id, resourceLabel: n.label || undefined,
+    });
   },
 });
 
@@ -141,11 +156,15 @@ export const removeNode = mutation({
   handler: async (ctx, { id }) => {
     const n = await ctx.db.get(id);
     if (!n) return;
-    await requireCaseWrite(ctx, n.caseId);
+    const { agent } = await requireCaseWrite(ctx, n.caseId);
     // Supprime aussi les liens qui touchent ce nœud.
     const edges = await ctx.db.query("dbBoardEdges").withIndex("by_case", (x) => x.eq("caseId", n.caseId)).collect();
     for (const e of edges) if (e.fromNodeId === id || e.toNodeId === id) await ctx.db.delete(e._id);
     await ctx.db.delete(id);
+    await writeAudit(ctx, agent, {
+      action: "detective.board_node_remove", resourceType: "dbBoardNode",
+      resourceId: id, resourceLabel: n.label || undefined,
+    });
   },
 });
 
@@ -158,13 +177,18 @@ export const addEdge = mutation({
     color: v.optional(v.string()),
   },
   handler: async (ctx, { caseId, fromNodeId, toNodeId, label, color }) => {
-    await requireCaseWrite(ctx, caseId);
+    const { agent } = await requireCaseWrite(ctx, caseId);
     if (fromNodeId === toNodeId) throw new ConvexError("Un lien doit relier deux nœuds différents.");
     const existing = await ctx.db.query("dbBoardEdges").withIndex("by_case", (x) => x.eq("caseId", caseId)).collect();
     if (existing.some((e) => (e.fromNodeId === fromNodeId && e.toNodeId === toNodeId) || (e.fromNodeId === toNodeId && e.toNodeId === fromNodeId))) {
       throw new ConvexError("Ces deux nœuds sont déjà reliés.");
     }
-    return await ctx.db.insert("dbBoardEdges", { caseId, fromNodeId, toNodeId, label: label?.trim() || undefined, color });
+    const edgeId = await ctx.db.insert("dbBoardEdges", { caseId, fromNodeId, toNodeId, label: label?.trim() || undefined, color });
+    await writeAudit(ctx, agent, {
+      action: "detective.board_edge_add", resourceType: "dbBoardEdge",
+      resourceId: edgeId, resourceLabel: label?.trim() || undefined,
+    });
+    return edgeId;
   },
 });
 
@@ -173,11 +197,15 @@ export const updateEdge = mutation({
   handler: async (ctx, { id, ...patch }) => {
     const e = await ctx.db.get(id);
     if (!e) return;
-    await requireCaseWrite(ctx, e.caseId);
+    const { agent } = await requireCaseWrite(ctx, e.caseId);
     const up: Record<string, unknown> = {};
     if (patch.label !== undefined) up.label = patch.label.trim() || undefined;
     if (patch.color !== undefined) up.color = patch.color ?? undefined;
     await ctx.db.patch(id, up);
+    await writeAudit(ctx, agent, {
+      action: "detective.board_edge_update", resourceType: "dbBoardEdge",
+      resourceId: id, resourceLabel: e.label || undefined,
+    });
   },
 });
 
@@ -186,8 +214,12 @@ export const removeEdge = mutation({
   handler: async (ctx, { id }) => {
     const e = await ctx.db.get(id);
     if (!e) return;
-    await requireCaseWrite(ctx, e.caseId);
+    const { agent } = await requireCaseWrite(ctx, e.caseId);
     await ctx.db.delete(id);
+    await writeAudit(ctx, agent, {
+      action: "detective.board_edge_remove", resourceType: "dbBoardEdge",
+      resourceId: id, resourceLabel: e.label || undefined,
+    });
   },
 });
 

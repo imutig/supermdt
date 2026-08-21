@@ -3,6 +3,7 @@ import { mutation, query } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { QueryCtx } from "./_generated/server";
 import { requireAgent, requirePermission } from "./rbac";
+import { writeAudit } from "./lib/audit";
 
 // Fiche de notation des cadets. Modèle entièrement configurable : sections,
 // critères (points saisis, temps chronométré, ou catégorie de quiz notée
@@ -153,11 +154,14 @@ export const saveItem = mutation({
     };
     if (a.itemId) {
       await ctx.db.patch(a.itemId, base);
+      await writeAudit(ctx, agent, { action: "grading.item_save", resourceType: "gradingItem", resourceId: a.itemId, resourceLabel: base.label });
       return a.itemId;
     }
     const all = await ctx.db.query("gradingItems").collect();
     const position = all.reduce((m, i) => Math.max(m, i.position), -1) + 1;
-    return await ctx.db.insert("gradingItems", { ...base, position, active: true });
+    const newId = await ctx.db.insert("gradingItems", { ...base, position, active: true });
+    await writeAudit(ctx, agent, { action: "grading.item_save", resourceType: "gradingItem", resourceId: newId, resourceLabel: base.label });
+    return newId;
   },
 });
 
@@ -166,10 +170,12 @@ export const removeItem = mutation({
   handler: async (ctx, { itemId }) => {
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "effectif.validate");
+    const item = await ctx.db.get(itemId);
     for (const e of await ctx.db.query("gradingEntries").collect()) {
       if (e.itemId === itemId) await ctx.db.delete(e._id);
     }
     await ctx.db.delete(itemId);
+    await writeAudit(ctx, agent, { action: "grading.item_remove", resourceType: "gradingItem", resourceId: itemId, resourceLabel: item?.label });
   },
 });
 
@@ -184,6 +190,7 @@ export const moveItem = mutation({
     if (i < 0 || j < 0 || j >= all.length) return;
     await ctx.db.patch(all[i]._id, { position: all[j].position });
     await ctx.db.patch(all[j]._id, { position: all[i].position });
+    await writeAudit(ctx, agent, { action: "grading.item_move", resourceType: "gradingItem", resourceId: itemId });
   },
 });
 
@@ -214,6 +221,7 @@ export const seedDefault = mutation({
     ];
     let position = 0;
     for (const it of items) await ctx.db.insert("gradingItems", { ...it, position: position++ });
+    await writeAudit(ctx, agent, { action: "grading.seed", resourceType: "gradingItem", metadata: { count: items.length } });
     return "seeded" as const;
   },
 });
@@ -247,6 +255,9 @@ export const setEntry = mutation({
     } else {
       await ctx.db.insert("gradingEntries", { agentId: a.agentId, itemId: a.itemId, ...patch });
     }
+    const cadet = await ctx.db.get(a.agentId);
+    const item = await ctx.db.get(a.itemId);
+    await writeAudit(ctx, agent, { action: "grading.entry_set", resourceType: "gradingEntry", resourceId: a.agentId, resourceLabel: cadet ? `${cadet.prenomRP} ${cadet.nomRP}` : undefined, after: { item: item?.label, points: a.points ?? null, seconds: a.seconds ?? null, eliminated: a.eliminated ?? false } });
   },
 });
 
@@ -259,13 +270,15 @@ export const addNote = mutation({
     await requirePermission(ctx, agent, "lspa.effectif.view");
     const clean = text.trim();
     if (!clean) return;
-    await ctx.db.insert("cadetNotes", {
+    const noteId = await ctx.db.insert("cadetNotes", {
       agentId,
       authorId: agent._id,
       authorName: `${agent.prenomRP} ${agent.nomRP}`,
       text: clean,
       at: Date.now(),
     });
+    const cadet = await ctx.db.get(agentId);
+    await writeAudit(ctx, agent, { action: "grading.note_add", resourceType: "cadetNote", resourceId: noteId, resourceLabel: cadet ? `${cadet.prenomRP} ${cadet.nomRP}` : undefined });
   },
 });
 
@@ -274,10 +287,11 @@ export const removeNote = mutation({
   handler: async (ctx, { noteId }) => {
     const agent = await requireAgent(ctx);
     const note = await ctx.db.get(noteId);
-    if (!note) return;
+    if (!note || note.deletedAt) return;
     // On ne supprime que ses propres notes (sauf validation d'État-Major).
     if (note.authorId !== agent._id) await requirePermission(ctx, agent, "effectif.validate");
-    await ctx.db.delete(noteId);
+    await ctx.db.patch(noteId, { deletedAt: Date.now(), deletedBy: agent._id });
+    await writeAudit(ctx, agent, { action: "grading.note_remove", resourceType: "cadetNote", resourceId: noteId });
   },
 });
 
@@ -298,6 +312,8 @@ export const setBonus = mutation({
     const data = { points: p, reason: cleanReason, updatedBy: agent._id, updatedByName: `${agent.prenomRP} ${agent.nomRP}`, updatedAt: Date.now() };
     if (existing) await ctx.db.patch(existing._id, data);
     else await ctx.db.insert("cadetBonus", { agentId, ...data });
+    const cadet = await ctx.db.get(agentId);
+    await writeAudit(ctx, agent, { action: "grading.bonus_set", resourceType: "gradingEntry", resourceId: agentId, resourceLabel: cadet ? `${cadet.prenomRP} ${cadet.nomRP}` : undefined, after: { points: p, reason: cleanReason ?? null } });
   },
 });
 
@@ -310,6 +326,8 @@ export const setConclusion = mutation({
     const data = { text, updatedBy: agent._id, updatedByName: `${agent.prenomRP} ${agent.nomRP}`, updatedAt: Date.now() };
     if (existing) await ctx.db.patch(existing._id, data);
     else await ctx.db.insert("cadetConclusions", { agentId, ...data });
+    const cadet = await ctx.db.get(agentId);
+    await writeAudit(ctx, agent, { action: "grading.conclusion_set", resourceType: "gradingEntry", resourceId: agentId, resourceLabel: cadet ? `${cadet.prenomRP} ${cadet.nomRP}` : undefined });
   },
 });
 
@@ -361,6 +379,7 @@ export const cadetSheet = query({
     total += bonus;
 
     const notes = (await ctx.db.query("cadetNotes").withIndex("by_agent", (q) => q.eq("agentId", agentId)).collect())
+      .filter((n) => !n.deletedAt)
       .sort((a, b) => b.at - a.at)
       .map((n) => ({ _id: n._id, authorId: n.authorId, authorName: n.authorName, text: n.text, at: n.at, mine: n.authorId === viewer._id }));
     const conclusion = await ctx.db.query("cadetConclusions").withIndex("by_agent", (q) => q.eq("agentId", agentId)).unique();

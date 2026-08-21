@@ -3,6 +3,7 @@ import { mutation, query } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { requireAgent, can } from "./rbac";
+import { writeAudit } from "./lib/audit";
 import { traineeGrade, isEligibleTutor } from "./fto";
 
 // First Lincoln : évaluation de la première patrouille encadrée d'un rookie
@@ -90,7 +91,7 @@ export const access = query({
 // ---------- Liste (actifs + historique) ----------
 // Dernier score (%) d'un agent = score de son évaluation la plus récente.
 async function rookieRow(ctx: QueryCtx, a: Doc<"agents">, criteria: Doc<"flCriteria">[]) {
-  const evals = await ctx.db.query("flEvaluations").withIndex("by_agent", (q) => q.eq("agentId", a._id)).collect();
+  const evals = (await ctx.db.query("flEvaluations").withIndex("by_agent", (q) => q.eq("agentId", a._id)).collect()).filter((e) => !e.deletedAt);
   let lastScorePct: number | null = null;
   if (evals.length) {
     const last = [...evals].sort((x, y) => y.at - x.at)[0];
@@ -128,7 +129,7 @@ export const listRookies = query({
 
     // Historique : agents ayant au moins une évaluation mais qui ne sont plus au
     // grade en formation (promus). Dédupliqué par agent.
-    const evals = await ctx.db.query("flEvaluations").collect();
+    const evals = (await ctx.db.query("flEvaluations").collect()).filter((e) => !e.deletedAt);
     const agentIds = [...new Set(evals.map((e) => e.agentId as string))] as Id<"agents">[];
     const out = [];
     for (const id of agentIds) {
@@ -155,6 +156,7 @@ export const dossier = query({
     const grade = agent.gradeId ? await ctx.db.get(agent.gradeId) : null;
 
     const rows = (await ctx.db.query("flEvaluations").withIndex("by_agent", (q) => q.eq("agentId", agentId)).collect())
+      .filter((e) => !e.deletedAt)
       .sort((a, b) => b.at - a.at);
     const evaluations = [];
     for (const e of rows) {
@@ -211,6 +213,7 @@ export const setConfig = mutation({
     const patch = { passThreshold: pass, potentialThreshold: potential, updatedBy: viewer._id, updatedAt: Date.now() };
     if (cfg) await ctx.db.patch(cfg._id, patch);
     else await ctx.db.insert("flConfig", patch);
+    await writeAudit(ctx, viewer, { action: "firstlincoln.config", resourceType: "config", after: { passThreshold: pass, potentialThreshold: potential } });
   },
 });
 
@@ -269,6 +272,8 @@ export const saveEvaluation = mutation({
       if (level === undefined && !checked) continue; // rien à stocker
       await ctx.db.insert("flScores", { evaluationId, criterionId: s.criterionId, level, checked });
     }
+    const cadet = await ctx.db.get(a.agentId);
+    await writeAudit(ctx, viewer, { action: "firstlincoln.eval_save", resourceType: "flEvaluation", resourceId: evaluationId, resourceLabel: cadet ? `${cadet.prenomRP} ${cadet.nomRP}` : undefined, after: { verdict: a.verdict } });
     return evaluationId;
   },
 });
@@ -278,10 +283,13 @@ export const removeEvaluation = mutation({
   handler: async (ctx, { evaluationId }) => {
     const viewer = await requireAgent(ctx);
     const e = await ctx.db.get(evaluationId);
-    if (!e) return;
+    if (!e || e.deletedAt) return;
     if (e.evaluatorId !== viewer._id) await assertManage(ctx, viewer);
-    for (const s of await ctx.db.query("flScores").withIndex("by_evaluation", (q) => q.eq("evaluationId", evaluationId)).collect()) await ctx.db.delete(s._id);
-    await ctx.db.delete(evaluationId);
+    // Soft-delete : l'évaluation part aux Archives (restaurable) ; ses scores sont
+    // conservés pour la restauration (purgés seulement à la purge définitive).
+    await ctx.db.patch(evaluationId, { deletedAt: Date.now(), deletedBy: viewer._id });
+    const cadet = await ctx.db.get(e.agentId);
+    await writeAudit(ctx, viewer, { action: "firstlincoln.eval_remove", resourceType: "flEvaluation", resourceId: evaluationId, resourceLabel: cadet ? `${cadet.prenomRP} ${cadet.nomRP}` : undefined });
   },
 });
 
@@ -309,10 +317,16 @@ export const saveCriterion = mutation({
     await assertManage(ctx, viewer);
     if (!a.section.trim() || !a.label.trim()) throw new ConvexError("Section et libellé obligatoires.");
     const base = { section: a.section.trim(), label: a.label.trim(), kind: a.kind };
-    if (a.criterionId) { await ctx.db.patch(a.criterionId, base); return a.criterionId; }
+    if (a.criterionId) {
+      await ctx.db.patch(a.criterionId, base);
+      await writeAudit(ctx, viewer, { action: "firstlincoln.criterion_save", resourceType: "flCriterion", resourceId: a.criterionId, resourceLabel: base.label });
+      return a.criterionId;
+    }
     const all = await ctx.db.query("flCriteria").collect();
     const position = all.reduce((m, i) => Math.max(m, i.position), -1) + 1;
-    return await ctx.db.insert("flCriteria", { ...base, position, active: true });
+    const newId = await ctx.db.insert("flCriteria", { ...base, position, active: true });
+    await writeAudit(ctx, viewer, { action: "firstlincoln.criterion_save", resourceType: "flCriterion", resourceId: newId, resourceLabel: base.label });
+    return newId;
   },
 });
 
@@ -321,8 +335,10 @@ export const removeCriterion = mutation({
   handler: async (ctx, { criterionId }) => {
     const viewer = await requireAgent(ctx);
     await assertManage(ctx, viewer);
+    const crit = await ctx.db.get(criterionId);
     for (const s of await ctx.db.query("flScores").collect()) if (s.criterionId === criterionId) await ctx.db.delete(s._id);
     await ctx.db.delete(criterionId);
+    await writeAudit(ctx, viewer, { action: "firstlincoln.criterion_remove", resourceType: "flCriterion", resourceId: criterionId, resourceLabel: crit?.label });
   },
 });
 
@@ -337,6 +353,7 @@ export const moveCriterion = mutation({
     if (i < 0 || j < 0 || j >= all.length) return;
     await ctx.db.patch(all[i]._id, { position: all[j].position });
     await ctx.db.patch(all[j]._id, { position: all[i].position });
+    await writeAudit(ctx, viewer, { action: "firstlincoln.criterion_move", resourceType: "flCriterion", resourceId: criterionId });
   },
 });
 
@@ -354,6 +371,7 @@ export const seedDefault = mutation({
     ];
     let position = 0;
     for (const it of items) await ctx.db.insert("flCriteria", { ...it, position: position++, active: true });
+    await writeAudit(ctx, viewer, { action: "firstlincoln.seed", resourceType: "flCriterion", metadata: { count: items.length } });
     return "seeded" as const;
   },
 });
