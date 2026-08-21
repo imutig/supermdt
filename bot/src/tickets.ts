@@ -1224,7 +1224,12 @@ function isStaff(interaction: ButtonInteraction | ChatInputCommandInteraction | 
 
 // Ouvre le panneau de statut (éphémère) depuis le bouton du ticket ou /integrer.
 async function openStatusPanel(interaction: ButtonInteraction | ChatInputCommandInteraction) {
-  if (!isStaff(interaction)) { await interaction.reply({ content: "Réservé à l'encadrement.", flags: EPH }); return; }
+  const cfg = await mdt.ticketConfigGet();
+  // Encadrement (Gérer les messages) OU recruteur configuré : les deux gèrent les
+  // candidatures, donc peuvent changer le statut d'un ticket.
+  if (!isStaff(interaction) && !isRecruiter(interaction.member as GuildMember | null, cfg)) {
+    await interaction.reply({ content: "Réservé à l'encadrement et aux recruteurs.", flags: EPH }); return;
+  }
   const channel = interaction.channel;
   if (!channel || channel.type !== ChannelType.GuildText) { await interaction.reply({ content: "À utiliser dans le salon d'un ticket.", flags: EPH }); return; }
   const ticket = await mdt.ticketByChannel(channel.id);
@@ -1233,7 +1238,10 @@ async function openStatusPanel(interaction: ButtonInteraction | ChatInputCommand
 }
 
 async function applyStatusFromSelect(interaction: AnySelectMenuInteraction) {
-  if (!isStaff(interaction)) { await interaction.reply({ content: "Réservé à l'encadrement.", flags: EPH }); return; }
+  const cfg = await mdt.ticketConfigGet();
+  if (!isStaff(interaction) && !isRecruiter(interaction.member as GuildMember | null, cfg)) {
+    await interaction.reply({ content: "Réservé à l'encadrement et aux recruteurs.", flags: EPH }); return;
+  }
   const status = interaction.values[0] as IntegStatus;
   const channel = interaction.channel;
   if (!channel || channel.type !== ChannelType.GuildText) return;
@@ -1244,7 +1252,6 @@ async function applyStatusFromSelect(interaction: AnySelectMenuInteraction) {
   // sont fortement limitées par Discord et dépasseraient le délai de 3 s.
   await mdt.ticketSetStatus(channel.id, status, interaction.user.username);
   await interaction.update(statusPanel(status));
-  const cfg = await mdt.ticketConfigGet();
   try {
     await renameStatus(interaction.client, channel.id, status);
     await moveToStatusCategory(interaction.client, channel.id, status, cfg);

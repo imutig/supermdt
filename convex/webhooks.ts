@@ -183,6 +183,7 @@ export const setBotConfig = mutation({
     const existing = await ctx.db.query("integrationConfig").first();
     if (existing) await ctx.db.patch(existing._id, patch);
     else await ctx.db.insert("integrationConfig", patch);
+    await writeAudit(ctx, agent, { action: "webhook.bot_config", resourceType: "config", after: patch });
   },
 });
 
@@ -194,6 +195,7 @@ export const setBaseUrl = mutation({
     const clean = url.trim().replace(/\/+$/, "");
     if (clean && !/^https?:\/\//.test(clean)) throw new ConvexError("L'adresse doit commencer par http:// ou https://.");
     const existing = await ctx.db.query("integrationConfig").first();
+    await writeAudit(ctx, agent, { action: "webhook.base_url", resourceType: "config", before: { baseUrl: existing?.baseUrl ?? null }, after: { baseUrl: clean } });
     if (existing) await ctx.db.patch(existing._id, { baseUrl: clean, updatedBy: agent._id, updatedAt: Date.now() });
     else await ctx.db.insert("integrationConfig", { baseUrl: clean, updatedBy: agent._id, updatedAt: Date.now() });
   },

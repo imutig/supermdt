@@ -97,7 +97,9 @@ export const setEvidence = mutation({
   handler: async (ctx, { id, imageUrls }) => {
     const actor = await requireAgent(ctx);
     await requirePermission(ctx, actor, "discipline.edit");
+    const before = await ctx.db.get(id);
     await ctx.db.patch(id, { imageUrls });
+    await writeAudit(ctx, actor, { action: "discipline.evidence", resourceType: "discipline", resourceId: id, before: { count: before?.imageUrls?.length ?? 0 }, after: { count: imageUrls.length } });
   },
 });
 

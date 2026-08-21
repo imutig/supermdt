@@ -1,6 +1,7 @@
 import { v, ConvexError } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { requireAgent, requirePermission } from "./rbac";
+import { writeAudit } from "./lib/audit";
 
 // Catalogue des commandes Discord contrôlables. `label` pour l'UII ; le `command`
 // doit correspondre exactement au nom de la commande slash côté bot.
@@ -62,5 +63,10 @@ export const set = mutation({
     const existing = await ctx.db.query("discordCommandAccess").withIndex("by_command", (q) => q.eq("command", command)).first();
     if (existing) await ctx.db.patch(existing._id, { minGradeId, roleIds: cleanRoles });
     else await ctx.db.insert("discordCommandAccess", { command, minGradeId, roleIds: cleanRoles });
+    await writeAudit(ctx, agent, {
+      action: "discord.command_access", resourceType: "discordCommandAccess", resourceLabel: command,
+      before: existing ? { minGradeId: existing.minGradeId ?? null, roleIds: existing.roleIds } : null,
+      after: { minGradeId: minGradeId ?? null, roleIds: cleanRoles },
+    });
   },
 });

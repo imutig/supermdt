@@ -111,13 +111,108 @@ const LABELS: Record<string, string> = {
   "webhook.create": "a créé un webhook Discord",
   "webhook.update": "a modifié un webhook Discord",
   "webhook.delete": "a supprimé un webhook Discord",
+  "webhook.bot_config": "a modifié la configuration du bot Discord",
+  "webhook.base_url": "a modifié l'URL de base du MDT",
+  // Effectif (compléments)
+  "agent.name_change": "a modifié l'identité RP d'un agent",
+  "agent.login_change": "a modifié l'identifiant de connexion d'un agent",
+  "agent.iban_change": "a modifié l'IBAN d'un agent",
+  "agent.phone_change": "a modifié le téléphone d'un agent",
+  // Citoyens (compléments)
+  "citizen.deceased": "a déclaré un citoyen décédé",
+  "citizen.revived": "a annulé le décès d'un citoyen",
+  "citizen.aliases": "a modifié les alias d'un citoyen",
+  "citizen.restore": "a restauré un dossier citoyen",
+  // Casier / finances (compléments)
+  "casier.charges_update": "a modifié les charges d'une entrée de casier",
+  "citation.charges_update": "a modifié les charges d'une contravention",
+  "amende.status": "a changé le statut d'une amende",
+  // Fiches 911
+  "call911.create": "a créé une fiche d'appel 911",
+  "call911.edit": "a modifié une fiche d'appel 911",
+  "call911.status": "a changé le statut d'une fiche 911",
+  "call911.delete": "a supprimé une fiche d'appel 911",
+  // Absences (compléments)
+  "absence.create_for": "a déclaré une absence pour un agent",
+  "absence.update": "a modifié une absence",
+  "absence.delete": "a annulé une absence",
+  "absence.approve": "a approuvé une absence",
+  "absence.reject": "a refusé une absence",
+  // Discipline / IA (compléments)
+  "discipline.reactivate": "a levé une mise à pied",
+  "discipline.evidence": "a modifié les preuves d'une sanction",
+  "convocation.create": "a émis une convocation",
+  "convocation.remove": "a supprimé une convocation",
+  "investigation.create": "a ouvert une enquête interne",
+  "investigation.close": "a clôturé une enquête interne",
+  "investigation.remove": "a supprimé une enquête interne",
+  // Cérémonies
+  "ceremony.create": "a créé une cérémonie",
+  "ceremony.update": "a modifié une cérémonie",
+  "ceremony.remove": "a supprimé une cérémonie",
+  "ceremony.discord_promote": "a lancé les montées en grade Discord d'une cérémonie",
+  "ceremony.apply_grades": "a appliqué les montées en grade d'une cérémonie",
+  "ceremony.announce": "a publié l'annonce d'une cérémonie",
+  "ceremony.announce_result": "a publié le compte-rendu d'une cérémonie",
+  // Académie (LSPA)
+  "lspa.rank_change": "a modifié un grade d'académie",
+  "lspa.quiz_create": "a créé un quiz",
+  "lspa.quiz_delete": "a supprimé un quiz",
+  "lspa.session_open": "a ouvert une session de quiz",
+  "lspa.session_publish": "a publié les résultats d'une session",
+  "lspa.session_delete": "a supprimé une session de quiz",
+  "lspa.promo_create": "a créé une promotion",
+  "lspa.promo_delete": "a supprimé une promotion",
+  "lspa.promo_graduate": "a diplômé un cadet",
+  "interview.create": "a créé un entretien",
+  "interview.delete": "a supprimé un entretien",
+  // Espace division
+  "division.set_module": "a modifié les modules d'une division",
+  "division.set_lead": "a désigné le Lead d'une division",
+  "division.set_description": "a modifié la description d'une division",
+  "division.set_logo": "a modifié le logo d'une division",
+  "division.rank_create": "a créé un grade interne de division",
+  "division.rank_update": "a modifié un grade interne de division",
+  "division.rank_remove": "a supprimé un grade interne de division",
+  "division.rank_perms": "a modifié les permissions d'un grade de division",
+  "division.member_rank": "a modifié le grade interne d'un membre",
+  "division.announce": "a publié une annonce de division",
+  "division.announce_remove": "a supprimé une annonce de division",
+  // Comptabilité / salaires
+  "payroll.scale_save": "a modifié un barème de salaire",
+  "payroll.scale_delete": "a supprimé un barème de salaire",
+  "payroll.bonus_add": "a ajouté une prime",
+  "payroll.bonus_delete": "a supprimé une prime",
+  "payroll.set_paid": "a modifié l'état de paiement d'un salaire",
+  "payroll.pay_all": "a versé tous les salaires de la semaine",
+  // Liaison Discord / Nexus
+  "discord.send_account": "a envoyé un compte à un membre Discord",
+  "discord.link": "a relié un agent à un compte Discord",
+  "discord.unlink": "a délié un agent de son compte Discord",
+  "discord.sync_role": "a synchronisé le rôle Discord d'un grade",
+  "discord.command_access": "a modifié l'accès à une commande Discord",
+  "nexus.credential_save": "a enregistré ses identifiants Nexus",
+  "nexus.credential_remove": "a délié un compte Nexus",
+  "nexus.password_reveal": "a révélé son mot de passe Nexus",
+  // Configuration (compléments)
+  "permission.copy": "a copié les permissions d'un grade",
+  "permission.grant_all": "a accordé une permission à tous les grades",
+  "permission.revoke_all": "a retiré une permission à tous les grades",
+  "reglement.update": "a mis à jour le règlement",
   // Archive
   "archive.restore": "a restauré un élément archivé",
   "archive.purge": "a purgé définitivement un élément archivé",
 };
 
 export function actionLabel(action: string): string {
-  return LABELS[action] ?? action;
+  if (LABELS[action]) return LABELS[action];
+  // Référentiels de configuration : action dynamique « config.<table>.<op> ».
+  const cfg = /^config\.(.+)\.(create|update|remove)$/.exec(action);
+  if (cfg) {
+    const verb = cfg[2] === "create" ? "a créé" : cfg[2] === "update" ? "a modifié" : "a supprimé";
+    return `${verb} un élément de configuration`;
+  }
+  return action;
 }
 
 // Type de ressource en français (colonne / détail).
@@ -149,6 +244,24 @@ const RESOURCE_LABELS: Record<string, string> = {
   resource: "Ressource",
   report: "Rapport",
   calendarEvent: "Évènement",
+  amende: "Amende",
+  call911: "Fiche 911",
+  ceremony: "Cérémonie",
+  convocation: "Convocation",
+  division: "Division",
+  interview: "Entretien",
+  investigation: "Enquête interne",
+  promotion: "Promotion",
+  quiz: "Quiz",
+  quizSession: "Session de quiz",
+  document: "Document",
+  reglement: "Règlement",
+  payScale: "Barème de salaire",
+  salaryBonus: "Prime",
+  nexusCredential: "Compte Nexus",
+  discordCommandAccess: "Commande Discord",
+  divisionRank: "Grade de division",
+  divisionAnnouncement: "Annonce de division",
 };
 
 export function resourceLabel(type: string): string {

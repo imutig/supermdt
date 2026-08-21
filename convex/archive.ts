@@ -24,12 +24,18 @@ const KIND = v.union(
   v.literal("relation"),
   v.literal("fleetVehicle"),
   v.literal("interview"),
+  v.literal("amende"),
+  v.literal("convocation"),
+  v.literal("investigation"),
+  v.literal("serviceWeapon"),
+  v.literal("ceremony"),
   v.literal("citizen"),
   v.literal("agent"),
 );
 type Kind =
   | "casier" | "citation" | "mandat" | "report" | "complaint" | "vehicle" | "weapon"
   | "saisie" | "discipline" | "deposition" | "note" | "relation" | "fleetVehicle" | "interview"
+  | "amende" | "convocation" | "investigation" | "serviceWeapon" | "ceremony"
   | "citizen" | "agent";
 
 async function citizenName(ctx: QueryCtx, id: Id<"citizens"> | undefined | null) {
@@ -115,6 +121,35 @@ const SOFT: Record<Exclude<Kind, "citizen" | "agent">, SoftConfig> = {
   interview: {
     table: "interviews",
     describe: async (_ctx, i) => ({ label: `${i.prenom} ${i.nom}`, summary: `Entretien${i.score != null ? ` - ${i.score}%` : ""}` }),
+  },
+  amende: {
+    table: "amendes",
+    describe: async (ctx, a) => ({ label: await citizenName(ctx, a.citizenId), summary: `Amende - $${(a.montant ?? 0).toLocaleString("fr-FR")}` }),
+  },
+  convocation: {
+    table: "convocations",
+    describe: async (ctx, c) => ({ label: c.agentLabel ?? (c.agentId ? await agentName(ctx, c.agentId) : "-"), summary: `Convocation - ${c.motif}` }),
+  },
+  investigation: {
+    table: "internalInvestigations",
+    describe: async (_ctx, i) => ({ label: i.title, summary: `Enquête interne #${i.reference}` }),
+    children: async (ctx, i) => {
+      for (const t of await ctx.db.query("investigationTargets").withIndex("by_investigation", (q) => q.eq("investigationId", i._id)).collect()) await ctx.db.delete(t._id);
+      for (const n of await ctx.db.query("investigationNotes").withIndex("by_investigation", (q) => q.eq("investigationId", i._id)).collect()) await ctx.db.delete(n._id);
+    },
+  },
+  serviceWeapon: {
+    table: "serviceWeapons",
+    describe: async (ctx, w) => ({ label: await agentName(ctx, w.agentId), summary: `Arme de service - ${w.model} · ${w.serial}` }),
+  },
+  ceremony: {
+    table: "ceremonies",
+    describe: async (_ctx, c) => ({ label: c.title, summary: `Cérémonie - ${new Date(c.at).toLocaleDateString("fr-FR", { timeZone: "Europe/Paris" })}` }),
+    children: async (ctx, c) => {
+      for (const r of await ctx.db.query("ceremonyReminders").withIndex("by_ceremony", (q) => q.eq("ceremonyId", c._id)).collect()) await ctx.db.delete(r._id);
+      for (const p of await ctx.db.query("ceremonyPromotions").withIndex("by_ceremony", (q) => q.eq("ceremonyId", c._id)).collect()) await ctx.db.delete(p._id);
+      for (const d of await ctx.db.query("ceremonyDismissals").withIndex("by_ceremony", (q) => q.eq("ceremonyId", c._id)).collect()) await ctx.db.delete(d._id);
+    },
   },
 };
 

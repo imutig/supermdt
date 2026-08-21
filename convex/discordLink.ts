@@ -3,6 +3,7 @@ import { mutation, query } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { requireAgent, requirePermission } from "./rbac";
+import { writeAudit } from "./lib/audit";
 
 // Liaison des comptes MDT aux membres Discord (rôle LSPD). Côté site : on voit
 // les membres synchronisés par le bot, on « Envoie un compte » (invitation
@@ -144,6 +145,7 @@ export const sendAccount = mutation({
       prefillGradeId, autoActivate: true,
     });
     await ctx.scheduler.runAfter(0, internal.push.notify, {}); // prévient le bot (MP d'invitation)
+    await writeAudit(ctx, agent, { action: "discord.send_account", resourceType: "invitation", resourceLabel: member?.displayName ?? member?.username ?? discordId, metadata: { discordId } });
     return code;
   },
 });
@@ -159,7 +161,9 @@ export const linkExisting = mutation({
       .filter((a) => a._id !== agentId);
     if (others.some((a) => a.status !== "INACTIVE")) throw new ConvexError("Ce membre Discord est déjà relié à un autre compte.");
     for (const dead of others) await ctx.db.patch(dead._id, { discordId: undefined });
+    const target = await ctx.db.get(agentId);
     await ctx.db.patch(agentId, { discordId });
+    await writeAudit(ctx, agent, { action: "discord.link", resourceType: "agent", resourceId: agentId, resourceLabel: target ? `${target.prenomRP} ${target.nomRP}` : undefined, before: { discordId: target?.discordId ?? null }, after: { discordId } });
   },
 });
 
@@ -168,7 +172,9 @@ export const unlink = mutation({
   handler: async (ctx, { agentId }) => {
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "invites.manage");
+    const target = await ctx.db.get(agentId);
     await ctx.db.patch(agentId, { discordId: undefined });
+    await writeAudit(ctx, agent, { action: "discord.unlink", resourceType: "agent", resourceId: agentId, resourceLabel: target ? `${target.prenomRP} ${target.nomRP}` : undefined, before: { discordId: target?.discordId ?? null }, after: { discordId: null } });
   },
 });
 
@@ -191,6 +197,7 @@ export const syncGradeRole = mutation({
       discordId: target.discordId, addRoleId, removeRoleIds,
       reason: `Grade : ${grade?.name ?? "-"}`, status: "PENDING", createdAt: Date.now(),
     });
+    await writeAudit(ctx, agent, { action: "discord.sync_role", resourceType: "agent", resourceId: agentId, resourceLabel: `${target.prenomRP} ${target.nomRP}`, metadata: { grade: grade?.name ?? null } });
     return { ok: true };
   },
 });

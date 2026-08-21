@@ -18,7 +18,10 @@ export const STATUTS = ["Notifiée", "Payée", "En attente", "Contestée", "Annu
 
 export const statuts = query({
   args: {},
-  handler: async () => STATUTS,
+  handler: async (ctx) => {
+    await requireAgent(ctx); // cohérence : réservé aux agents connectés
+    return STATUTS;
+  },
 });
 
 // Amendes (non archivées) d'un citoyen, avec le lien vers la source (casier /

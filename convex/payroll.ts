@@ -3,6 +3,7 @@ import { query, mutation } from "./_generated/server";
 import type { QueryCtx, MutationCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { requireAgent, requirePermission, can } from "./rbac";
+import { writeAudit } from "./lib/audit";
 import { parisParts, parisWallToEpoch } from "./lib/paris";
 
 // ============================================================================
@@ -245,16 +246,25 @@ export const saveScale = mutation({
       updatedBy: agent._id,
       updatedAt: Date.now(),
     };
-    if (id) { await ctx.db.patch(id, patch); return id; }
-    return await ctx.db.insert("payScales", patch);
+    if (id) {
+      const before = await ctx.db.get(id);
+      await ctx.db.patch(id, patch);
+      await writeAudit(ctx, agent, { action: "payroll.scale_save", resourceType: "payScale", resourceId: id, before: before ? { maxSalary: before.maxSalary ?? null, rates: before.rates } : null, after: { maxSalary: patch.maxSalary ?? null, rates: clean } });
+      return id;
+    }
+    const newId = await ctx.db.insert("payScales", patch);
+    await writeAudit(ctx, agent, { action: "payroll.scale_save", resourceType: "payScale", resourceId: newId, after: { maxSalary: patch.maxSalary ?? null, rates: clean } });
+    return newId;
   },
 });
 
 export const deleteScale = mutation({
   args: { id: v.id("payScales") },
   handler: async (ctx, { id }) => {
-    await assertManage(ctx);
+    const agent = await assertManage(ctx);
+    const before = await ctx.db.get(id);
     await ctx.db.delete(id);
+    await writeAudit(ctx, agent, { action: "payroll.scale_delete", resourceType: "payScale", resourceId: id, before: before ? { maxSalary: before.maxSalary ?? null, rates: before.rates } : null });
   },
 });
 
@@ -265,7 +275,8 @@ export const addBonus = mutation({
     const agent = await assertManage(ctx);
     if (!motif.trim()) throw new ConvexError("Motif de prime obligatoire.");
     if (!Number.isFinite(amount) || amount === 0) throw new ConvexError("Montant de prime invalide.");
-    await ctx.db.insert("salaryBonuses", {
+    const target = agentId ? await ctx.db.get(agentId) : null;
+    const bonusId = await ctx.db.insert("salaryBonuses", {
       weekStart: weekStartOf(weekStart),
       agentId,
       amount: Math.round(amount),
@@ -273,14 +284,17 @@ export const addBonus = mutation({
       createdBy: agent._id,
       createdAt: Date.now(),
     });
+    await writeAudit(ctx, agent, { action: "payroll.bonus_add", resourceType: "salaryBonus", resourceId: bonusId, resourceLabel: target ? `${target.prenomRP} ${target.nomRP}` : "Prime globale", after: { amount: Math.round(amount), motif: motif.trim().slice(0, 200) } });
   },
 });
 
 export const deleteBonus = mutation({
   args: { id: v.id("salaryBonuses") },
   handler: async (ctx, { id }) => {
-    await assertManage(ctx);
+    const agent = await assertManage(ctx);
+    const before = await ctx.db.get(id);
     await ctx.db.delete(id);
+    await writeAudit(ctx, agent, { action: "payroll.bonus_delete", resourceType: "salaryBonus", resourceId: id, before: before ? { amount: before.amount, motif: before.motif } : null });
   },
 });
 
@@ -307,12 +321,16 @@ export const setPaid = mutation({
       .query("salaryPayments")
       .withIndex("by_agent_week", (q) => q.eq("agentId", agentId).eq("weekStart", start))
       .unique();
+    const target = await ctx.db.get(agentId);
+    const label = target ? `${target.prenomRP} ${target.nomRP}` : undefined;
     if (paid) {
       if (existing) return;
       const amount = await currentAmount(ctx, agentId, start, weekEndOf(start));
       await ctx.db.insert("salaryPayments", { agentId, weekStart: start, amount, paidAt: Date.now(), paidBy: manager._id });
+      await writeAudit(ctx, manager, { action: "payroll.set_paid", resourceType: "salaryPayment", resourceId: agentId, resourceLabel: label, before: { paid: false }, after: { paid: true, amount, weekStart: start } });
     } else if (existing) {
       await ctx.db.delete(existing._id);
+      await writeAudit(ctx, manager, { action: "payroll.set_paid", resourceType: "salaryPayment", resourceId: agentId, resourceLabel: label, before: { paid: true, amount: existing.amount, weekStart: start }, after: { paid: false } });
     }
   },
 });
@@ -342,6 +360,7 @@ export const payAll = mutation({
       await ctx.db.insert("salaryPayments", { agentId: a._id, weekStart: start, amount, paidAt: Date.now(), paidBy: manager._id });
       n++;
     }
+    await writeAudit(ctx, manager, { action: "payroll.pay_all", resourceType: "salaryPayment", metadata: { weekStart: start, agentsPaid: n } });
     return { paid: n };
   },
 });

@@ -125,7 +125,9 @@ export const setIban = mutation({
     await requirePermission(ctx, actor, "effectif.edit");
     const target = await ctx.db.get(agentId);
     if (!target) throw new ConvexError("Agent introuvable.");
-    await ctx.db.patch(agentId, { iban: normalizeIban(iban) });
+    const next = normalizeIban(iban);
+    await ctx.db.patch(agentId, { iban: next });
+    await writeAudit(ctx, actor, { action: "agent.iban_change", resourceType: "agent", resourceId: agentId, resourceLabel: `${target.prenomRP} ${target.nomRP}`, before: { iban: target.iban ?? null }, after: { iban: next ?? null } });
   },
 });
 
@@ -152,7 +154,9 @@ export const setPhone = mutation({
     await requirePermission(ctx, actor, "effectif.edit");
     const target = await ctx.db.get(agentId);
     if (!target) throw new ConvexError("Agent introuvable.");
-    await ctx.db.patch(agentId, { phone: normalizePhone(phone) });
+    const next = normalizePhone(phone);
+    await ctx.db.patch(agentId, { phone: next });
+    await writeAudit(ctx, actor, { action: "agent.phone_change", resourceType: "agent", resourceId: agentId, resourceLabel: `${target.prenomRP} ${target.nomRP}`, before: { phone: target.phone ?? null }, after: { phone: next ?? null } });
   },
 });
 

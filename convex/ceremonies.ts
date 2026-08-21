@@ -198,7 +198,7 @@ export const remove = mutation({
     await requirePermission(ctx, agent, PERM);
     const c = await ctx.db.get(ceremonyId);
     if (!c || c.deletedAt) return;
-    await ctx.db.patch(ceremonyId, { deletedAt: Date.now() });
+    await ctx.db.patch(ceremonyId, { deletedAt: Date.now(), deletedBy: agent._id });
     if (c.calendarEventId) await ctx.db.delete(c.calendarEventId).catch(() => {});
     await writeAudit(ctx, agent, { action: "ceremony.remove", resourceType: "ceremony", resourceId: ceremonyId, resourceLabel: c.title });
   },

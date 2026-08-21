@@ -5,6 +5,7 @@ import { v, ConvexError } from "convex/values";
 import { paginationOptsValidator } from "convex/server";
 import type { Id } from "./_generated/dataModel";
 import { getCurrentAgent, requireAgent, requirePermission, agentLabel } from "./rbac";
+import { writeAudit } from "./lib/audit";
 import { nexusLogin, encryptSecret, decryptSecret } from "./lib/nexusAuth";
 import { mapCitizen } from "./migration";
 import { parisParts } from "./lib/paris";
@@ -285,6 +286,20 @@ export const myStatus = query({
   },
 });
 
+// Contrôle d'une permission granulaire DEPUIS une action (write-through Nexus).
+// Les actions n'ont pas d'accès direct à la base : elles délèguent la vérification
+// RBAC à cette query, qui lève si l'agent courant n'a pas le droit demandé. Sert à
+// aligner les actions dont l'écriture locale passe par une mutation interne (donc
+// non gardée) sur les permissions des mutations publiques équivalentes.
+export const assertMyPermission = query({
+  args: { slug: v.string() },
+  handler: async (ctx, { slug }) => {
+    const agent = await requireAgent(ctx);
+    await requirePermission(ctx, agent, slug);
+    return true;
+  },
+});
+
 // Révèle à l'agent SON PROPRE mot de passe Nexus (dédié, stocké chiffré).
 // Réservé au titulaire du compte : on ne déchiffre jamais celui d'un autre.
 export const revealMyNexusPassword = action({
@@ -415,6 +430,7 @@ export const removeCredential = mutation({
     const agent = await requireAgent(ctx);
     const row = await ctx.db.query("nexusCredentials").withIndex("by_agent", (q) => q.eq("agentId", agent._id)).unique();
     if (row) await ctx.db.delete(row._id);
+    await writeAudit(ctx, agent, { action: "nexus.credential_remove", resourceType: "nexusCredential", resourceId: agent._id, resourceLabel: `${agent.prenomRP} ${agent.nomRP}`, before: row ? { email: row.email } : null });
   },
 });
 
@@ -440,6 +456,8 @@ export const removeCredentialFor = mutation({
     await requirePermission(ctx, actor, "effectif.edit");
     const row = await ctx.db.query("nexusCredentials").withIndex("by_agent", (q) => q.eq("agentId", agentId)).unique();
     if (row) await ctx.db.delete(row._id);
+    const target = await ctx.db.get(agentId);
+    await writeAudit(ctx, actor, { action: "nexus.credential_remove", resourceType: "nexusCredential", resourceId: agentId, resourceLabel: target ? `${target.prenomRP} ${target.nomRP}` : undefined, before: row ? { email: row.email } : null });
   },
 });
 
@@ -511,6 +529,7 @@ export const createCitizen = action({
   handler: async (ctx, a): Promise<Id<"citizens">> => {
     const agentId = await ctx.runQuery(api.nexusSync.myAgentId, {});
     if (!agentId) throw new ConvexError("Non authentifié.");
+    await ctx.runQuery(api.nexusSync.assertMyPermission, { slug: "citoyens.create" });
     const cred = await ctx.runQuery(internal.nexusSync._credFor, { agentId });
     if (!cred) throw new ConvexError("Compte NexusMDT non lié : reliez-le dans Mon profil > Paramètres pour créer des fiches (elles sont écrites en votre nom sur le NexusMDT).");
 
@@ -1181,6 +1200,7 @@ export const createComplaint = action({
   handler: async (ctx, a): Promise<Id<"complaints">> => {
     const agentId = await ctx.runQuery(api.nexusSync.myAgentId, {});
     if (!agentId) throw new ConvexError("Non authentifié.");
+    await ctx.runQuery(api.nexusSync.assertMyPermission, { slug: "plaintes.create" });
     const cred = await ctx.runQuery(internal.nexusSync._credFor, { agentId });
     if (!cred) throw new ConvexError("Compte NexusMDT non lié : reliez-le dans Mon profil > Paramètres pour créer des fiches (elles sont écrites en votre nom sur le NexusMDT).");
     const cx = await ctx.runQuery(internal.nexusSync._complaintPushCtx, { plaignantId: a.plaignantId, defendantCitizenId: a.defendantCitizenId, defendantName: a.defendantName, agentIds: a.agentIds });
@@ -1231,6 +1251,7 @@ export const updateComplaint = action({
   handler: async (ctx, a): Promise<void> => {
     const agentId = await ctx.runQuery(api.nexusSync.myAgentId, {});
     if (!agentId) throw new ConvexError("Non authentifié.");
+    await ctx.runQuery(api.nexusSync.assertMyPermission, { slug: "plaintes.edit" });
     const cred = await ctx.runQuery(internal.nexusSync._credFor, { agentId });
     const info = await ctx.runQuery(internal.nexusSync._complaintNexusId, { id: a.id });
     const cx = await ctx.runQuery(internal.nexusSync._complaintPushCtx, { defendantCitizenId: a.defendantCitizenId, defendantName: a.defendantName, agentIds: a.agentIds });
@@ -1294,6 +1315,7 @@ export const createDeposition = action({
   handler: async (ctx, a): Promise<Id<"depositions">> => {
     const agentId = await ctx.runQuery(api.nexusSync.myAgentId, {});
     if (!agentId) throw new ConvexError("Non authentifié.");
+    await ctx.runQuery(api.nexusSync.assertMyPermission, { slug: "depositions.create" });
     const cred = await ctx.runQuery(internal.nexusSync._credFor, { agentId });
     if (!cred) throw new ConvexError("Compte NexusMDT non lié : reliez-le dans Mon profil > Paramètres pour créer des fiches (elles sont écrites en votre nom sur le NexusMDT).");
     if (!a.title.trim()) throw new ConvexError("L'objet de la déposition est requis.");
@@ -1335,6 +1357,7 @@ export const updateDeposition = action({
   handler: async (ctx, a): Promise<void> => {
     const agentId = await ctx.runQuery(api.nexusSync.myAgentId, {});
     if (!agentId) throw new ConvexError("Non authentifié.");
+    await ctx.runQuery(api.nexusSync.assertMyPermission, { slug: "depositions.create" });
     const cred = await ctx.runQuery(internal.nexusSync._credFor, { agentId });
     const info = await ctx.runQuery(internal.nexusSync._depositionNexusId, { id: a.id });
     const citizenId = await ctx.runQuery(internal.nexusSync._depositionCitizen, { id: a.id });
@@ -1429,6 +1452,7 @@ export const createWeapon = action({
   handler: async (ctx, a): Promise<Id<"weapons">> => {
     const agentId = await ctx.runQuery(api.nexusSync.myAgentId, {});
     if (!agentId) throw new ConvexError("Non authentifié.");
+    await ctx.runQuery(api.nexusSync.assertMyPermission, { slug: "armes.create" });
     const cred = await ctx.runQuery(internal.nexusSync._credFor, { agentId });
     if (!cred) throw new ConvexError("Compte NexusMDT non lié : reliez-le dans Mon profil > Paramètres pour créer des fiches (elles sont écrites en votre nom sur le NexusMDT).");
     const owner = await ctx.runQuery(internal.nexusSync._citizenNexusRef, { citizenId: a.ownerId });

@@ -2125,7 +2125,8 @@ export default defineSchema({
     .index("by_nexus", ["nexusId"])
     .index("by_import", ["importRef"])
     .index("by_casier", ["casierEntryId"])
-    .index("by_citation", ["citationId"]),
+    .index("by_citation", ["citationId"])
+    .index("by_deleted", ["deletedAt"]),
 
   citationCharges: defineTable({
     citationId: v.id("citations"),
@@ -2210,7 +2211,8 @@ export default defineSchema({
     createdBy: v.optional(v.id("agents")),
     createdAt: v.number(),
     deletedAt: v.optional(v.number()), // soft-delete universel
-  }).index("by_at", ["at"]),
+    deletedBy: v.optional(v.id("agents")),
+  }).index("by_at", ["at"]).index("by_deleted", ["deletedAt"]),
 
   ceremonyReminders: defineTable({
     ceremonyId: v.id("ceremonies"),
@@ -2613,9 +2615,11 @@ export default defineSchema({
     createdBy: v.id("agents"),
     createdAt: v.number(),
     deletedAt: v.optional(v.number()),
+    deletedBy: v.optional(v.id("agents")),
   })
     .index("by_agent", ["agentId"])
-    .index("by_serial", ["serial"]),
+    .index("by_serial", ["serial"])
+    .index("by_deleted", ["deletedAt"]),
 
   // State Code du serveur RP (source : site officiel), importé pour l'assistant
   // juridique. Une ligne = une section (un « code »). Recherche par mots-clés

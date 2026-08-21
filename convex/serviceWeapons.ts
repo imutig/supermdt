@@ -63,7 +63,7 @@ export const remove = mutation({
     const w = await ctx.db.get(id);
     if (!w || w.deletedAt) return;
     if (w.agentId !== agent._id) await requirePermission(ctx, agent, "effectif.edit");
-    await ctx.db.patch(id, { deletedAt: Date.now() });
+    await ctx.db.patch(id, { deletedAt: Date.now(), deletedBy: agent._id });
     const owner = await agentLabel(ctx, w.agentId);
     await notify(ctx, "serviceWeapon.remove", {
       title: "Arme de service retirée",
