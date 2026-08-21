@@ -4,6 +4,7 @@ import { paginationOptsValidator } from "convex/server";
 import type { QueryCtx, MutationCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { requireAgent, requirePermission, can, agentLabel } from "./rbac";
+import { writeAudit } from "./lib/audit";
 import { notify, NOTIFY_COLOR } from "./lib/notify";
 import { openTrip, closeTrip, tripAddMember, tripRemoveMember, roofToNumber } from "./fleet";
 
@@ -431,6 +432,7 @@ export const create = mutation({
     await logPatrol(ctx, patrolId, agent._id, "created", `Patrouille créée (${members.length} agent${members.length > 1 ? "s" : ""})`);
     const memberNames = [];
     for (const m of members) memberNames.push(await agentName(ctx, m));
+    await writeAudit(ctx, agent, { action: "dispatch.patrol_create", resourceType: "patrol", resourceId: patrolId, resourceLabel: `13${indicator}${numPadded}`, metadata: { members: memberNames } });
     await notify(ctx, "patrol.create", {
       title: `Patrouille créée · 13${indicator}${numPadded}`,
       description: memberNames.join(", "),
@@ -475,6 +477,7 @@ export const createForAgent = mutation({
     await ctx.db.insert("patrolMembers", { patrolId, agentId, at: now });
     await addPatrolSearchTokens(ctx, patrolId, [agentId]);
     await logPatrol(ctx, patrolId, agent._id, "created", `Patrouille créée avec ${await agentName(ctx, agentId)}`);
+    await writeAudit(ctx, agent, { action: "dispatch.patrol_create", resourceType: "patrol", resourceId: patrolId, resourceLabel: `13${indicator}${vehicleNumber}`, metadata: { members: [await agentName(ctx, agentId)] } });
     await notify(ctx, "patrol.create", {
       title: `Patrouille créée · 13${indicator}${vehicleNumber}`,
       description: await agentName(ctx, agentId),
@@ -661,6 +664,7 @@ export const operationCreate = mutation({
     const clean = name.trim();
     if (!clean) throw new ConvexError("Nom de l'opération requis.");
     const opId = await ctx.db.insert("operations", { name: clean, createdBy: agent._id, startedAt: Date.now() });
+    await writeAudit(ctx, agent, { action: "dispatch.operation_create", resourceType: "operation", resourceId: opId, resourceLabel: clean });
     await notify(ctx, "operation.start", {
       title: `Opération lancée · ${clean}`,
       color: NOTIFY_COLOR.info,
@@ -695,6 +699,7 @@ export const operationEnd = mutation({
       await logPatrol(ctx, p._id, agent._id, "operation", `Fin de l'opération « ${op.name} » - repli en Indisponible`);
     }
     await ctx.db.patch(operationId, { endedAt: now });
+    await writeAudit(ctx, agent, { action: "dispatch.operation_end", resourceType: "operation", resourceId: operationId, resourceLabel: op.name });
     await notify(ctx, "operation.end", {
       title: `Opération terminée · ${op.name}`,
       description: `Durée : ${Math.max(1, Math.round((now - op.startedAt) / 60000))} min.`,
@@ -736,6 +741,7 @@ export const dissolve = mutation({
     await ensureCanEdit(ctx, agent._id, patrol);
     const members = await ctx.db.query("patrolMembers").withIndex("by_patrol", (q) => q.eq("patrolId", patrolId)).collect();
     await logPatrol(ctx, patrolId, agent._id, "ended", "Patrouille dissoute");
+    await writeAudit(ctx, agent, { action: "dispatch.patrol_dissolve", resourceType: "patrol", resourceId: patrolId, resourceLabel: patrol.label });
     for (const m of members) await ctx.db.delete(m._id);
     await ctx.db.patch(patrolId, { endedAt: Date.now() });
     // Dissolution manuelle : la sortie se clôt aussi (rentrée).
@@ -778,9 +784,15 @@ export const statusUpsert = mutation({
     // `requires` est saisi en liste séparée par des virgules dans l'éditeur de config.
     const reqList = (requires ?? "").split(",").map((x) => x.trim()).filter((x) => x && x in FIELD_LABELS);
     const common = { name, color, isDefault, active, group: group?.trim() || undefined, icon: icon?.trim() || undefined, requires: reqList };
-    if (id) { await ctx.db.patch(id, common); return id; }
+    if (id) {
+      await ctx.db.patch(id, common);
+      await writeAudit(ctx, agent, { action: "dispatch.status_save", resourceType: "config", resourceId: id, resourceLabel: name });
+      return id;
+    }
     const count = (await ctx.db.query("dispatchStatuses").collect()).length;
-    return await ctx.db.insert("dispatchStatuses", { ...common, position: count });
+    const newId = await ctx.db.insert("dispatchStatuses", { ...common, position: count });
+    await writeAudit(ctx, agent, { action: "dispatch.status_save", resourceType: "config", resourceId: newId, resourceLabel: name });
+    return newId;
   },
 });
 
@@ -789,9 +801,15 @@ export const sectorUpsert = mutation({
   handler: async (ctx, { id, name, active }) => {
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "rbac.manage");
-    if (id) { await ctx.db.patch(id, { name, active }); return id; }
+    if (id) {
+      await ctx.db.patch(id, { name, active });
+      await writeAudit(ctx, agent, { action: "dispatch.sector_save", resourceType: "config", resourceId: id, resourceLabel: name });
+      return id;
+    }
     const count = (await ctx.db.query("dispatchSectors").collect()).length;
-    return await ctx.db.insert("dispatchSectors", { name, active, position: count });
+    const newId = await ctx.db.insert("dispatchSectors", { name, active, position: count });
+    await writeAudit(ctx, agent, { action: "dispatch.sector_save", resourceType: "config", resourceId: newId, resourceLabel: name });
+    return newId;
   },
 });
 
@@ -800,7 +818,9 @@ export const sectorRemove = mutation({
   handler: async (ctx, { id }) => {
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "rbac.manage");
+    const s = await ctx.db.get(id);
     await ctx.db.delete(id);
+    await writeAudit(ctx, agent, { action: "dispatch.sector_remove", resourceType: "config", resourceId: id, resourceLabel: s?.name });
   },
 });
 
@@ -809,10 +829,12 @@ export const statusRemove = mutation({
   handler: async (ctx, { id }) => {
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "rbac.manage");
+    const st = await ctx.db.get(id);
     for (const p of await ctx.db.query("patrols").withIndex("by_open", (q) => q.eq("endedAt", undefined)).collect()) {
       if (p.statusId === id) await ctx.db.patch(p._id, { statusId: undefined });
     }
     await ctx.db.delete(id);
+    await writeAudit(ctx, agent, { action: "dispatch.status_remove", resourceType: "config", resourceId: id, resourceLabel: st?.name });
   },
 });
 

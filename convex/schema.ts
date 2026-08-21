@@ -2356,6 +2356,23 @@ export default defineSchema({
 
   // Journal des opérations de synchro Nexus (imports + écritures write-through),
   // pour la page de monitoring (graphiques, taux de succès, appels API).
+  // Journal TECHNIQUE des opérations automatiques (imports, tâches planifiées,
+  // files Discord…) pour le dépannage. Distinct de `auditLog` (actions humaines) :
+  // ici, pas d'acteur, mais une source, un niveau et un message français.
+  systemLog: defineTable({
+    at: v.number(),
+    source: v.string(), // "ingame" | "cron" | "roleJob" | "rapportgouv" | "bot"…
+    level: v.union(v.literal("INFO"), v.literal("WARN"), v.literal("ERROR")),
+    event: v.string(), // code court, ex. "ingame.sync", "cron.expire_mandats"
+    message: v.string(), // phrase française lisible
+    durationMs: v.optional(v.number()),
+    count: v.optional(v.number()),
+    metadata: v.optional(v.any()),
+  })
+    .index("by_at", ["at"])
+    .index("by_source", ["source", "at"])
+    .index("by_level", ["level", "at"]),
+
   nexusSyncLog: defineTable({
     at: v.number(),
     direction: v.union(v.literal("IMPORT"), v.literal("WRITE"), v.literal("AUTH")),

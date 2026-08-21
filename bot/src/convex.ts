@@ -173,6 +173,8 @@ export const mdt = {
     client.mutation(anyApi.ingameService.upsert, { secret: env.botSecret, ...a }) as Promise<{ created: boolean }>,
   ingameSetCursor: (a: { lastMsgId?: string; clearResync?: boolean }) =>
     client.mutation(anyApi.ingameService.setCursor, { secret: env.botSecret, ...a }) as Promise<void>,
+  ingameLogSync: (a: { processed: number; created: number; full?: boolean; error?: string }) =>
+    client.mutation(anyApi.ingameService.logSync, { secret: env.botSecret, ...a }) as Promise<void>,
   roleJobsPending: () => client.query(anyApi.bot.roleJobsPending, { secret: env.botSecret }) as Promise<{ _id: string; discordId: string; addRoleId: string | null; removeRoleIds: string[]; reason: string | null }[]>,
   markRoleJob: (jobId: string, status: "DONE" | "ERROR", error?: string) => client.mutation(anyApi.bot.markRoleJob, { secret: env.botSecret, jobId, status, error }) as Promise<void>,
 

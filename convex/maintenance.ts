@@ -1,6 +1,7 @@
 import { internalMutation } from "./_generated/server";
 import { v, ConvexError } from "convex/values";
 import type { Id } from "./_generated/dataModel";
+import { writeSystemLog } from "./systemLog";
 
 // Opérations de maintenance ponctuelles, NON exposées au client (internalMutation :
 // exécutables uniquement via `npx convex run` par un administrateur du déploiement).
@@ -84,6 +85,7 @@ export const cleanupOrphanAuth = internalMutation({
     }
     for (const u of orphans) await ctx.db.delete(u._id);
 
+    await writeSystemLog(ctx, { source: "cron", event: "auth.cleanup_orphans", message: `${orphans.length} compte(s) d'authentification orphelin(s) nettoyé(s).`, count: orphans.length });
     return { orphans: orphans.length };
   },
 });

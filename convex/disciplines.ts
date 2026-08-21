@@ -4,6 +4,7 @@ import { internal } from "./_generated/api";
 import { v, ConvexError } from "convex/values";
 import { assertOutranks, requireAgent, requirePermission } from "./rbac";
 import { writeAudit } from "./lib/audit";
+import { writeSystemLog } from "./systemLog";
 import { notify, NOTIFY_COLOR, deepLink } from "./lib/notify";
 import { parisWallToEpoch } from "./lib/paris";
 
@@ -245,6 +246,7 @@ export const liftExpiredSuspensions = internalMutation({
         lifted++;
       }
     }
+    if (lifted > 0) await writeSystemLog(ctx, { source: "cron", event: "discipline.lift_suspensions", message: `${lifted} mise(s) à pied échue(s) levée(s) automatiquement.`, count: lifted });
     return { lifted };
   },
 });

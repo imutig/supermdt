@@ -3,6 +3,7 @@ import { query, mutation, internalMutation } from "./_generated/server";
 import type { QueryCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { requireAgent, requirePermission } from "./rbac";
+import { writeSystemLog } from "./systemLog";
 import { parisParts, parisWallToEpoch } from "./lib/paris";
 import { assertBot } from "./bot";
 
@@ -61,6 +62,35 @@ export const upsert = mutation({
     const cfg = await ctx.db.query("integrationConfig").first();
     if (cfg) await ctx.db.patch(cfg._id, { ingameServiceCount: (cfg.ingameServiceCount ?? 0) + 1 });
     return { created: true as const };
+  },
+});
+
+// Récap d'une passe de synchro des services in-game (journal technique). Appelé
+// par le bot après chaque passe : trace ce qui a été récupéré depuis Discord, et
+// les échecs, pour faciliter le dépannage.
+export const logSync = mutation({
+  args: {
+    secret: v.string(),
+    processed: v.number(),
+    created: v.number(),
+    full: v.optional(v.boolean()),
+    error: v.optional(v.string()),
+  },
+  handler: async (ctx, { secret, processed, created, full, error }) => {
+    assertBot(secret);
+    if (error) {
+      await writeSystemLog(ctx, { source: "ingame", level: "ERROR", event: "ingame.sync", message: `Échec de la synchro des services in-game : ${error}` });
+      return;
+    }
+    // On ne trace que les passes utiles (au moins un nouveau service) pour ne pas
+    // saturer le journal — la passe tourne chaque minute.
+    if (created > 0) {
+      await writeSystemLog(ctx, {
+        source: "ingame", level: "INFO", event: "ingame.sync",
+        message: `${created} nouveau(x) service(s) in-game importé(s) depuis Discord${full ? " (resync complète)" : ""}.`,
+        count: created, metadata: { processed, full: !!full },
+      });
+    }
   },
 });
 

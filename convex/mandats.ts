@@ -2,6 +2,7 @@ import { mutation, query, internalMutation } from "./_generated/server";
 import { v, ConvexError } from "convex/values";
 import { requireAgent, requirePermission, agentLabel } from "./rbac";
 import { writeAudit } from "./lib/audit";
+import { writeSystemLog } from "./systemLog";
 import { touchStats } from "./stats";
 import { notify, NOTIFY_COLOR, deepLink } from "./lib/notify";
 
@@ -194,6 +195,7 @@ export const expireDue = internalMutation({
       await ctx.db.patch(m._id, { status: "EXPIRE" });
       n++;
     }
+    if (n > 0) await writeSystemLog(ctx, { source: "cron", event: "mandats.expire", message: `${n} mandat(s) actif(s) passé(s) en « Expiré ».`, count: n });
     // Récap unique : le cron passe régulièrement, on ne notifie que s'il y a eu
     // au moins une expiration.
     if (n > 0) {

@@ -311,18 +311,27 @@ export const generate = action({
     if (!base || !secret) throw new ConvexError("Service de rapport non configuré (REPORT_SERVICE_URL / REPORT_SECRET).");
     const payload = await ctx.runQuery(internal.weeklyReport._payload, { from, to });
     const url = (/^https?:\/\//i.test(base) ? base : `https://${base}`).replace(/\/$/, "") + "/compile";
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "content-type": "application/json", "x-report-secret": secret },
-      body: JSON.stringify(payload),
-    });
+    const t0 = Date.now();
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-report-secret": secret },
+        body: JSON.stringify(payload),
+      });
+    } catch (e) {
+      await ctx.runMutation(internal.systemLog._log, { source: "rapportgouv", level: "ERROR", event: "rapport.generate", message: `Service de génération PDF injoignable : ${e instanceof Error ? e.message : String(e)}` });
+      throw new ConvexError("Service de génération du rapport injoignable.");
+    }
     if (!res.ok) {
       const t = await res.text().catch(() => "");
+      await ctx.runMutation(internal.systemLog._log, { source: "rapportgouv", level: "ERROR", event: "rapport.generate", message: `Échec de génération du PDF (HTTP ${res.status}).`, metadata: { detail: t.slice(0, 400) } });
       throw new ConvexError(`Échec de génération (${res.status}). ${t.slice(0, 400)}`);
     }
     const blob = new Blob([await res.arrayBuffer()], { type: "application/pdf" });
     const storageId = await ctx.storage.store(blob);
     await ctx.runMutation(internal.weeklyReport._recordPdf, { weekStart: from, weekEnd: to, storageId });
+    await ctx.runMutation(internal.systemLog._log, { source: "rapportgouv", level: "INFO", event: "rapport.generate", message: "Rapport hebdomadaire (PDF) généré avec succès.", durationMs: Date.now() - t0 });
     return { url: (await ctx.storage.getUrl(storageId)) ?? "" };
   },
 });

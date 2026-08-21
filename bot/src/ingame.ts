@@ -92,7 +92,10 @@ export async function syncInGameServices(client: Client): Promise<void> {
     }
   } catch (e) {
     console.error("[ingame] synchro échouée :", e);
+    await mdt.ingameLogSync({ processed, created, full, error: e instanceof Error ? e.message : String(e) }).catch(() => {});
     return;
   }
   if (processed) console.log(`[ingame] ${processed} log(s) traité(s), ${created} nouveau(x)${full ? " (historique complet)" : ""}.`);
+  // Journal technique côté site : ne trace que les passes utiles (created > 0).
+  if (created > 0) await mdt.ingameLogSync({ processed, created, full }).catch(() => {});
 }

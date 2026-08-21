@@ -19,6 +19,7 @@ const TABS = [
   { key: "discord", label: "Commandes Discord" },
   { key: "defcon", label: "DEFCON" },
   { key: "audit", label: "Journal d'audit" },
+  { key: "system", label: "Journal technique" },
 ] as const;
 type TabKey = (typeof TABS)[number]["key"];
 
@@ -49,6 +50,71 @@ export function Admin() {
       {tab === "discord" && <DiscordCommandsTab />}
       {tab === "defcon" && <DefconTab />}
       {tab === "audit" && <AuditTab />}
+      {tab === "system" && <SystemLogTab />}
+    </div>
+  );
+}
+
+/* ============ Journal technique (opérations automatiques) ============ */
+const SYS_SOURCE_LABEL: Record<string, string> = {
+  ingame: "Services in-game",
+  cron: "Tâches planifiées",
+  roleJob: "Rôles Discord",
+  rapportgouv: "Rapport hebdo",
+  bot: "Bot",
+};
+function SystemLogTab() {
+  const [source, setSource] = useState("");
+  const [level, setLevel] = useState<"" | "INFO" | "WARN" | "ERROR">("");
+  const sources = useQuery(api.systemLog.sources);
+  const rows = useQuery(api.systemLog.recent, {
+    ...(source ? { source } : {}),
+    ...(level ? { level } : {}),
+    limit: 300,
+  });
+  const LEVEL_COLOR: Record<string, string> = { INFO: "var(--muted)", WARN: "var(--warning)", ERROR: "var(--danger)" };
+  return (
+    <div className="flex flex-col gap-[14px]">
+      <div className="rounded-card border border-border bg-surface p-[14px]">
+        <div className="mb-[6px] text-[13.5px] font-bold">Journal technique</div>
+        <div className="mb-[12px] text-[12.5px] text-muted">
+          Trace les opérations <b>automatiques</b> (import des services depuis Discord, tâches planifiées, files de rôles, génération du rapport…) pour faciliter le dépannage. Distinct du journal d'audit, qui trace les actions humaines.
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <select value={source} onChange={(e) => setSource(e.target.value)} className="h-9 rounded-sm border border-border bg-surface-2 px-2 text-[12.5px] outline-none focus:border-accent">
+            <option value="">Toutes les sources</option>
+            {(sources ?? []).map((s) => <option key={s} value={s}>{SYS_SOURCE_LABEL[s] ?? s}</option>)}
+          </select>
+          <select value={level} onChange={(e) => setLevel(e.target.value as "" | "INFO" | "WARN" | "ERROR")} className="h-9 rounded-sm border border-border bg-surface-2 px-2 text-[12.5px] outline-none focus:border-accent">
+            <option value="">Tous les niveaux</option>
+            <option value="INFO">Info</option>
+            <option value="WARN">Avertissement</option>
+            <option value="ERROR">Erreur</option>
+          </select>
+        </div>
+      </div>
+      <div className="overflow-hidden rounded-card border border-border bg-surface">
+        <div className="grid grid-cols-[1.1fr_.7fr_.5fr_2.4fr] gap-3 border-b border-border px-4 py-[11px] text-[10px] font-bold uppercase tracking-[0.08em] text-faint">
+          <span>Quand</span><span>Source</span><span>Niveau</span><span>Message</span>
+        </div>
+        {rows === undefined ? (
+          <div className="p-4"><SkeletonRows rows={6} /></div>
+        ) : rows.length === 0 ? (
+          <EmptyState compact title="Aucune entrée" message="Les opérations automatiques apparaîtront ici." />
+        ) : (
+          rows.map((r) => (
+            <div key={r._id} className="grid grid-cols-[1.1fr_.7fr_.5fr_2.4fr] items-center gap-3 border-b border-border px-4 py-[9px]">
+              <span className="font-data text-[11.5px] text-muted">{new Date(r.at).toLocaleString("fr-FR")}</span>
+              <span className="text-[12px] text-muted">{SYS_SOURCE_LABEL[r.source] ?? r.source}</span>
+              <span className="text-[11px] font-bold uppercase" style={{ color: LEVEL_COLOR[r.level] ?? "var(--muted)" }}>{r.level}</span>
+              <span className="text-[12.5px]">
+                {r.message}
+                {r.durationMs != null && <span className="ml-[6px] font-data text-[11px] text-faint">({(r.durationMs / 1000).toFixed(1)}s)</span>}
+              </span>
+            </div>
+          ))
+        )}
+      </div>
     </div>
   );
 }

@@ -3,6 +3,7 @@ import { v, ConvexError } from "convex/values";
 import { internal } from "./_generated/api";
 import { inclusiveDaysParis } from "./lib/paris";
 import { chargeDisplayNameQty } from "./lib/charges";
+import { writeSystemLog } from "./systemLog";
 import type { QueryCtx, MutationCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 
@@ -243,7 +244,11 @@ export const markRoleJob = mutation({
     if (!job) return;
     const attempts = (job.attempts ?? 0) + 1;
     const MAX_ATTEMPTS = 5;
-    await ctx.db.patch(jobId, { status: attempts >= MAX_ATTEMPTS ? "ERROR" : "PENDING", attempts, error });
+    const definitive = attempts >= MAX_ATTEMPTS;
+    await ctx.db.patch(jobId, { status: definitive ? "ERROR" : "PENDING", attempts, error });
+    if (definitive) {
+      await writeSystemLog(ctx, { source: "roleJob", level: "ERROR", event: "discord.role_job", message: `Échec définitif de synchro d'un rôle Discord (${attempts} tentatives) : ${error ?? "erreur inconnue"}`, metadata: { discordId: job.discordId, reason: job.reason ?? null } });
+    }
   },
 });
 
