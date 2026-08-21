@@ -17,7 +17,8 @@ import { AgentAvatar, fmtMatricule } from "@/components/common/AgentTag";
 import { useAgentCard } from "@/components/common/AgentCard";
 
 type Status = { _id: string; name: string; color: string | null; icon: string | null; group: string | null; requires: string[] };
-type Member = { matricule: number | null; name: string; agentId: string; gradeAbbrev: string | null; gradeColor: string | null; gradePos: number; avatarUrl: string | null; phone: string | null };
+type Division = { name: string; color: string | null };
+type Member = { matricule: number | null; name: string; agentId: string; gradeAbbrev: string | null; gradeColor: string | null; gradePos: number; avatarUrl: string | null; phone: string | null; divisions: Division[] };
 type Operation = { _id: string; name: string; createdBy: string; startedAt: number; creator: string };
 type Patrol = {
   _id: string; label: string; indicator: string; vehicleNumber: string; color: string | null; callsignTypeId: string | null;
@@ -471,6 +472,10 @@ function PatrolCard({ patrol, drag, isMine, agentDragging, compact, over, dimmed
 }) {
   const names = patrol.members.map((m) => m.name.split(" ").slice(-1)[0]).join(", ");
   const grades = patrol.members.filter((m) => m.gradeAbbrev);
+  // Divisions représentées dans la patrouille (union, sans doublon).
+  const patrolDivisions: Division[] = [];
+  const divSeen = new Set<string>();
+  for (const m of patrol.members) for (const d of m.divisions) if (!divSeen.has(d.name)) { divSeen.add(d.name); patrolDivisions.push(d); }
   const av = compact ? 20 : 24;
   const avatarStack = patrol.members.length > 0 ? (
     <div className="flex flex-shrink-0 items-center">
@@ -532,6 +537,8 @@ function PatrolCard({ patrol, drag, isMine, agentDragging, compact, over, dimmed
         <span className="min-w-0 flex-1 truncate">{names || "-"}</span>
       </div>
 
+      {!compact && <DivisionTags divisions={patrolDivisions} className="mt-[4px]" />}
+
       {compact ? (
         line && (
           <div className="mt-[2px] truncate text-[10.5px] font-semibold" style={{ color: patrol.detail ? (patrol.color ?? "var(--accent)") : accent }} title={line}>
@@ -552,6 +559,21 @@ function PatrolCard({ patrol, drag, isMine, agentDragging, compact, over, dimmed
           )}
         </>
       )}
+    </div>
+  );
+}
+
+// Divisions d'un agent, en marquage discret (petite pastille de couleur + nom).
+function DivisionTags({ divisions, className = "" }: { divisions: Division[]; className?: string }) {
+  if (divisions.length === 0) return null;
+  return (
+    <div className={`flex flex-wrap items-center gap-x-[7px] gap-y-[2px] ${className}`}>
+      {divisions.map((d) => (
+        <span key={d.name} title={`Division : ${d.name}`} className="inline-flex items-center gap-[3px] text-[9.5px] font-semibold uppercase tracking-[0.04em] text-faint">
+          <span className="h-[5px] w-[5px] flex-shrink-0 rounded-full" style={{ background: d.color ?? "var(--faint)" }} />
+          {d.name}
+        </span>
+      ))}
     </div>
   );
 }
@@ -605,6 +627,7 @@ function TrombinoView({ patrols }: { patrols: Patrol[] }) {
                 </div>
                 <div className="font-data text-[11px] font-semibold text-accent">{fmtMatricule(m.matricule) ?? "-"}</div>
                 <div className="font-data text-[11px] text-muted">{m.phone ? `📞 ${m.phone}` : <span className="text-faint">☎ non renseigné</span>}</div>
+                <DivisionTags divisions={m.divisions} className="mt-[1px]" />
                 <div className="mt-[1px] truncate font-data text-[10.5px] text-faint">{m.patrolLabel}</div>
               </div>
             </button>

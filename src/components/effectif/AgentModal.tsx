@@ -43,6 +43,8 @@ export function AgentModal({ agentId, onClose }: { agentId: Id<"agents">; onClos
   const cutService = useMutation(api.services.cut);
   const syncGradeRole = useMutation(api.discordLink.syncGradeRole);
   const unlinkDiscord = useMutation(api.discordLink.unlink);
+  const nexusStatus = useQuery(api.nexusSync.statusFor, { agentId });
+  const unlinkNexus = useMutation(api.nexusSync.removeCredentialFor);
   const createAbsence = useMutation(api.absences.createFor);
 
   const [matInput, setMatInput] = useState("");
@@ -626,6 +628,41 @@ export function AgentModal({ agentId, onClose }: { agentId: Id<"agents">; onClos
                   ) : (
                     <div className="rounded-sm border border-border bg-surface-2 px-[13px] py-[10px] text-[12.5px] text-faint">
                       Aucun compte Discord relié. Reliez-le depuis « Comptes Discord » dans l'effectif.
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Liaison Nexus : synchro write-through des écritures de l'agent. */}
+              {(canEditAgent || nexusStatus?.configured) && (
+                <div>
+                  <div className="mb-[8px] text-[10.5px] font-bold uppercase tracking-[0.09em] text-faint">Liaison Nexus</div>
+                  {nexusStatus?.configured ? (
+                    <div className="flex flex-col gap-[8px] rounded-sm border border-border bg-surface-2 px-[13px] py-[11px]">
+                      <div className="flex items-center gap-2">
+                        <span className="h-[8px] w-[8px] rounded-full" style={{ background: nexusStatus.status === "OK" ? "var(--success)" : nexusStatus.status === "INVALID" ? "var(--danger)" : "var(--faint)" }} />
+                        <span className="flex-1 truncate text-[12.5px] font-semibold">{nexusStatus.email}</span>
+                        <span className="text-[10.5px] font-bold uppercase tracking-[0.05em]" style={{ color: nexusStatus.status === "OK" ? "var(--success)" : nexusStatus.status === "INVALID" ? "var(--danger)" : "var(--faint)" }}>
+                          {nexusStatus.status === "OK" ? "Synchro active" : nexusStatus.status === "INVALID" ? "Identifiants invalides" : "Non testé"}
+                        </span>
+                      </div>
+                      {canEditAgent && (
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            onClick={async () => {
+                              if (!(await confirm({ title: "Délier le compte Nexus ?", message: "Les identifiants Nexus de cet agent seront supprimés et ses écritures ne se synchroniseront plus. Il pourra les renseigner à nouveau.", confirmLabel: "Délier", danger: true }))) return;
+                              void toast.guard(unlinkNexus({ agentId }), "Action impossible").then((r) => r !== undefined && toast.success("Compte Nexus délié."));
+                            }}
+                            className="flex items-center gap-[6px] rounded-sm border border-border bg-surface px-[11px] py-[7px] text-[12px] font-semibold text-muted hover:border-danger hover:text-danger"
+                          >
+                            <Link2Off className="h-[14px] w-[14px]" /> Délier le Nexus
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="rounded-sm border border-border bg-surface-2 px-[13px] py-[10px] text-[12.5px] text-faint">
+                      Aucun compte Nexus lié. L'agent le renseigne depuis « Mon profil ».
                     </div>
                   )}
                 </div>

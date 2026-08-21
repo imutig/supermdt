@@ -70,6 +70,7 @@ type Lookup = {
   agent: (id: Id<"agents">) => Promise<Doc<"agents"> | null>;
   grade: (agent: Doc<"agents">) => Promise<Doc<"grades"> | null>;
   status: (id: Id<"dispatchStatuses"> | undefined) => Promise<StatusView | null>;
+  divisions: (agentId: Id<"agents">) => Promise<{ name: string; color: string | null }[]>;
 };
 type StatusView = { _id: Id<"dispatchStatuses">; name: string; color: string | null; icon: string | null; group: string | null; requires: string[] };
 
@@ -81,6 +82,8 @@ function makeLookup(ctx: QueryCtx, preloadedStatuses?: Doc<"dispatchStatuses">[]
   const agents = new Map<string, Doc<"agents"> | null>();
   const grades = new Map<string, Doc<"grades"> | null>();
   const statuses = new Map<string, StatusView>();
+  const divsByAgent = new Map<string, { name: string; color: string | null }[]>();
+  const divDocs = new Map<string, Doc<"divisions"> | null>();
   for (const st of preloadedStatuses ?? []) statuses.set(st._id, statusOf(st));
 
   return {
@@ -102,6 +105,20 @@ function makeLookup(ctx: QueryCtx, preloadedStatuses?: Doc<"dispatchStatuses">[]
       const view = statusOf(s);
       statuses.set(id, view);
       return view;
+    },
+    async divisions(agentId) {
+      const k = agentId as string;
+      if (divsByAgent.has(k)) return divsByAgent.get(k)!;
+      const links = await ctx.db.query("agentDivisions").withIndex("by_agent", (q) => q.eq("agentId", agentId)).collect();
+      const out: { name: string; color: string | null }[] = [];
+      for (const l of links) {
+        const dk = l.divisionId as string;
+        if (!divDocs.has(dk)) divDocs.set(dk, await ctx.db.get(l.divisionId));
+        const d = divDocs.get(dk);
+        if (d) out.push({ name: d.name, color: d.color ?? null });
+      }
+      divsByAgent.set(k, out);
+      return out;
     },
   };
 }
@@ -136,6 +153,7 @@ async function patrolView(ctx: QueryCtx, patrol: Doc<"patrols">, lk: Lookup = ma
       agentId: m.agentId,
       avatarUrl: a?.avatarUrl ?? null,
       phone: a?.phone ?? null,
+      divisions: a ? await lk.divisions(m.agentId) : [],
       ...tag,
     });
   }
@@ -202,6 +220,7 @@ export const board = query({
         agentId: a._id,
         name: `${a.prenomRP} ${a.nomRP}`,
         matricule: a.matricule ?? (a.isOwner ? 0 : null),
+        divisions: await lk.divisions(a._id),
         ...(await gradeTag(lk, a)),
       });
     }

@@ -418,6 +418,31 @@ export const removeCredential = mutation({
   },
 });
 
+// Statut de la liaison Nexus d'un agent DONNÉ (encadrement, depuis l'effectif) —
+// jamais le secret.
+export const statusFor = query({
+  args: { agentId: v.id("agents") },
+  handler: async (ctx, { agentId }) => {
+    const viewer = await requireAgent(ctx);
+    await requirePermission(ctx, viewer, "effectif.view");
+    const row = await ctx.db.query("nexusCredentials").withIndex("by_agent", (q) => q.eq("agentId", agentId)).unique();
+    if (!row) return { configured: false as const };
+    return { configured: true as const, email: row.email, status: row.status, lastCheckedAt: row.lastCheckedAt ?? null, lastError: row.lastError ?? null };
+  },
+});
+
+// Délie la synchro Nexus d'un agent (encadrement, effectif.edit) : supprime ses
+// identifiants Nexus. Réversible en les renseignant à nouveau.
+export const removeCredentialFor = mutation({
+  args: { agentId: v.id("agents") },
+  handler: async (ctx, { agentId }) => {
+    const actor = await requireAgent(ctx);
+    await requirePermission(ctx, actor, "effectif.edit");
+    const row = await ctx.db.query("nexusCredentials").withIndex("by_agent", (q) => q.eq("agentId", agentId)).unique();
+    if (row) await ctx.db.delete(row._id);
+  },
+});
+
 // ============================================================================
 // WRITE-THROUGH - création de citoyen (Nexus = source de vérité).
 // On POST vers Nexus avec le token de l'agent (createdBy correct), puis on
