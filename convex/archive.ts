@@ -29,13 +29,15 @@ const KIND = v.union(
   v.literal("investigation"),
   v.literal("serviceWeapon"),
   v.literal("ceremony"),
+  v.literal("protocol"),
+  v.literal("resource"),
   v.literal("citizen"),
   v.literal("agent"),
 );
 type Kind =
   | "casier" | "citation" | "mandat" | "report" | "complaint" | "vehicle" | "weapon"
   | "saisie" | "discipline" | "deposition" | "note" | "relation" | "fleetVehicle" | "interview"
-  | "amende" | "convocation" | "investigation" | "serviceWeapon" | "ceremony"
+  | "amende" | "convocation" | "investigation" | "serviceWeapon" | "ceremony" | "protocol" | "resource"
   | "citizen" | "agent";
 
 async function citizenName(ctx: QueryCtx, id: Id<"citizens"> | undefined | null) {
@@ -150,6 +152,14 @@ const SOFT: Record<Exclude<Kind, "citizen" | "agent">, SoftConfig> = {
       for (const p of await ctx.db.query("ceremonyPromotions").withIndex("by_ceremony", (q) => q.eq("ceremonyId", c._id)).collect()) await ctx.db.delete(p._id);
       for (const d of await ctx.db.query("ceremonyDismissals").withIndex("by_ceremony", (q) => q.eq("ceremonyId", c._id)).collect()) await ctx.db.delete(d._id);
     },
+  },
+  protocol: {
+    table: "protocols",
+    describe: async (_ctx, p) => ({ label: p.title, summary: `Protocole${p.category ? ` - ${p.category}` : ""}` }),
+  },
+  resource: {
+    table: "resources",
+    describe: async (_ctx, r) => ({ label: r.title, summary: "Ressource de formation" }),
   },
 };
 

@@ -14,7 +14,7 @@ export const list = query({
     const categories = (await ctx.db.query("resourceCategories").collect()).sort(
       (a, b) => a.position - b.position,
     );
-    const articles = await ctx.db.query("resources").collect();
+    const articles = (await ctx.db.query("resources").collect()).filter((a) => !a.deletedAt);
     return categories.map((c) => ({
       _id: c._id,
       name: c.name,
@@ -49,7 +49,7 @@ export const upsert = mutation({
       await writeAudit(ctx, agent, { action: "resource.edit", resourceType: "resource", resourceId: args.id, resourceLabel: args.title });
       return args.id;
     }
-    const count = (await ctx.db.query("resources").collect()).length;
+    const count = (await ctx.db.query("resources").collect()).filter((a) => !a.deletedAt).length;
     const id = await ctx.db.insert("resources", {
       categoryId: args.categoryId,
       title: args.title,
@@ -69,7 +69,8 @@ export const remove = mutation({
   handler: async (ctx, { id }) => {
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "formations.delete");
-    await ctx.db.delete(id);
-    await writeAudit(ctx, agent, { action: "resource.delete", resourceType: "resource", resourceId: id });
+    const before = await ctx.db.get(id);
+    await ctx.db.patch(id, { deletedAt: Date.now(), deletedBy: agent._id });
+    await writeAudit(ctx, agent, { action: "resource.delete", resourceType: "resource", resourceId: id, resourceLabel: before?.title });
   },
 });

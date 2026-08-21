@@ -1711,7 +1711,9 @@ export default defineSchema({
     position: v.number(),
     updatedBy: v.optional(v.id("agents")),
     updatedAt: v.number(),
-  }).index("by_position", ["position"]),
+    deletedAt: v.optional(v.number()),
+    deletedBy: v.optional(v.id("agents")),
+  }).index("by_position", ["position"]).index("by_deleted", ["deletedAt"]),
 
   // ============ ABSENCES / LOA ============
   absences: defineTable({
@@ -1848,9 +1850,12 @@ export default defineSchema({
     position: v.number(),
     updatedBy: v.optional(v.id("agents")),
     updatedAt: v.number(),
+    deletedAt: v.optional(v.number()),
+    deletedBy: v.optional(v.id("agents")),
   })
     .index("by_category", ["categoryId"])
-    .index("by_position", ["position"]),
+    .index("by_position", ["position"])
+    .index("by_deleted", ["deletedAt"]),
 
   // ============ CARTE DE LOS SANTOS (§19) ============
   // Réglages de la carte (image de fond, etc.), singleton.

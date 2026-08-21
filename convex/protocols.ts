@@ -8,7 +8,7 @@ export const list = query({
   handler: async (ctx) => {
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "protocoles.view");
-    return ctx.db.query("protocols").withIndex("by_position").collect();
+    return (await ctx.db.query("protocols").withIndex("by_position").collect()).filter((p) => !p.deletedAt);
   },
 });
 
@@ -35,7 +35,7 @@ export const upsert = mutation({
       await writeAudit(ctx, agent, { action: "protocole.edit", resourceType: "protocol", resourceId: args.id, resourceLabel: args.title });
       return args.id;
     }
-    const count = (await ctx.db.query("protocols").collect()).length;
+    const count = (await ctx.db.query("protocols").collect()).filter((p) => !p.deletedAt).length;
     const id = await ctx.db.insert("protocols", {
       title: args.title,
       category: args.category,
@@ -55,7 +55,8 @@ export const remove = mutation({
   handler: async (ctx, { id }) => {
     const agent = await requireAgent(ctx);
     await requirePermission(ctx, agent, "protocoles.delete");
-    await ctx.db.delete(id);
-    await writeAudit(ctx, agent, { action: "protocole.delete", resourceType: "protocol", resourceId: id });
+    const before = await ctx.db.get(id);
+    await ctx.db.patch(id, { deletedAt: Date.now(), deletedBy: agent._id });
+    await writeAudit(ctx, agent, { action: "protocole.delete", resourceType: "protocol", resourceId: id, resourceLabel: before?.title });
   },
 });

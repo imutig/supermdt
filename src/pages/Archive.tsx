@@ -12,7 +12,7 @@ import { SkeletonRows } from "@/components/common/Skeleton";
 type Kind =
   | "casier" | "citation" | "mandat" | "report" | "complaint" | "vehicle" | "weapon"
   | "saisie" | "discipline" | "deposition" | "note" | "relation" | "fleetVehicle" | "interview"
-  | "amende" | "convocation" | "investigation" | "serviceWeapon" | "ceremony"
+  | "amende" | "convocation" | "investigation" | "serviceWeapon" | "ceremony" | "protocol" | "resource"
   | "citizen" | "agent";
 const KIND_LABEL: Record<Kind, string> = {
   casier: "Casier",
@@ -34,6 +34,8 @@ const KIND_LABEL: Record<Kind, string> = {
   investigation: "Enquête interne",
   serviceWeapon: "Arme de service",
   ceremony: "Cérémonie",
+  protocol: "Protocole",
+  resource: "Ressource",
   citizen: "Citoyen",
   agent: "Compte agent",
 };
@@ -59,6 +61,8 @@ const FILTERS: { key: Kind | "all"; label: string }[] = [
   { key: "investigation", label: "Enquêtes internes" },
   { key: "serviceWeapon", label: "Armes de service" },
   { key: "ceremony", label: "Cérémonies" },
+  { key: "protocol", label: "Protocoles" },
+  { key: "resource", label: "Ressources" },
   { key: "agent", label: "Comptes agents" },
 ];
 
