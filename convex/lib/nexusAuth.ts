@@ -3,18 +3,59 @@
 // (fetch réseau + Web Crypto ; indisponibles en query/mutation).
 const BASE = "https://mdt.vizu-world.com";
 
-// Login Nexus avec des identifiants fournis -> token Bearer.
+// Échec de login Nexus qualifié : « AUTH » = identifiants réellement refusés
+// (401/403) ; « TRANSIENT » = panne passagère (réseau, timeout, 429, 5xx, réponse
+// inattendue). On ne doit invalider un compte QUE sur un échec AUTH — un échec
+// TRANSIENT est temporaire et ne doit ni bloquer le compte ni déclencher d'alerte.
+export class NexusLoginError extends Error {
+  readonly kind: "AUTH" | "TRANSIENT";
+  readonly status?: number;
+  constructor(message: string, kind: "AUTH" | "TRANSIENT", status?: number) {
+    super(message);
+    this.name = "NexusLoginError";
+    this.kind = kind;
+    this.status = status;
+  }
+}
+
+// Vrai uniquement pour un échec d'authentification AVÉRÉ (mauvais identifiants).
+export function isNexusAuthFailure(e: unknown): boolean {
+  // instanceof + repli canard : robuste si l'erreur traverse une frontière de module.
+  return e instanceof NexusLoginError ? e.kind === "AUTH" : !!e && typeof e === "object" && (e as { kind?: string }).kind === "AUTH";
+}
+
+const LOGIN_TIMEOUT_MS = 20_000;
+
+// Login Nexus avec des identifiants fournis -> token Bearer. Lève une
+// NexusLoginError qualifiée (AUTH vs TRANSIENT) en cas d'échec.
 export async function nexusLogin(email: string, password: string): Promise<string> {
   const path = process.env.VIZU_LOGIN_PATH || "/auth/login";
-  const res = await fetch(`${BASE}${path}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password }),
-  });
-  if (!res.ok) throw new Error(`Login Nexus échoué (HTTP ${res.status}).`);
-  const j: any = await res.json();
-  const token = j.token || j.accessToken || j?.state?.token || j?.data?.token || j?.data?.accessToken;
-  if (!token) throw new Error("Token introuvable dans la réponse de login Nexus.");
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), LOGIN_TIMEOUT_MS);
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+      signal: ac.signal,
+    });
+  } catch (e) {
+    // Réseau injoignable / timeout / DNS… : passager, jamais un vrai refus.
+    throw new NexusLoginError(`Nexus injoignable (${e instanceof Error ? e.message : String(e)}).`, "TRANSIENT");
+  } finally {
+    clearTimeout(timer);
+  }
+  if (!res.ok) {
+    // Seuls 401/403 sont un refus d'identifiants ; tout le reste (429, 5xx, 404…)
+    // est traité comme passager pour ne pas invalider un compte à tort.
+    const kind = res.status === 401 || res.status === 403 ? "AUTH" : "TRANSIENT";
+    throw new NexusLoginError(`Login Nexus échoué (HTTP ${res.status}).`, kind, res.status);
+  }
+  const j: any = await res.json().catch(() => null);
+  const token = j && (j.token || j.accessToken || j?.state?.token || j?.data?.token || j?.data?.accessToken);
+  // Réponse OK mais sans token : anomalie serveur, pas un mauvais mot de passe.
+  if (!token) throw new NexusLoginError("Réponse de login Nexus inattendue (token absent).", "TRANSIENT");
   return token as string;
 }
 

@@ -6,7 +6,7 @@ import { paginationOptsValidator } from "convex/server";
 import type { Id } from "./_generated/dataModel";
 import { getCurrentAgent, requireAgent, requirePermission, agentLabel } from "./rbac";
 import { writeAudit } from "./lib/audit";
-import { nexusLogin, encryptSecret, decryptSecret } from "./lib/nexusAuth";
+import { nexusLogin, encryptSecret, decryptSecret, isNexusAuthFailure } from "./lib/nexusAuth";
 import { mapCitizen } from "./migration";
 import { parisParts } from "./lib/paris";
 import { chargeDisplayName } from "./lib/charges";
@@ -136,7 +136,7 @@ export const _allCreds = internalQuery({
     const out = [];
     for (const r of rows) {
       const agent = await ctx.db.get(r.agentId);
-      out.push({ agentId: r.agentId, email: r.email, secretEnc: r.secretEnc, status: r.status, agentName: agent ? `${agent.prenomRP} ${agent.nomRP}` : r.email });
+      out.push({ agentId: r.agentId, email: r.email, secretEnc: r.secretEnc, status: r.status, failCount: r.failCount ?? 0, agentName: agent ? `${agent.prenomRP} ${agent.nomRP}` : r.email });
     }
     return out;
   },
@@ -145,24 +145,70 @@ export const _setCredStatus = internalMutation({
   args: { agentId: v.id("agents"), status: v.union(v.literal("OK"), v.literal("INVALID")), error: v.optional(v.string()) },
   handler: async (ctx, { agentId, status, error }) => {
     const row = await ctx.db.query("nexusCredentials").withIndex("by_agent", (q) => q.eq("agentId", agentId)).unique();
-    if (row) await ctx.db.patch(row._id, { status, lastCheckedAt: Date.now(), lastError: error, ...(status === "INVALID" ? { tokenCache: undefined, tokenExpiry: undefined } : {}) });
+    // OK remet le compteur d'échecs à zéro ; INVALID vide le token en cache.
+    if (row) await ctx.db.patch(row._id, { status, lastCheckedAt: Date.now(), lastError: error, failCount: 0, ...(status === "INVALID" ? { tokenCache: undefined, tokenExpiry: undefined } : {}) });
+  },
+});
+
+// Enregistre un échec d'authentification SANS changer le statut (compte encore
+// considéré valide) : sert à compter les échecs consécutifs avant invalidation.
+export const _bumpCredFail = internalMutation({
+  args: { agentId: v.id("agents"), failCount: v.number(), error: v.optional(v.string()) },
+  handler: async (ctx, { agentId, failCount, error }) => {
+    const row = await ctx.db.query("nexusCredentials").withIndex("by_agent", (q) => q.eq("agentId", agentId)).unique();
+    if (row) await ctx.db.patch(row._id, { failCount, lastCheckedAt: Date.now(), lastError: error });
   },
 });
 
 // Cron : re-teste tous les comptes Nexus liés ; alerte quand l'un devient invalide
 // (mot de passe changé côté Nexus…).
+// Nombre d'échecs d'authentification CONSÉCUTIFS avant de déclarer un compte
+// invalide. Le cron passe toutes les 6 h : à 2, il faut ~12 h d'échecs AUTH réels
+// et répétés avant l'invalidation — assez pour absorber un incident passager, sans
+// laisser traîner un mot de passe réellement changé.
+const INVALIDATE_AFTER = 2;
+
 export const revalidateCredentials = internalAction({
   args: {},
   handler: async (ctx): Promise<{ checked: number }> => {
-    const creds: { agentId: Id<"agents">; email: string; secretEnc: string; status: string; agentName: string }[] = await ctx.runQuery(internal.nexusSync._allCreds, {});
+    const creds: { agentId: Id<"agents">; email: string; secretEnc: string; status: string; failCount: number; agentName: string }[] = await ctx.runQuery(internal.nexusSync._allCreds, {});
     for (const c of creds) {
-      let status: "OK" | "INVALID" = "OK";
+      let ok = false;
+      let authFail = false;
       let err: string | undefined;
-      try { const pw = await decryptSecret(c.secretEnc); await nexusLogin(c.email, pw); }
-      catch (e) { status = "INVALID"; err = e instanceof Error ? e.message : String(e); }
-      if (status !== c.status) {
-        await ctx.runMutation(internal.nexusSync._setCredStatus, { agentId: c.agentId, status, error: err });
-        if (status === "INVALID") await ctx.runMutation(internal.nexusSync._alert, { message: `⚠️ **Compte NexusMDT invalide** - ${c.agentName}. Le mot de passe a probablement changé côté Nexus ; la synchro de cet agent est suspendue.` });
+      try {
+        const pw = await decryptSecret(c.secretEnc);
+        await nexusLogin(c.email, pw);
+        ok = true;
+      } catch (e) {
+        if (isNexusAuthFailure(e)) { authFail = true; err = e instanceof Error ? e.message : String(e); }
+        // Échec PASSAGER (réseau, 429, 5xx…) : on ne touche à rien et on n'alerte
+        // pas — c'est exactement le cas qui bloquait des comptes à tort.
+        else continue;
+      }
+
+      if (ok) {
+        // Succès : on ne réécrit que si l'état doit changer (récupération d'un
+        // compte invalide, ou remise à zéro d'échecs comptabilisés).
+        if (c.status !== "OK" || c.failCount > 0) {
+          await ctx.runMutation(internal.nexusSync._setCredStatus, { agentId: c.agentId, status: "OK" });
+        }
+        continue;
+      }
+
+      // Échec d'authentification AVÉRÉ : on incrémente, et on n'invalide (+ alerte)
+      // qu'au franchissement du seuil, une seule fois.
+      if (authFail) {
+        const fails = c.failCount + 1;
+        if (fails >= INVALIDATE_AFTER) {
+          if (c.status !== "INVALID") {
+            await ctx.runMutation(internal.nexusSync._setCredStatus, { agentId: c.agentId, status: "INVALID", error: err });
+            await ctx.runMutation(internal.nexusSync._alert, { message: `⚠️ **Compte NexusMDT invalide** - ${c.agentName}. Identifiants refusés à plusieurs reprises (mot de passe probablement changé côté Nexus) ; la synchro de cet agent est suspendue jusqu'à mise à jour.` });
+          }
+        } else {
+          // 1er échec réel : on le note sans bloquer le compte ni alerter.
+          await ctx.runMutation(internal.nexusSync._bumpCredFail, { agentId: c.agentId, failCount: fails, error: err });
+        }
       }
     }
     return { checked: creds.length };
@@ -318,7 +364,8 @@ export const _store = internalMutation({
   args: { agentId: v.id("agents"), email: v.string(), secretEnc: v.string(), status: v.union(v.literal("UNTESTED"), v.literal("OK"), v.literal("INVALID")), lastError: v.optional(v.string()) },
   handler: async (ctx, { agentId, email, secretEnc, status, lastError }) => {
     const existing = await ctx.db.query("nexusCredentials").withIndex("by_agent", (q) => q.eq("agentId", agentId)).unique();
-    const data = { agentId, email, secretEnc, status, lastCheckedAt: Date.now(), lastError };
+    // Enregistrer/mettre à jour les identifiants remet le compteur d'échecs à zéro.
+    const data = { agentId, email, secretEnc, status, lastCheckedAt: Date.now(), lastError, failCount: 0 };
     if (existing) await ctx.db.patch(existing._id, data);
     else await ctx.db.insert("nexusCredentials", data);
   },
@@ -387,17 +434,25 @@ export const saveCredential = action({
     if (!mail || !password) throw new ConvexError("Email et mot de passe requis.");
     if (!/@lspd\.ls$/i.test(mail)) throw new ConvexError("L'email du compte Nexus doit se terminer par @lspd.ls.");
 
-    let status: "OK" | "INVALID" = "OK";
+    let status: "UNTESTED" | "OK" | "INVALID" = "OK";
     let lastError: string | undefined;
+    let transient = false;
     try {
       await nexusLogin(mail, password); // test réel
     } catch (e) {
-      status = "INVALID";
       lastError = e instanceof Error ? e.message : String(e);
+      if (isNexusAuthFailure(e)) {
+        status = "INVALID"; // identifiants réellement refusés
+      } else {
+        // Nexus injoignable pour le moment : on ENREGISTRE quand même (non testé),
+        // sans marquer le compte invalide. La re-validation auto confirmera plus tard.
+        status = "UNTESTED";
+        transient = true;
+      }
     }
     const secretEnc = await encryptSecret(password);
     await ctx.runMutation(internal.nexusSync._store, { agentId, email: mail, secretEnc, status, lastError });
-    return { ok: status === "OK", error: lastError ?? null };
+    return { ok: status === "OK", error: transient ? "Nexus injoignable pour le moment : identifiants enregistrés, ils seront re-testés automatiquement." : (lastError ?? null) };
   },
 });
 
@@ -409,17 +464,23 @@ export const testCredential = action({
     if (!agentId) throw new ConvexError("Non authentifié.");
     const cred = await ctx.runQuery(internal.nexusSync._credFor, { agentId });
     if (!cred) throw new ConvexError("Aucun identifiant enregistré.");
-    let status: "OK" | "INVALID" = "OK";
-    let lastError: string | undefined;
     try {
       const password = await decryptSecret(cred.secretEnc);
       await nexusLogin(cred.email, password);
     } catch (e) {
-      status = "INVALID";
-      lastError = e instanceof Error ? e.message : String(e);
+      const msg = e instanceof Error ? e.message : String(e);
+      if (isNexusAuthFailure(e)) {
+        // Identifiants réellement refusés : on marque invalide.
+        await ctx.runMutation(internal.nexusSync._setCredStatus, { agentId, status: "INVALID", error: msg });
+        return { ok: false, error: msg };
+      }
+      // Échec PASSAGER : on NE change PAS le statut (évite de bloquer un compte
+      // valide sur un simple hoquet réseau), on invite juste à réessayer.
+      return { ok: false, error: "Nexus injoignable pour le moment. Réessayez dans un instant (le statut du compte est inchangé)." };
     }
-    await ctx.runMutation(internal.nexusSync._store, { agentId, email: cred.email, secretEnc: cred.secretEnc, status, lastError });
-    return { ok: status === "OK", error: lastError ?? null };
+    // Succès : compte valide (remet aussi le compteur d'échecs à zéro).
+    await ctx.runMutation(internal.nexusSync._setCredStatus, { agentId, status: "OK" });
+    return { ok: true, error: null };
   },
 });
 

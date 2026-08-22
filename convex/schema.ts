@@ -2340,6 +2340,9 @@ export default defineSchema({
     status: v.union(v.literal("UNTESTED"), v.literal("OK"), v.literal("INVALID")),
     lastCheckedAt: v.optional(v.number()),
     lastError: v.optional(v.string()),
+    // Échecs d'authentification CONSÉCUTIFS lors de la re-validation auto. On
+    // n'invalide un compte qu'après un seuil, pour absorber les ratés passagers.
+    failCount: v.optional(v.number()),
     // Cache du token (évite un login à chaque écriture) + expiration (epoch ms).
     tokenCache: v.optional(v.string()),
     tokenExpiry: v.optional(v.number()),
