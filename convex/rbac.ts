@@ -126,6 +126,9 @@ export const PERMISSION_SLUGS: { slug: string; domain: string; description: stri
   { slug: "protocoles.create", domain: "protocoles", description: "Créer un protocole" },
   { slug: "protocoles.edit", domain: "protocoles", description: "Modifier un protocole" },
   { slug: "protocoles.delete", domain: "protocoles", description: "Supprimer un protocole" },
+  // Tenues (référentiel)
+  { slug: "tenues.view", domain: "tenues", description: "Consulter le référentiel des tenues" },
+  { slug: "tenues.manage", domain: "tenues", description: "Gérer les tenues (ajouter, modifier, supprimer)" },
   // Audit
   { slug: "audit.view", domain: "audit", description: "Consulter le journal d'audit" },
   // Archive (§18)

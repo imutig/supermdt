@@ -1869,6 +1869,23 @@ export default defineSchema({
     .index("by_position", ["position"])
     .index("by_deleted", ["deletedAt"]),
 
+  // Référentiel des TENUES : nom, catégorie, tags (recherche), photo et code de
+  // tenue à copier d'un clic. Saisie manuelle. Soft-delete (Archives).
+  tenues: defineTable({
+    name: v.string(),
+    category: v.optional(v.string()),
+    tags: v.optional(v.array(v.string())),
+    photoUrl: v.optional(v.string()),
+    code: v.string(),
+    position: v.number(),
+    updatedBy: v.optional(v.id("agents")),
+    updatedAt: v.number(),
+    deletedAt: v.optional(v.number()),
+    deletedBy: v.optional(v.id("agents")),
+  })
+    .index("by_position", ["position"])
+    .index("by_deleted", ["deletedAt"]),
+
   // ============ CARTE DE LOS SANTOS (§19) ============
   // Réglages de la carte (image de fond, etc.), singleton.
   mapConfig: defineTable({

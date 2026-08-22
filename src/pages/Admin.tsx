@@ -542,6 +542,7 @@ const PERM_SECTIONS: { domain: string; label: string }[] = [
   { domain: "carte", label: "Carte" },
   { domain: "codepenal", label: "Code pénal" },
   { domain: "protocoles", label: "Protocoles" },
+  { domain: "tenues", label: "Tenues" },
   { domain: "rapports", label: "Rapports" },
   { domain: "stats", label: "Statistiques" },
   { domain: "finances", label: "Finances" },

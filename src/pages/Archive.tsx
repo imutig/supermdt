@@ -12,7 +12,7 @@ import { SkeletonRows } from "@/components/common/Skeleton";
 type Kind =
   | "casier" | "citation" | "mandat" | "report" | "complaint" | "vehicle" | "weapon"
   | "saisie" | "discipline" | "deposition" | "note" | "relation" | "fleetVehicle" | "interview"
-  | "amende" | "convocation" | "investigation" | "serviceWeapon" | "ceremony" | "protocol" | "resource"
+  | "amende" | "convocation" | "investigation" | "serviceWeapon" | "ceremony" | "protocol" | "resource" | "tenue"
   | "divisionAnnouncement" | "cadetNote" | "flEvaluation" | "ftoPatrol" | "salaryBonus" | "citizenLicense"
   | "citizen" | "agent";
 const KIND_LABEL: Record<Kind, string> = {
@@ -37,6 +37,7 @@ const KIND_LABEL: Record<Kind, string> = {
   ceremony: "Cérémonie",
   protocol: "Protocole",
   resource: "Ressource",
+  tenue: "Tenue",
   divisionAnnouncement: "Annonce de division",
   cadetNote: "Note de cadet",
   flEvaluation: "Éval. First Lincoln",
@@ -70,6 +71,7 @@ const FILTERS: { key: Kind | "all"; label: string }[] = [
   { key: "ceremony", label: "Cérémonies" },
   { key: "protocol", label: "Protocoles" },
   { key: "resource", label: "Ressources" },
+  { key: "tenue", label: "Tenues" },
   { key: "divisionAnnouncement", label: "Annonces division" },
   { key: "cadetNote", label: "Notes cadet" },
   { key: "flEvaluation", label: "Évals First Lincoln" },

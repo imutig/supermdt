@@ -14,6 +14,7 @@ import {
   BookOpen,
   ListChecks,
   GraduationCap,
+  Shirt,
   Network,
   Users,
   Clock,
@@ -100,6 +101,7 @@ const GROUPS: NavGroup[] = [
       { key: "reglement", label: "Règlement", icon: BookOpen, to: "/reglement" },
       { key: "protocoles", label: "Protocoles", icon: ListChecks, to: "/protocoles", perm: "protocoles.view" },
       { key: "ressources", label: "Ressources", icon: GraduationCap, to: "/ressources", perm: "formations.view" },
+      { key: "tenues", label: "Tenues", icon: Shirt, to: "/tenues", perm: "tenues.view" },
     ],
   },
   {

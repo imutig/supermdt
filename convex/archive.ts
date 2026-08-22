@@ -31,6 +31,7 @@ const KIND = v.union(
   v.literal("ceremony"),
   v.literal("protocol"),
   v.literal("resource"),
+  v.literal("tenue"),
   v.literal("divisionAnnouncement"),
   v.literal("cadetNote"),
   v.literal("flEvaluation"),
@@ -43,7 +44,7 @@ const KIND = v.union(
 type Kind =
   | "casier" | "citation" | "mandat" | "report" | "complaint" | "vehicle" | "weapon"
   | "saisie" | "discipline" | "deposition" | "note" | "relation" | "fleetVehicle" | "interview"
-  | "amende" | "convocation" | "investigation" | "serviceWeapon" | "ceremony" | "protocol" | "resource"
+  | "amende" | "convocation" | "investigation" | "serviceWeapon" | "ceremony" | "protocol" | "resource" | "tenue"
   | "divisionAnnouncement" | "cadetNote" | "flEvaluation" | "ftoPatrol" | "salaryBonus" | "citizenLicense"
   | "citizen" | "agent";
 
@@ -167,6 +168,10 @@ const SOFT: Record<Exclude<Kind, "citizen" | "agent">, SoftConfig> = {
   resource: {
     table: "resources",
     describe: async (_ctx, r) => ({ label: r.title, summary: "Ressource de formation" }),
+  },
+  tenue: {
+    table: "tenues",
+    describe: async (_ctx, t) => ({ label: t.name, summary: `Tenue${t.category ? ` - ${t.category}` : ""}` }),
   },
   divisionAnnouncement: {
     table: "divisionAnnouncements",

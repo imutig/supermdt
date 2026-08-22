@@ -199,6 +199,8 @@ const LABELS: Record<string, string> = {
   "permission.grant_all": "a accordé une permission à tous les grades",
   "permission.revoke_all": "a retiré une permission à tous les grades",
   "reglement.update": "a mis à jour le règlement",
+  "tenue.save": "a enregistré une tenue",
+  "tenue.delete": "a supprimé une tenue",
   // Dispatch
   "dispatch.patrol_create": "a créé une patrouille",
   "dispatch.patrol_dissolve": "a dissous une patrouille",
@@ -362,6 +364,7 @@ const RESOURCE_LABELS: Record<string, string> = {
   discipline: "Discipline",
   protocol: "Protocole",
   resource: "Ressource",
+  tenue: "Tenue",
   report: "Rapport",
   calendarEvent: "Évènement",
   operation: "Opération",
